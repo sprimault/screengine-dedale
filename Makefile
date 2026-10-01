@@ -9,7 +9,7 @@
 
 SORTIE ?= .tmp
 
-.PHONY: aide build run release test fmt lint audit deny tools clean
+.PHONY: aide build run release test fmt lint audit deny clean
 
 aide:
 	@echo "make build    compile le jeu, profil dev"

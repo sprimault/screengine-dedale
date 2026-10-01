@@ -93,10 +93,13 @@ Deux variables ne suffisent pas :
   `rust_out.exe`. Un exécutable neuf hors du dépôt est un fichier inconnu de plus à
   chaque `make test`.
 
-**La chaîne d'outils, elle, est celle du moteur**, dans son `.tmp/` : une seconde
-installation de rustup ferait un gigaoctet et demi pour rien, et surtout les deux
-dépôts divergeraient de version sans que rien ne le dise. Seul le répertoire de
-sortie est propre à ce dépôt.
+**La chaîne d'outils est propre à ce dépôt**, dans son `.tmp/` : une seule chaîne,
+stable, et la seule cible hôte. Elle a d'abord été empruntée à celle du moteur, et
+ce n'était pas tenable — la redirection de `.cargo/config.toml` est optionnelle et
+retombe sur le commit épinglé, alors qu'une chaîne empruntée ne retombe sur rien :
+le jeu cessait de compiler dès que le clone voisin bougeait. Or prendre le moteur
+comme n'importe quel consommateur extérieur, qui n'a pas ce clone sous la main, est
+une des deux raisons d'être de ce dépôt.
 
 ## Les assets
 
