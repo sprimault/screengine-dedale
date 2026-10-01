@@ -1,0 +1,27 @@
+Avis de tiers — screengine-dedale
+Third-party notices — screengine-dedale
+
+Tout ce que ce dépôt redistribue sous une licence qui n'est pas la sienne est
+listé ici. Les dépendances Rust n'y figurent pas : elles ne voyagent pas dans ce
+dépôt, et `cargo deny` contrôle leurs licences à chaque publication.
+
+Everything this repository redistributes under a licence other than its own is
+listed here. Rust dependencies are not: they do not travel in this repository,
+and `cargo deny` checks their licences at every release.
+
+--------------------------------------------------------------------------------
+
+PixelOperator8
+  assets/fonts/PixelOperator8.ttf
+  Licence : CC0 1.0 Universal (domaine public)
+  Texte intégral : assets/fonts/PixelOperator8-LICENSE.txt
+
+  **Le seul asset de ce dépôt qui ne sort pas de sa propre chaîne**, et sa licence
+  est la raison pour laquelle c'est admis : CC0 place l'œuvre dans le domaine
+  public, sans condition ni attribution exigée. Le fichier est gardé à côté de la
+  planche qu'il produit pour que celle-ci reste régénérable depuis le dépôt seul.
+
+  The only asset in this repository that does not come from its own chain, and its
+  licence is why that is acceptable: CC0 places the work in the public domain, with
+  no condition and no required attribution. The file is kept next to the sheet it
+  produces so that the sheet stays reproducible from the repository alone.

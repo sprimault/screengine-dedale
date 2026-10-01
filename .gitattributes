@@ -1,0 +1,36 @@
+# Normalisation des fins de ligne. Indispensable quand le dépôt est alimenté
+# depuis Windows et consommé sous Linux : sans ça, un contrôle comparant des
+# octets casse de façon incompréhensible.
+* text=auto eol=lf
+
+# Doivent rester en LF quoi qu'il arrive
+*.rs text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+Makefile text eol=lf
+*.sh text eol=lf
+
+# Spécifiques Windows
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binaire, jamais converti. Les planches et les sons sont comparés octet pour
+# octet à ce que la chaîne réengendre : s'en remettre à l'heuristique de
+# `text=auto` ferait dépendre le contrôle d'une détection au lieu d'une
+# déclaration.
+*.png binary
+*.webp binary
+*.wav binary
+*.ogg binary
+*.flac binary
+*.glb binary
+*.world binary
+*.mesh binary
+*.bin binary
+*.zip binary
+*.gz binary
+*.exe binary

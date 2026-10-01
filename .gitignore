@@ -1,0 +1,17 @@
+# Compilation. /target/ reste listé : un clone sans makefile.local s'y compile,
+# la redirection vers .tmp/ étant une contrainte de poste et non du projet.
+/target/
+*.pdb
+*.rs.bk
+
+# Répertoire de travail local : artefacts redirigés, binaires d'essai, sorties
+# de contrôle. Aucun exécutable ne sort d'ici.
+/.tmp/
+/makefile.local
+
+# Sauvegardes et réglages d'une partie : produits en jouant, propres au poste.
+/parties/
+
+# Systèmes de fichiers
+.DS_Store
+Thumbs.db

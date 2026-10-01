@@ -1,0 +1,50 @@
+# Un seul paquet, et c'est voulu : un jeu est une application, pas une
+# bibliothèque. Ce qui en sortirait de réutilisable remonterait dans
+# `screengine-play`, au troisième consommateur et pas avant.
+[package]
+name = "screengine-dedale"
+description = "Sortir d'un dédale : le jeu de démonstration de screengine."
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/sprimault/screengine-dedale"
+authors = ["Stéphane Primault"]
+# Un jeu ne se publie pas sur crates.io : il se distribue en archive.
+publish = false
+
+# **Par git et non par chemin.** Un chemin ne vaudrait que sur un poste où les
+# deux dépôts sont côte à côte, et l'intégration continue le refuserait. Prendre
+# le moteur comme n'importe qui le prendrait est aussi ce que ce dépôt doit
+# éprouver : que l'API telle qu'elle sort suffit à un consommateur extérieur.
+#
+# **Par commit et non par tag**, et c'est une conséquence de ce que les archives
+# de release emportent : la bibliothèque C et son header, jamais
+# `screengine-play`, qui est un paquet Rust. Un tag n'a donc pas de destinataire
+# ici, et un commit épingle aussi exactement. On passera au tag le jour où une
+# version publiée portera ce dont ce jeu dépend.
+#
+# Pour itérer sur les deux à la fois, `.cargo/config.toml` — local, hors dépôt —
+# redirige cette dépendance vers le clone voisin. Le commit reste la vérité.
+# `version` en plus du commit : sans elle la dépendance est un joker, que
+# `make deny` refuse — et à juste titre, puisque rien ne dirait alors contre
+# quelle version de l'API ce jeu est écrit. Les deux se vérifient : le commit dit
+# d'où vient le code, la version dit ce qu'il promet.
+[dependencies]
+screengine-play = { version = "0.8", git = "https://github.com/sprimault/screengine", rev = "33cfe254011efcf38c10d28c674c633204964216" }
+
+[lints.rust]
+missing_docs = "warn"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "warn"
+
+# Le rendu logiciel est inutilisable en profil de débogage : on optimise les
+# dépendances même en dev, sans perdre les assertions. La même raison que dans le
+# moteur, et la même conséquence — un jeu qu'on peut jouer pendant qu'on l'écrit.
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
