@@ -58,23 +58,20 @@ publiée portera ce dont ce jeu dépend.
 est un joker, que `cargo deny` refuse — et à juste titre, puisque rien ne dirait
 alors contre quelle version de l'API ce jeu est écrit.
 
-### Itérer sur les deux à la fois
+### Aucune redirection locale
 
-`.cargo/config.toml`, local et hors dépôt, redirige la dépendance vers le clone
-voisin :
+**Le moteur se récupère depuis son dépôt, partout et pour tout le monde**, y compris
+sur le poste où les deux sources sont côte à côte. Un `[patch]` vers un clone voisin
+ferait compiler contre une API que le commit épinglé n'a pas, et l'écart ne se
+verrait qu'en intégration continue.
 
-```toml
-[patch."https://github.com/sprimault/screengine"]
-screengine-play = { path = "../screengine/crates/screengine-play" }
-```
+Il coûtait en outre un verrou faux : avec un patch par chemin, `cargo` réécrit
+`Cargo.lock` **sans la ligne `source`** de la dépendance. Le verrou commité décrivait
+donc un montage qu'un seul poste avait.
 
-**Le `Cargo.toml` reste la vérité** : le retirer, et la compilation repart sur le
-commit épinglé, ce qui est le bon comportement.
-
-**Le piège propre à ce montage** : une API ajoutée au clone voisin et pas encore
-poussée fait compiler ici et échouer en intégration continue. C'est voulu — c'est ce
-qui rappelle d'avancer le `rev` avant de livrer, dans le même commit que le code qui
-en a besoin.
+Le besoin qu'il servait — essayer une API du moteur avant de la pousser — n'en est
+pas un ici : un manque se décrit, part dans l'autre dépôt, et le jeu attend ou
+contourne.
 
 ## Où vont les artefacts
 
@@ -95,11 +92,10 @@ Deux variables ne suffisent pas :
 
 **La chaîne d'outils est propre à ce dépôt**, dans son `.tmp/` : une seule chaîne,
 stable, et la seule cible hôte. Elle a d'abord été empruntée à celle du moteur, et
-ce n'était pas tenable — la redirection de `.cargo/config.toml` est optionnelle et
-retombe sur le commit épinglé, alors qu'une chaîne empruntée ne retombe sur rien :
-le jeu cessait de compiler dès que le clone voisin bougeait. Or prendre le moteur
-comme n'importe quel consommateur extérieur, qui n'a pas ce clone sous la main, est
-une des deux raisons d'être de ce dépôt.
+le jeu cessait de compiler dès que le clone voisin bougeait. C'est la même raison
+qui a emporté la redirection de dépendance : prendre le moteur comme n'importe quel
+consommateur extérieur, qui n'a pas ce clone sous la main, est une des deux raisons
+d'être de ce dépôt — et rien de ce qui vit à côté ne doit pouvoir le faire mentir.
 
 ## Les assets
 

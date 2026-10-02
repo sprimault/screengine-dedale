@@ -24,8 +24,10 @@ publish = false
 # ici, et un commit épingle aussi exactement. On passera au tag le jour où une
 # version publiée portera ce dont ce jeu dépend.
 #
-# Pour itérer sur les deux à la fois, `.cargo/config.toml` — local, hors dépôt —
-# redirige cette dépendance vers le clone voisin. Le commit reste la vérité.
+# **Rien ne redirige cette dépendance ailleurs**, pas même sur le poste où les
+# deux sources sont côte à côte : un chemin local ferait compiler contre une API
+# que ce commit n'a pas, et l'écart n'apparaîtrait qu'en intégration continue.
+#
 # `version` en plus du commit : sans elle la dépendance est un joker, que
 # `make deny` refuse — et à juste titre, puisque rien ne dirait alors contre
 # quelle version de l'API ce jeu est écrit. Les deux se vérifient : le commit dit

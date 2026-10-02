@@ -29,8 +29,7 @@ unknown-registry = "deny"
 # par git, faute d'être publié sur crates.io. Le dépôt est nommé plutôt
 # qu'autorisé en bloc, et c'est le seul que ce projet admette.
 unknown-git = "deny"
-# **Un avertissement `unmatched-source` sur cette ligne est normal sur un poste de
-# développement** : `.cargo/config.toml` y redirige la dépendance vers le clone
-# voisin, donc la source git n'entre pas dans le graphe. En intégration continue,
-# où cette redirection n'existe pas, elle y entre et la ligne mord.
+# Un avertissement `unmatched-source` sur cette ligne dirait que la source git
+# n'entre pas dans le graphe, donc qu'une redirection locale a pris sa place.
+# Aucune n'existe : le moteur se récupère depuis son dépôt partout.
 allow-git = ["https://github.com/sprimault/screengine"]
