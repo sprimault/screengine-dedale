@@ -16,8 +16,9 @@
 
 use std::sync::Arc;
 
-use screengine_play::screengine::{Context, Visibility};
-use screengine_play::{Affine3, Camera, Error, Texture, Vec3, World, load_png};
+use screengine_play::{
+    Affine3, Camera, Context, Error, Texture, Vec3, Visibility, World, load_png,
+};
 
 use crate::maze::export::{self, CELL, LEVEL};
 use crate::maze::grid::{Grid, Settings};
@@ -108,8 +109,12 @@ pub struct View {
 /// Rend ce que la traversée a pu déplier : `Incomplete` dit qu'elle a atteint une
 /// de ses deux bornes et que l'image s'arrête une cellule plus loin, `NoCell` que
 /// la pose est hors de tout volume. Aucun des deux n'est une erreur, et un
-/// labyrinthe est le premier décor qui puisse les approcher — c'est `E1.5` qui
-/// les relèvera.
+/// labyrinthe est le premier décor qui puisse les approcher, et relever ce que
+/// cette valeur dit reste à faire.
+///
+/// L'erreur est celle du **noyau**, et son chemin reste long là où `Context` et
+/// `Visibility` sont à plat : la boucle a sa propre `Error`, et les deux ne
+/// peuvent pas porter le même nom dans la même surface.
 pub fn submit(
     context: &mut Context,
     scenery: &Scenery,

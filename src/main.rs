@@ -50,8 +50,11 @@ fn main() -> Result<(), Error> {
     let game = Game::new(scenery.entrance(), &scenery.map);
 
     // Le compte dans le titre, faute d'une police : c'est la seule sortie
-    // textuelle du jeu avant l'étape 5, et le total de triangles est ce qu'il
-    // faut surveiller — la boucle le plafonne à 16 384 sans levier.
+    // textuelle du jeu avant l'étape 5. Ce total est celui de la **carte**, et
+    // non ce que le budget d'image plafonne — lequel compte les triangles
+    // préparés d'une image, que la traversée ne tire qu'à quelques centaines.
+    // `Play::max_triangles` le relève s'il le faut ; la mesure qui le dirait
+    // n'est pas prise, donc le défaut reste.
     let title = format!(
         "Dédale — {} cellules, {} triangles",
         scenery.map.cell_count(),
@@ -69,7 +72,8 @@ fn main() -> Result<(), Error> {
         |session, context| {
             // Un refus ne vient que de la capacité de triangles, et une image
             // manquante vaut mieux qu'une boucle arrêtée. Ce que la traversée
-            // rend — complète, tronquée, ou hors cellule — se relèvera à `E1.5`.
+            // rend — complète, tronquée, ou hors cellule — n'est pas encore
+            // relevé : il faudra le faire quand un décor approchera ses bornes.
             let _ = scene::submit(context, &session.scenery, &session.game.view());
         },
         overview,
