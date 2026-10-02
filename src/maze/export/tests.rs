@@ -382,6 +382,14 @@ fn steps(grid: &Grid) -> Vec<(u32, Vec3, Vec3)> {
 /// deux ordres de grandeur de marge, et une boîte large plutôt qu'une boîte de
 /// joueur — c'est l'étendue balayée qui fait enfler la région, pas la longueur du
 /// pas.
+///
+/// **Et un pas de véhicule n'y change rien dans un décor cloisonné**, ce qui est
+/// la vraie mesure : le même pas étiré soixante-quatre fois, soit deux cent
+/// cinquante-six unités, ne tronque pas davantage. Le mouvement rencontre un mur
+/// bien avant, la traversée s'élague au meilleur contact trouvé, et la région
+/// examinée reste loin des soixante-quatre cellules. La borne se consomme donc
+/// comme le volume balayé **jusqu'au premier contact** — un trajet dégagé, lui,
+/// la consomme comme le volume demandé.
 #[test]
 fn un_pas_de_joueur_n_epuise_pas_le_balayage() {
     let grid = grid();
@@ -393,6 +401,13 @@ fn un_pas_de_joueur_n_epuise_pas_le_balayage() {
             assert!(
                 !hit.incomplete,
                 "un pas d'une case de {from:?} vers {to:?} épuise les {SWEEP_CELLS} cellules du balayage"
+            );
+
+            let far = from + (to - from) * 64.0;
+            let hit = map.sweep(cell, half, from, far).expect("la cellule existe");
+            assert!(
+                !hit.incomplete,
+                "un pas de véhicule de {from:?} vers {far:?} épuise les {SWEEP_CELLS} cellules du balayage"
             );
         }
     }
@@ -496,6 +511,70 @@ fn le_rayon_s_accorde_avec_le_chemin_brut() {
                 walked,
                 map.pick_brute(from, to, surfaces),
                 "le rayon de {from:?} vers {to:?} diverge du chemin brut"
+            );
+        }
+    }
+}
+
+/// Un pas dont la boîte **touche le sol** franchit un passage ouvert.
+///
+/// **C'est le même pas que [`un_pas_dans_un_couloir_ouvert_est_libre`], à dix
+/// centimètres près, et ces dix centimètres décident.** Au-dessus de la bande de
+/// contact, les mille douze pas de ce labyrinthe sont libres ; dedans, aucun ne
+/// l'est — la moitié part dans le solide, l'autre s'arrête net à la jointure de
+/// deux cellules, dans un couloir plat et ouvert.
+///
+/// La surface qui arrête est le **sol** de la cellule de départ, et l'arrêt tombe
+/// à la course qu'il faut au bord avant de la boîte pour atteindre le plan du
+/// portail. Un sol horizontal ne peut pas arrêter un mouvement horizontal : ce
+/// qui bloque est le flanc du volume dilaté de cette surface, à son arête, parce
+/// que l'arête n'est pas vue comme partagée avec le sol d'en face.
+///
+/// **C'est le cas de tout personnage qui a les pieds au sol**, donc le
+/// déplacement de l'étape 2 bute dessus avant d'avoir commencé.
+#[test]
+#[ignore = "le flanc du sol arrête un pas au travers d'un portail, l'arête n'étant pas vue comme partagée"]
+fn un_pas_au_sol_franchit_un_passage() {
+    let grid = grid();
+    let map = World::load(&world(&grid)).expect("carte engendrée valide");
+    let half = Vec3::new(0.3, 0.3, 0.9);
+
+    for at in cases(&grid) {
+        if cover(&grid, at) != cell_id(&grid, at) || flight_from(&grid, at).is_some() {
+            continue;
+        }
+        for side in EDGES {
+            if grid.has_wall(at, side) {
+                continue;
+            }
+            let next = grid.neighbour(at, side).expect("un passage a une voisine");
+            if flight_from(&grid, next).is_some() || under_flight(&grid, next) {
+                continue;
+            }
+            // **Dans la bande de peau, sans y pénétrer.** Le moteur dilate la
+            // boîte d'un millième de sa plus grande demi-étendue — ici neuf
+            // dix-millièmes — pour qu'elle ne reste jamais collée à ce qu'elle
+            // touche. Posée pile à la cote du sol, elle pénètre cette dilatation
+            // et part légitimement dans le solide ; un quart de millimètre plus
+            // haut, elle ne pénètre plus rien et doit passer.
+            const LIFT: f32 = 1.0 / 4096.0;
+
+            let base = ground(&grid, at);
+            let target = ground(&grid, next);
+            let from = Vec3::new(base[0], base[1], base[2] + half.z + LIFT);
+            let to = Vec3::new(target[0], target[1], target[2] + half.z + LIFT);
+            let hit = map
+                .sweep(cell_id(&grid, at), half, from, to)
+                .expect("la cellule existe");
+            assert!(
+                !hit.start_solid,
+                "une boîte posée en {at:?} part déjà dans le solide, contre la surface {}",
+                hit.surface
+            );
+            assert_eq!(
+                hit.fraction, 1.0,
+                "le pas de {at:?} vers {next:?} s'arrête à {} contre la surface {}",
+                hit.fraction, hit.surface
             );
         }
     }
