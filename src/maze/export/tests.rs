@@ -27,6 +27,16 @@ fn grid() -> Grid {
     })
 }
 
+/// Le centre du passage qui prolonge une case vers l'est ou vers le nord.
+fn gateway(at: (u32, u32, u32), side: Side) -> Vec3 {
+    let (dx, dy, _) = side.step();
+    Vec3::new(
+        (at.0 as f32 + 0.5 + dx as f32 * 0.5) * CELL,
+        (at.1 as f32 + 0.5 + dy as f32 * 0.5) * CELL,
+        at.2 as f32 * LEVEL + 1.0,
+    )
+}
+
 /// Le centre d'une case, à hauteur d'œil.
 fn centre(at: (u32, u32, u32)) -> Vec3 {
     Vec3::new(
@@ -67,7 +77,16 @@ fn la_carte_se_charge() {
 fn chaque_case_est_une_cellule_a_sa_place() {
     let grid = grid();
     let map = World::load(&world(&grid)).expect("carte engendrée valide");
-    assert_eq!(map.cell_count(), grid.count());
+
+    // Une cellule par case, plus une par passage **horizontal** : les liaisons
+    // d'étage n'en ont pas encore, et les étages restent donc séparés.
+    let gates = cases(&grid)
+        .iter()
+        .flat_map(|at| [Side::East, Side::North].map(|side| (*at, side)))
+        .filter(|(at, side)| !grid.has_wall(*at, *side))
+        .count() as u32;
+    assert_eq!(map.cell_count(), grid.count() + gates);
+
     for at in cases(&grid) {
         assert_eq!(
             map.locate(centre(at)),
@@ -89,20 +108,68 @@ fn un_passage_se_franchit() {
     let mut crossed = 0;
 
     for at in cases(&grid) {
-        for side in EDGES {
+        for side in [Side::East, Side::North] {
             if grid.has_wall(at, side) {
                 continue;
             }
             let next = grid.neighbour(at, side).expect("un passage a une voisine");
+            let through = gate_id(&grid, at, side);
+
+            // Deux portails séparent désormais deux cases, et chaque moitié se
+            // vérifie à part : c'est la seule façon de savoir laquelle manque
+            // si l'une d'elles ne s'apparie pas.
             assert_eq!(
-                map.track(cell_id(&grid, at), centre(at), centre(next)),
+                map.track(cell_id(&grid, at), centre(at), gateway(at, side)),
+                through,
+                "l'entrée du passage de {at:?} vers {next:?} ne se franchit pas"
+            );
+            assert_eq!(
+                map.track(through, gateway(at, side), centre(next)),
                 cell_id(&grid, next),
-                "le passage de {at:?} vers {next:?} ne se franchit pas"
+                "la sortie du passage de {at:?} vers {next:?} ne se franchit pas"
             );
             crossed += 1;
         }
     }
     assert!(crossed > 0, "la grille d'épreuve n'a aucun passage");
+}
+
+/// Un pas qui franchit **deux** portails rend soit la case d'arrivée, soit zéro
+/// — et jamais une cellule fausse.
+///
+/// Le contrat annonce zéro « quand il sort par un portail non apparié ou par une
+/// surface ». Franchir plus d'un portail est un troisième cas qu'il ne mentionne
+/// pas, et le résultat y **varie avec la géométrie** : mesuré ici, le même pas
+/// rend la cellule d'arrivée dans un sens et zéro dans un autre.
+///
+/// Ce que le jeu peut donc exiger tient en deux clauses, et elles suffisent :
+/// jamais de cellule fausse, et la localisation rattrape toujours. C'est
+/// exactement ce que `Game::step` suppose, et ce test est là pour qu'on ne
+/// retire pas son repli en le croyant inutile.
+#[test]
+fn un_pas_long_rend_la_case_ou_rien() {
+    let grid = grid();
+    let map = World::load(&world(&grid)).expect("carte engendrée valide");
+
+    for at in cases(&grid) {
+        for side in [Side::East, Side::North] {
+            if grid.has_wall(at, side) {
+                continue;
+            }
+            let next = grid.neighbour(at, side).expect("un passage a une voisine");
+            let arrival = cell_id(&grid, next);
+            let followed = map.track(cell_id(&grid, at), centre(at), centre(next));
+            assert!(
+                followed == arrival || followed == 0,
+                "le pas de {at:?} vers {next:?} rend {followed}, ni {arrival} ni zéro"
+            );
+            assert_eq!(
+                map.locate(centre(next)),
+                arrival,
+                "la localisation ne rattrape pas le pas de {at:?} vers {next:?}"
+            );
+        }
+    }
 }
 
 /// Un mur arrête : la traversée sort du décor plutôt que de passer au travers.
