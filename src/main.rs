@@ -165,16 +165,21 @@ fn mark(
     let maze = &session.scenery.maze;
     let inner = CELL - 2;
 
-    if export::cell_id(maze, cell) == here {
-        block(output, left + 1, top + 1, inner, inner, HERE);
-        return;
-    }
+    // **Départ et sortie en anneau, volées en plein**, et c'est la forme qui
+    // porte la différence : à cinq pixels de côté, le vert du départ et la teinte
+    // d'une volée verte ne se distinguent pas, et on cherche un escalier là où
+    // commence la partie.
     if cell == maze.start() {
-        block(output, left + 1, top + 1, inner, inner, START);
-        return;
+        ring(output, left + 1, top + 1, inner, START);
     }
     if cell == maze.exit() {
-        block(output, left + 1, top + 1, inner, inner, EXIT);
+        ring(output, left + 1, top + 1, inner, EXIT);
+    }
+    if export::cell_id(maze, cell) == here {
+        block(output, left + 2, top + 2, inner - 2, inner - 2, HERE);
+        return;
+    }
+    if cell == maze.start() || cell == maze.exit() {
         return;
     }
 
@@ -234,6 +239,14 @@ const LINKS: [[u8; 4]; 12] = [
     [0xC8, 0x98, 0x78, 0xFF],
     [0xF0, 0xF0, 0xF0, 0xFF],
 ];
+
+/// Un anneau carré d'un pixel d'épaisseur.
+fn ring(output: &mut Output<'_>, x: u32, y: u32, side: u32, color: [u8; 4]) {
+    block(output, x, y, side, 1, color);
+    block(output, x, y + side - 1, side, 1, color);
+    block(output, x, y, 1, side, color);
+    block(output, x + side - 1, y, 1, side, color);
+}
 
 /// Un rectangle plein, borné par le tampon.
 fn block(output: &mut Output<'_>, x: u32, y: u32, width: u32, height: u32, color: [u8; 4]) {
