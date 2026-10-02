@@ -38,6 +38,15 @@ pub const LEVEL: f32 = 4.0;
 /// La hauteur sous plafond, ce qui laisse une dalle entre deux étages.
 pub const CEILING: f32 = 2.4;
 
+/// La demi-épaisseur d'un mur entre deux cellules.
+///
+/// **C'est elle qui donne une épaisseur aux murs**, et rien d'autre ne le peut :
+/// une cellule occupe `CELL − 2 × MARGIN` au lieu de sa case entière, et la
+/// marge laissée de chaque côté est du solide. Deux cellules jointives ne
+/// laissaient aucune place à un mur — il y était une surface sans épaisseur, et
+/// un couloir ressemblait à une boîte de papier.
+const MARGIN: f32 = 0.5;
+
 /// Les texels par unité de monde.
 ///
 /// Les planches font 512 de côté, donc une couvre exactement une case. La
@@ -143,14 +152,43 @@ pub fn cell_id(grid: &Grid, at: (u32, u32, u32)) -> u32 {
     at.2 * height * width + at.1 * width + at.0 + 1
 }
 
-/// La section des cellules, une par case.
+/// L'identifiant de la cellule de passage qui prolonge une case vers l'est ou
+/// vers le nord.
+///
+/// Un passage appartient à la case de plus petit rang, et à l'un de ses deux
+/// côtés croissants : c'est ce qui lui donne un nom unique sans compteur, et
+/// donc un identifiant stable d'une génération à l'autre.
+fn gate_id(grid: &Grid, at: (u32, u32, u32), side: Side) -> u32 {
+    let (width, height, levels) = grid.extent();
+    let cells = width * height * levels;
+    let lane = u32::from(side == Side::North);
+    cells + (cell_id(grid, at) - 1) * 2 + lane + 1
+}
+
+/// La section des cellules : une par case, et une par passage.
+///
+/// **Les cases d'abord, les passages ensuite**, et cet ordre est une donnée :
+/// quand deux cellules contiennent le même point, c'est la première du fichier
+/// que la localisation rend. Les cases sont ce qu'on veut qu'elle rende.
 fn cells(grid: &Grid) -> Vec<u8> {
     let (width, height, levels) = grid.extent();
     let mut out = Vec::new();
+
     for z in 0..levels {
         for y in 0..height {
             for x in 0..width {
-                cell(grid, (x, y, z), cell_id(grid, (x, y, z)) - 1, &mut out);
+                cell(grid, (x, y, z), &mut out);
+            }
+        }
+    }
+    for z in 0..levels {
+        for y in 0..height {
+            for x in 0..width {
+                for side in [Side::East, Side::North] {
+                    if !grid.has_wall((x, y, z), side) {
+                        gate(grid, (x, y, z), side, &mut out);
+                    }
+                }
             }
         }
     }
@@ -168,12 +206,91 @@ fn materials() -> Vec<u8> {
     out
 }
 
-/// Une cellule de case : son empreinte extrudée, ses murs et ses portails.
-fn cell(grid: &Grid, at: (u32, u32, u32), rank: u32, out: &mut Vec<u8>) {
-    let (low, high) = (floor_of(at.2), floor_of(at.2) + CEILING);
-    let (x0, x1) = (coord(at.0), coord(at.0 + 1));
-    let (y0, y1) = (coord(at.1), coord(at.1 + 1));
-    let footprint = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
+/// La cellule d'une case : un carré plus petit que sa case, centré dedans.
+///
+/// **Plus petite, et c'est tout l'objet de ce découpage** : la marge laissée de
+/// chaque côté devient du solide, si bien qu'un mur entre deux cases a une
+/// épaisseur de deux marges. Des cellules jointives n'en laissaient aucune — un
+/// mur y était une surface sans épaisseur, l'arête de deux murs était
+/// infiniment fine, et un couloir se lisait comme une boîte de papier.
+fn cell(grid: &Grid, at: (u32, u32, u32), out: &mut Vec<u8>) {
+    let rank = cell_id(grid, at) - 1;
+    let footprint = [
+        [inner_low(at.0), inner_low(at.1)],
+        [inner_high(at.0), inner_low(at.1)],
+        [inner_high(at.0), inner_high(at.1)],
+        [inner_low(at.0), inner_high(at.1)],
+    ];
+    let open = [
+        !grid.has_wall(at, EDGES[0]),
+        !grid.has_wall(at, EDGES[1]),
+        !grid.has_wall(at, EDGES[2]),
+        !grid.has_wall(at, EDGES[3]),
+    ];
+    prism(rank + 1, rank * 6, rank * 4, footprint, at.2, open, out);
+}
+
+/// La cellule d'un passage : le couloir court qui perce un mur.
+///
+/// Elle occupe l'épaisseur du mur, à cheval sur la frontière des deux cases, et
+/// porte un portail à chaque bout. C'est elle qui donne son embrasure au
+/// passage, et elle seule.
+fn gate(grid: &Grid, at: (u32, u32, u32), side: Side, out: &mut Vec<u8>) {
+    let (width, height, levels) = grid.extent();
+    let cells = width * height * levels;
+    let rank = gate_id(grid, at, side) - 1;
+
+    // Le passage est centré sur la frontière des deux cases, et ses deux bouts
+    // sortent de `coord` comme les bornes des cellules qu'il relie : les mêmes
+    // bits des deux côtés, ce que l'appariement exige sans tolérance.
+    let (footprint, open) = match side {
+        Side::East => (
+            [
+                [inner_high(at.0), inner_low(at.1)],
+                [inner_low(at.0 + 1), inner_low(at.1)],
+                [inner_low(at.0 + 1), inner_high(at.1)],
+                [inner_high(at.0), inner_high(at.1)],
+            ],
+            [false, true, false, true],
+        ),
+        _ => (
+            [
+                [inner_low(at.0), inner_high(at.1)],
+                [inner_high(at.0), inner_high(at.1)],
+                [inner_high(at.0), inner_low(at.1 + 1)],
+                [inner_low(at.0), inner_low(at.1 + 1)],
+            ],
+            [true, false, true, false],
+        ),
+    };
+
+    // Les passages prennent leurs identifiants de surface et de portail après
+    // ceux de toutes les cases, pour que ni les uns ni les autres ne dépendent
+    // du nombre de passages — qui change avec la graine.
+    let slot = rank - cells;
+    prism(
+        rank + 1,
+        cells * 6 + slot * 6,
+        cells * 4 + slot * 4,
+        footprint,
+        at.2,
+        open,
+        out,
+    );
+}
+
+/// Un prisme droit : son empreinte extrudée, ses murs, et un portail par côté
+/// ouvert.
+fn prism(
+    id: u32,
+    surfaces: u32,
+    portals: u32,
+    footprint: [[f32; 2]; 4],
+    level: u32,
+    open: [bool; 4],
+    out: &mut Vec<u8>,
+) {
+    let (low, high) = (floor_of(level), floor_of(level) + CEILING);
 
     // L'empreinte est écrite ici et ne vient de personne, mais une main qui en
     // changerait l'ordre retournerait **toutes** les surfaces de la cellule d'un
@@ -181,7 +298,7 @@ fn cell(grid: &Grid, at: (u32, u32, u32), rank: u32, out: &mut Vec<u8>) {
     // montrerait du fond là où le décor devrait être. Le signe se vérifie donc.
     assert!(
         twice_area(&footprint) > 0.0,
-        "l'empreinte de {at:?} tourne à l'envers"
+        "l'empreinte de la cellule {id} tourne à l'envers"
     );
 
     let mut points = Vec::with_capacity(8);
@@ -191,13 +308,13 @@ fn cell(grid: &Grid, at: (u32, u32, u32), rank: u32, out: &mut Vec<u8>) {
         }
     }
 
-    let walls: Vec<usize> = (0..4).filter(|i| grid.has_wall(at, EDGES[*i])).collect();
-    let gates: Vec<usize> = (0..4).filter(|i| !grid.has_wall(at, EDGES[*i])).collect();
+    let walls: Vec<usize> = (0..4).filter(|i| !open[*i]).collect();
+    let gates: Vec<usize> = (0..4).filter(|i| open[*i]).collect();
 
     let mut body = Vec::new();
     words(
         &[
-            rank + 1,
+            id,
             0,
             points.len() as u32,
             walls.len() as u32 + 2,
@@ -211,30 +328,26 @@ fn cell(grid: &Grid, at: (u32, u32, u32), rank: u32, out: &mut Vec<u8>) {
 
     // Le sol dans l'ordre de l'empreinte, le plafond à l'envers : écrits dans le
     // même sens, l'un des deux serait un dos de face et disparaîtrait.
-    let surfaces = rank * 6;
     surface(surfaces + 1, FLOOR, &[0, 1, 2, 3], &points, FLAT, &mut body);
     surface(surfaces + 2, FLOOR, &[7, 6, 5, 4], &points, FLAT, &mut body);
     for (slot, &i) in walls.iter().enumerate() {
         let j = (i + 1) % 4;
         let indices = [i as u32, (i + 4) as u32, (j + 4) as u32, j as u32];
-        let frame = (ALONG[i], UPWARD);
         surface(
             surfaces + 3 + slot as u32,
             WALL,
             &indices,
             &points,
-            frame,
+            (ALONG[i], UPWARD),
             &mut body,
         );
     }
 
     // Un portail prend l'enroulement inverse de la surface qu'il remplace, et la
-    // cellule d'en face écrit le même quadrilatère depuis sa propre arête. Les
-    // deux jeux de positions sortent de `coord`, donc ils portent les mêmes bits
-    // — ce que l'appariement exige, sans la moindre tolérance.
+    // cellule d'en face écrit le même quadrilatère depuis sa propre arête.
     for (slot, &i) in gates.iter().enumerate() {
         let j = (i + 1) % 4;
-        words(&[rank * 4 + 1 + slot as u32, 4], &mut body);
+        words(&[portals + 1 + slot as u32, 4], &mut body);
         words(
             &[i as u32, j as u32, (j + 4) as u32, (i + 4) as u32],
             &mut body,
@@ -307,6 +420,20 @@ fn check(id: u32, indices: &[u32], points: &[[f32; 3]], axis: [f32; 3]) {
 /// changerait rien — la relation cesserait d'être transitive.
 fn coord(index: u32) -> f32 {
     index as f32 * CELL
+}
+
+/// La borne basse d'une cellule de case, sur un axe horizontal.
+fn inner_low(index: u32) -> f32 {
+    coord(index) + MARGIN
+}
+
+/// Sa borne haute.
+///
+/// Écrite depuis la frontière de la case suivante et non depuis la sienne : un
+/// passage se calcule des deux côtés de cette même frontière, et les trois
+/// expressions doivent rendre les mêmes bits.
+fn inner_high(index: u32) -> f32 {
+    coord(index + 1) - MARGIN
 }
 
 /// La cote du sol d'un étage.
