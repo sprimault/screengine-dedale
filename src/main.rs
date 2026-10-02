@@ -10,8 +10,9 @@
 
 mod maze;
 
+use maze::export;
 use maze::grid::{Grid, Settings, Side};
-use screengine_play::{Affine3, Color, Error, KeyCode, Output, Play, Triangle, Vec3};
+use screengine_play::{Affine3, Color, Error, KeyCode, Output, Play, Triangle, Vec3, World};
 
 /// Les réglages du labyrinthe.
 ///
@@ -30,9 +31,13 @@ const MAZE: Settings = Settings {
 /// monde est rechargeable à chaud, la partie est jetée au rechargement, et c'est
 /// la séparation qui rend l'édition possible. L'état de partie n'a encore aucun
 /// champ ; il naîtra dans `game.rs` avec le premier.
-struct World {
+///
+/// Le nom évite `World`, qui est déjà celui de la carte chargée côté moteur.
+struct Scenery {
     /// Le labyrinthe engendré.
     maze: Grid,
+    /// La carte que le moteur en a tirée.
+    map: World,
 }
 
 /// Les quatre sommets du panneau d'accueil, devant la caméra neutre.
@@ -60,12 +65,24 @@ const FACES: [Triangle; 2] = [
 
 /// Ouvre la fenêtre ; Échap ferme.
 fn main() -> Result<(), Error> {
-    let world = World {
-        maze: Grid::generate(MAZE),
+    let maze = Grid::generate(MAZE);
+    let scenery = Scenery {
+        map: World::load(&export::world(&maze))?,
+        maze,
     };
 
-    Play::new().title("Dédale").run_with_output(
-        world,
+    // Le compte dans le titre, faute d'une police : c'est la seule sortie
+    // textuelle du jeu avant l'étape 5, et elle dit d'un coup d'œil ce que la
+    // carte pèse — dont le total de triangles, que la boucle plafonne à 16 384
+    // sans qu'on puisse le relever.
+    let title = format!(
+        "Dédale — {} cellules, {} triangles",
+        scenery.map.cell_count(),
+        scenery.map.triangle_count()
+    );
+
+    Play::new().title(&title).run_with_output(
+        scenery,
         |_, tick| {
             if tick.input().pressed(KeyCode::Escape) {
                 tick.exit();
@@ -104,8 +121,8 @@ const GAP: u32 = 10;
 /// deux cases que des dizaines de passages séparent. Une case qui monte et celle
 /// qui lui répond à l'étage voisin se lisent à la même position d'un plan à
 /// l'autre.
-fn overview(world: &mut World, output: &mut Output<'_>) {
-    let maze = &world.maze;
+fn overview(scenery: &mut Scenery, output: &mut Output<'_>) {
+    let maze = &scenery.maze;
     let (width, height, levels) = maze.extent();
 
     for level in 0..levels {

@@ -8,4 +8,5 @@
 //! l'export qui viendra ensuite traduit une case en cellule et un mur percé en
 //! portail, et c'est lui seul qui parle en unités.
 
+pub mod export;
 pub mod grid;

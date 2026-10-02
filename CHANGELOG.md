@@ -20,6 +20,10 @@ cela s'adresse à quelqu'un.
   route et une seule entre deux cases, des étages reliés par des passages, et le
   même labyrinthe à chaque fois. Un plan la dessine à plat dans le tampon de
   sortie, le temps qu'un décor vienne à sa place.
+- **La carte, écrite depuis la grille** : une cellule par case, un portail par mur
+  percé, et les deux cellules qu'un portail sépare l'écrivent aux mêmes positions —
+  ce que le format exige au bit près. Le moteur la charge telle quelle, sans fichier
+  intermédiaire : la graine est la forme de rejeu.
 
 ***
 
