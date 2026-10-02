@@ -24,8 +24,8 @@ font, recorded in [`THIRD-PARTY-NOTICES`](THIRD-PARTY-NOTICES).
 
 ## Status
 
-**Step 0: the skeleton.** The window opens, the loop runs, the engine is linked, and
-the interface has its buffer. Nothing playable yet.
+**Step 1: the maze.** A generated maze walked in first person, floors linked by
+stairwells. Not a game yet: no monsters, no shooting, no pickups.
 
 - [`ROADMAP.md`](ROADMAP.md) — the steps and what is out of scope (French)
 - [`CHANGELOG.md`](CHANGELOG.md) — what each version brought, dated
@@ -57,3 +57,18 @@ make test     the tests
 
 The details, and why the toolchain writes where it writes:
 [`docs/construction.md`](docs/construction.md) (French).
+
+## Controls
+
+Left click grabs the cursor, middle click releases it, `Esc` quits.
+
+| Key | Effect |
+|---|---|
+| `W` `S`, or up and down arrows | move forward, back |
+| `A` `D`, or left and right arrows | turn in place |
+| mouse | aim the view, once the cursor is grabbed |
+| `Space` `C` | rise, descend |
+
+**The view flies, it does not walk yet**: nothing stops the camera and altitude only
+changes with `Space` and `C`, so a staircase is climbed by hand. Walking and gravity
+come with the next step.
