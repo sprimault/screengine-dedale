@@ -74,6 +74,10 @@ d'être exercé, parce que c'est ce que ce moteur a de particulier :
 - **des étages superposés**, qu'un labyrinthe de grille ne donne pas de lui-même.
   Le monde est en cellules 3D, pas en plan : une passerelle qui enjambe un couloir
   déjà parcouru est ce qui distingue ce modèle d'un labyrinthe à deux dimensions ;
+- **et des escaliers qu'on gravit pour y aller**, parce que c'est ce qui ouvre les
+  décors d'intérieur : un jeu qui se passe dans un immeuble n'a pas le choix. Une
+  cage est une cellule **concave** — le volume reste ouvert au-dessus des marches
+  —, et son portail ne coupe qu'une tranche de son mur en hauteur ;
 - **des tubes lumineux au plafond, qui scintillent**, dans un décor tamisé qui ne
   montre pas tout — c'est le sujet d'éclairage le plus intéressant du jeu ;
 - **le brouillard par la distance**, qui ferme la vue au bout de quelques cellules :
