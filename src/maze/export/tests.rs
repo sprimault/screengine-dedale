@@ -336,6 +336,114 @@ fn le_depart_et_la_sortie_sont_dans_la_carte() {
     }
 }
 
+/// Les pas d'une case, par chaque passage ouvert, avec la cellule de départ.
+///
+/// **L'égalité avec le chemin brut du moteur n'est pas éprouvable pour l'instant**,
+/// et la raison est chez lui : le volume dilaté d'une face est une dalle autour de
+/// son plan, traitée comme un demi-espace infini. Une boîte loin derrière un mur
+/// et qui s'en éloigne obtient un temps d'impact très négatif, ramené à zéro, puis
+/// passe le test d'appartenance parce que sa projection tombe dans le polygone.
+/// D'où un contact immédiat contre un mur que le segment ne croise jamais.
+///
+/// Le chemin traversant porte le même défaut, simplement plus rare — il demande
+/// qu'une cellule visitée ait un mur dont le départ est du mauvais côté, ce qu'un
+/// coude produit. Les deux épreuves d'oracle reviendront quand il sera corrigé.
+fn steps(grid: &Grid) -> Vec<(u32, Vec3, Vec3)> {
+    let mut out = Vec::new();
+    for at in cases(grid) {
+        for side in EDGES {
+            if grid.has_wall(at, side) {
+                continue;
+            }
+            let (dx, dy, _) = side.step();
+            let from = inside(grid, at);
+            let to = Vec3::new(from.x + dx as f32 * CELL, from.y + dy as f32 * CELL, from.z);
+            out.push((cover(grid, at), from, to));
+        }
+    }
+    out
+}
+
+/// Un pas de joueur n'épuise pas la région que le balayage examine.
+///
+/// **C'est la mesure que ce décor devait rendre.** Le budget vaut soixante-quatre
+/// cellules, il ne se configure pas, et sa valeur est publiée dans le header C
+/// — où elle ne changera plus de sens — alors que le décor de collision du moteur
+/// en a deux. Un labyrinthe de plusieurs centaines de cellules est le premier à
+/// pouvoir dire si elle suffit.
+///
+/// Ce qu'un jeu demande est un pas par image : à quelques unités par seconde et
+/// soixante images, une fraction d'unité. L'épreuve prend une case entière, soit
+/// deux ordres de grandeur de marge, et une boîte large plutôt qu'une boîte de
+/// joueur — c'est l'étendue balayée qui fait enfler la région, pas la longueur du
+/// pas.
+#[test]
+fn un_pas_de_joueur_n_epuise_pas_le_balayage() {
+    let grid = grid();
+    let map = World::load(&world(&grid)).expect("carte engendrée valide");
+
+    for (cell, from, to) in steps(&grid) {
+        for half in [Vec3::new(0.3, 0.3, 0.9), Vec3::new(1.2, 1.2, 1.2)] {
+            let hit = map.sweep(cell, half, from, to).expect("la cellule existe");
+            assert!(
+                !hit.incomplete,
+                "un pas d'une case de {from:?} vers {to:?} épuise les {} cellules du balayage",
+                screengine_play::screengine::SWEEP_CELLS
+            );
+        }
+    }
+}
+
+/// Un pas d'une case par un passage ouvert ne rencontre rien.
+///
+/// **C'est le défaut du balayage dilaté, vu depuis un décor réel.** Une face est
+/// une dalle autour de son plan, et le moteur la traite comme un demi-espace :
+/// une boîte derrière un mur et qui s'en éloigne obtient un contact immédiat
+/// contre lui. Le chemin traversant ne l'évite pas, il le rend rare — il faut
+/// qu'une cellule visitée porte un mur dont le départ est du mauvais côté, ce
+/// qu'un coude de couloir produit, et ce labyrinthe n'est fait que de coudes.
+///
+/// Les cases d'escalier sont écartées : un pas qui y entre monte des marches, et
+/// un contact y est juste.
+///
+/// **En attente du correctif, et c'est pour cela qu'elle est écrite maintenant** :
+/// elle échoue dès le premier pas, contre un mur de la cellule de départ dont la
+/// boîte s'éloigne. Le déplacement du joueur ne peut pas s'écrire sur un balayage
+/// qui rend un contact immédiat partout, donc cette épreuve est ce qui dira que
+/// la voie est libre.
+#[test]
+#[ignore = "le balayage rend un contact immédiat contre un mur dont la boîte s'éloigne"]
+fn un_pas_dans_un_couloir_ouvert_est_libre() {
+    let grid = grid();
+    let map = World::load(&world(&grid)).expect("carte engendrée valide");
+    let half = Vec3::new(0.3, 0.3, 0.9);
+
+    for at in cases(&grid) {
+        if cover(&grid, at) != cell_id(&grid, at) || flight_from(&grid, at).is_some() {
+            continue;
+        }
+        for side in EDGES {
+            if grid.has_wall(at, side) {
+                continue;
+            }
+            let next = grid.neighbour(at, side).expect("un passage a une voisine");
+            if flight_from(&grid, next).is_some() || under_flight(&grid, next) {
+                continue;
+            }
+            let from = inside(&grid, at);
+            let to = inside(&grid, next);
+            let hit = map
+                .sweep(cell_id(&grid, at), half, from, to)
+                .expect("la cellule existe");
+            assert_eq!(
+                hit.fraction, 1.0,
+                "le pas de {at:?} vers {next:?} s'arrête à {} contre la surface {}",
+                hit.fraction, hit.surface
+            );
+        }
+    }
+}
+
 /// Deux exports de la même grille portent les mêmes octets.
 ///
 /// C'est ce qui rend l'empreinte du cache de lightmaps réutilisable d'une
