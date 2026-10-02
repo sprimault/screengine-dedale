@@ -24,6 +24,8 @@ cela s'adresse à quelqu'un.
   percé, et les deux cellules qu'un portail sépare l'écrivent aux mêmes positions —
   ce que le format exige au bit près. Le moteur la charge telle quelle, sans fichier
   intermédiaire : la graine est la forme de rejeu.
+- **Le labyrinthe se parcourt** à la première personne, la cellule de la caméra
+  suivie par les traversées de portails.
 
 ***
 
@@ -34,3 +36,9 @@ cela s'adresse à quelqu'un.
 - **The maze grid**, generated in three dimensions from a seed: one route and only
   one between two cells, floors linked by passages, and the same maze every time. A
   plan draws it flat into the output buffer, until scenery takes its place.
+- **The map, written from the grid**: one cell per case, one portal per opened
+  wall, and the two cells a portal separates write it at the same positions — what
+  the format demands bit for bit. The engine loads it as is, with no intermediate
+  file: the seed is the form of replay.
+- **The maze can be walked** in first person, the camera's cell followed through
+  portal crossings.

@@ -133,16 +133,24 @@ pub fn world(grid: &Grid) -> Vec<u8> {
     out
 }
 
+/// L'identifiant que la carte donne à une case.
+///
+/// Fonction de la seule position, et non d'un compteur qui suivrait l'ordre du
+/// creusement : c'est ce qui rend l'empreinte du cache de lightmaps réutilisable
+/// d'une génération à l'autre, puisqu'elle hache les identifiants.
+pub fn cell_id(grid: &Grid, at: (u32, u32, u32)) -> u32 {
+    let (width, height, _) = grid.extent();
+    at.2 * height * width + at.1 * width + at.0 + 1
+}
+
 /// La section des cellules, une par case.
 fn cells(grid: &Grid) -> Vec<u8> {
     let (width, height, levels) = grid.extent();
     let mut out = Vec::new();
-    let mut rank = 0;
     for z in 0..levels {
         for y in 0..height {
             for x in 0..width {
-                cell(grid, (x, y, z), rank, &mut out);
-                rank += 1;
+                cell(grid, (x, y, z), cell_id(grid, (x, y, z)) - 1, &mut out);
             }
         }
     }
