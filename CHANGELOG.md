@@ -14,12 +14,19 @@ cela s'adresse à quelqu'un.
 
 ### Ajouté
 - **Le squelette du jeu** : la fenêtre s'ouvre, la boucle tourne, le moteur est lié
-  par un commit épinglé, et une jauge se dessine dans le tampon de sortie — le seul
-  endroit où une interface a sa place.
+  par un commit épinglé, et l'interface se dessine dans le tampon de sortie — le
+  seul endroit où elle a sa place.
+- **La grille du labyrinthe**, engendrée à trois dimensions depuis une graine : une
+  route et une seule entre deux cases, des étages reliés par des passages, et le
+  même labyrinthe à chaque fois. Un plan la dessine à plat dans le tampon de
+  sortie, le temps qu'un décor vienne à sa place.
 
 ***
 
 ### Added
 - **The game skeleton**: the window opens, the loop runs, the engine is linked by a
-  pinned commit, and a gauge draws into the output buffer — the only place an
-  interface belongs.
+  pinned commit, and the interface draws into the output buffer — the only place it
+  belongs.
+- **The maze grid**, generated in three dimensions from a seed: one route and only
+  one between two cells, floors linked by passages, and the same maze every time. A
+  plan draws it flat into the output buffer, until scenery takes its place.
