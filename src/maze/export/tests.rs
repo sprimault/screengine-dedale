@@ -21,16 +21,10 @@ use screengine_play::{Vec3, World};
 /// de côté — mur et passage — se rencontrent partout.
 fn grid() -> Grid {
     Grid::generate(Settings {
-        extent: (6, 5, 2),
-        seed: 0x1A8E,
-        vertical_odds: 8,
+        extent: (16, 16, 2),
+        seed: 0x5EED_1A8E,
+        vertical_odds: 16,
     })
-}
-
-/// L'identifiant que l'export donne à une case.
-fn id_of(grid: &Grid, at: (u32, u32, u32)) -> u32 {
-    let (width, height, _) = grid.extent();
-    at.2 * height * width + at.1 * width + at.0 + 1
 }
 
 /// Le centre d'une case, à hauteur d'œil.
@@ -77,7 +71,7 @@ fn chaque_case_est_une_cellule_a_sa_place() {
     for at in cases(&grid) {
         assert_eq!(
             map.locate(centre(at)),
-            id_of(&grid, at),
+            cell_id(&grid, at),
             "la case {at:?} n'est pas là où elle devrait"
         );
     }
@@ -101,8 +95,8 @@ fn un_passage_se_franchit() {
             }
             let next = grid.neighbour(at, side).expect("un passage a une voisine");
             assert_eq!(
-                map.track(id_of(&grid, at), centre(at), centre(next)),
-                id_of(&grid, next),
+                map.track(cell_id(&grid, at), centre(at), centre(next)),
+                cell_id(&grid, next),
                 "le passage de {at:?} vers {next:?} ne se franchit pas"
             );
             crossed += 1;
@@ -127,7 +121,7 @@ fn un_mur_arrete() {
                 continue;
             };
             assert_eq!(
-                map.track(id_of(&grid, at), centre(at), centre(next)),
+                map.track(cell_id(&grid, at), centre(at), centre(next)),
                 0,
                 "le mur entre {at:?} et {next:?} laisse passer"
             );
@@ -151,7 +145,7 @@ fn les_etages_ne_se_rejoignent_pas() {
             continue;
         };
         assert_eq!(
-            map.track(id_of(&grid, at), centre(at), centre(above)),
+            map.track(cell_id(&grid, at), centre(at), centre(above)),
             0,
             "la case {at:?} rejoint l'étage du dessus"
         );

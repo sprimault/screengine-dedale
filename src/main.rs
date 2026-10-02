@@ -1,18 +1,23 @@
 // Copyright 2026 Stéphane Primault <sprimault@users.noreply.github.com>
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Le point d'entrée du jeu.
+//! Le point d'entrée du jeu : les réglages, la boucle, et les trois rappels.
 //!
-//! **Rien de ce fichier n'est définitif** : c'est le squelette qui prouve que la
-//! chaîne tient — le moteur se lie, la fenêtre s'ouvre, la boucle tourne, et
-//! l'interface a son tampon. Chaque étape de `ROADMAP.md` le remplace par un peu
-//! plus.
+//! **Les rappels ne portent rien.** Le pas de mise à jour délègue à l'état de la
+//! partie, le rendu à `scene::submit`, et la sortie au plan de contrôle. C'est
+//! voulu : la boucle ouvre une fenêtre, donc elle ne servira pas à l'image animée
+//! du `README`, et tout ce qui vivrait dans un rappel serait à en sortir ce
+//! jour-là.
 
+mod game;
 mod maze;
+mod scene;
 
+use game::Game;
 use maze::export;
-use maze::grid::{Grid, Settings, Side};
-use screengine_play::{Affine3, Color, Error, KeyCode, Output, Play, Triangle, Vec3, World};
+use maze::grid::{Settings, Side};
+use scene::Scenery;
+use screengine_play::{Error, KeyCode, Output, Play};
 
 /// Les réglages du labyrinthe.
 ///
@@ -25,56 +30,25 @@ const MAZE: Settings = Settings {
     vertical_odds: 16,
 };
 
-/// L'état du monde : la carte, et ce qui s'en déduit.
+/// Ce que la boucle garde : le monde d'un côté, la partie de l'autre.
 ///
-/// **Il ne porte rien de la partie** — ni vie, ni score, ni pose de monstre. Le
-/// monde est rechargeable à chaud, la partie est jetée au rechargement, et c'est
-/// la séparation qui rend l'édition possible. L'état de partie n'a encore aucun
-/// champ ; il naîtra dans `game.rs` avec le premier.
-///
-/// Le nom évite `World`, qui est déjà celui de la carte chargée côté moteur.
-struct Scenery {
-    /// Le labyrinthe engendré.
-    maze: Grid,
-    /// La carte que le moteur en a tirée.
-    map: World,
+/// La frontière est ici et nulle part ailleurs. Le monde se recharge à chaud,
+/// la partie est jetée avec lui, et rien de l'une n'entre dans l'autre.
+struct Session {
+    /// L'état du monde.
+    scenery: Scenery,
+    /// L'état de la partie.
+    game: Game,
 }
-
-/// Les quatre sommets du panneau d'accueil, devant la caméra neutre.
-const PANEL: [Vec3; 4] = [
-    Vec3::new(4.0, 2.0, 1.2),
-    Vec3::new(4.0, -2.0, 1.2),
-    Vec3::new(4.0, -2.0, -1.2),
-    Vec3::new(4.0, 2.0, -1.2),
-];
-
-/// Ses deux triangles. L'ordre des sommets décide de la face vue : la caméra
-/// neutre regarde le +X, son axe droit est le −Y et son haut le +Z. Pris dans
-/// l'autre sens, le panneau est un dos et l'écran reste noir — le défaut que
-/// l'exemple `hello` du moteur a porté pendant plusieurs versions.
-const FACES: [Triangle; 2] = [
-    Triangle {
-        indices: [0, 1, 2],
-        color: Color::new(0x40, 0x50, 0x70, 0xFF),
-    },
-    Triangle {
-        indices: [0, 2, 3],
-        color: Color::new(0x30, 0x3C, 0x58, 0xFF),
-    },
-];
 
 /// Ouvre la fenêtre ; Échap ferme.
 fn main() -> Result<(), Error> {
-    let maze = Grid::generate(MAZE);
-    let scenery = Scenery {
-        map: World::load(&export::world(&maze))?,
-        maze,
-    };
+    let scenery = Scenery::new(MAZE)?;
+    let game = Game::new(scenery.entrance(), &scenery.map);
 
     // Le compte dans le titre, faute d'une police : c'est la seule sortie
-    // textuelle du jeu avant l'étape 5, et elle dit d'un coup d'œil ce que la
-    // carte pèse — dont le total de triangles, que la boucle plafonne à 16 384
-    // sans qu'on puisse le relever.
+    // textuelle du jeu avant l'étape 5, et le total de triangles est ce qu'il
+    // faut surveiller — la boucle le plafonne à 16 384 sans levier.
     let title = format!(
         "Dédale — {} cellules, {} triangles",
         scenery.map.cell_count(),
@@ -82,17 +56,18 @@ fn main() -> Result<(), Error> {
     );
 
     Play::new().title(&title).run_with_output(
-        scenery,
-        |_, tick| {
+        Session { scenery, game },
+        |session, tick| {
             if tick.input().pressed(KeyCode::Escape) {
                 tick.exit();
             }
+            session.game.step(tick, &session.scenery.map);
         },
-        |_, context| {
-            // Un refus ne peut venir que de la capacité, que cette scène
-            // n'approche pas : le laisser passer vaut mieux qu'arrêter la boucle
-            // sur une image manquante.
-            let _ = context.submit(Affine3::IDENTITY, &PANEL, &FACES);
+        |session, context| {
+            // Un refus ne vient que de la capacité de triangles, et une image
+            // manquante vaut mieux qu'une boucle arrêtée. Ce que la traversée
+            // rend — complète, tronquée, ou hors cellule — se relèvera à `E1.5`.
+            let _ = scene::submit(context, &session.scenery, &session.game.view());
         },
         overview,
     )
@@ -112,18 +87,27 @@ const GAP: u32 = 10;
 /// **C'est un contrôle, pas la vue de dessus du jeu.** Celle-ci se trace en
 /// lignes de **monde** par le moteur, à l'étape 9 ; ce plan-ci est fait de pixels
 /// posés en coordonnées d'**écran** après la fin d'image, le seul endroit où une
-/// interface a sa place. Il est là parce qu'une grille ne se vérifie pas en
-/// raisonnant, et qu'il valait mieux la voir avant que l'export puisse masquer
-/// un défaut de génération.
+/// interface a sa place.
 ///
-/// **Les étages se dessinent tous, et c'est le fond de l'affaire** : un plan à un
-/// seul niveau rend un labyrinthe 3D illisible, parce qu'il montre côte à côte
-/// deux cases que des dizaines de passages séparent. Une case qui monte et celle
-/// qui lui répond à l'étage voisin se lisent à la même position d'un plan à
-/// l'autre.
-fn overview(scenery: &mut Scenery, output: &mut Output<'_>) {
-    let maze = &scenery.maze;
+/// **Les étages se dessinent tous** : un plan à un seul niveau rend un labyrinthe
+/// 3D illisible, parce qu'il montre côte à côte deux cases que des dizaines de
+/// passages séparent.
+fn overview(session: &mut Session, output: &mut Output<'_>) {
+    let maze = &session.scenery.maze;
+    let here = session.game.cell();
     let (width, height, levels) = maze.extent();
+
+    // Un fond opaque sous le plan : posé à même le décor, il se confond avec
+    // lui dès qu'un mur clair passe derrière.
+    let span = levels * (width * CELL + GAP) - GAP;
+    block(
+        output,
+        INSET / 2,
+        INSET / 2,
+        span + INSET,
+        height * CELL + INSET,
+        BACKDROP,
+    );
 
     for level in 0..levels {
         let origin = INSET + level * (width * CELL + GAP);
@@ -147,26 +131,34 @@ fn overview(scenery: &mut Scenery, output: &mut Output<'_>) {
                     block(output, left + CELL, top, 1, CELL + 1, WALL);
                 }
 
-                mark(output, maze, cell, left, top);
+                mark(output, session, cell, here, left, top);
             }
         }
     }
 }
 
-/// Ce qu'une case porte au-delà de ses murs : l'entrée, la sortie, ou les
-/// passages d'étage qu'elle ouvre.
+/// Ce qu'une case porte au-delà de ses murs : où l'on est, l'entrée, la sortie,
+/// ou les passages d'étage qu'elle ouvre.
 ///
 /// **Chaque passage a sa teinte, et c'est la même de ses deux côtés.** La
 /// position ne suffit pas à apparier : deux plans voisins se comparent mal à
 /// l'œil, et compter des lignes sur l'un pour les retrouver sur l'autre est
-/// exactement ce qu'un plan existe pour éviter. La couleur, elle, se suit d'un
-/// coup d'œil.
-///
-/// La moitié haute d'une case dit ce qui monte, la moitié basse ce qui descend,
-/// si bien qu'une case entre deux étages porte deux teintes — celle du passage
-/// d'en haut et celle du passage d'en bas.
-fn mark(output: &mut Output<'_>, maze: &Grid, cell: (u32, u32, u32), left: u32, top: u32) {
+/// exactement ce qu'un plan existe pour éviter.
+fn mark(
+    output: &mut Output<'_>,
+    session: &Session,
+    cell: (u32, u32, u32),
+    here: u32,
+    left: u32,
+    top: u32,
+) {
+    let maze = &session.scenery.maze;
     let inner = CELL - 2;
+
+    if export::cell_id(maze, cell) == here {
+        block(output, left + 1, top + 1, inner, inner, HERE);
+        return;
+    }
     if cell == maze.start() {
         block(output, left + 1, top + 1, inner, inner, START);
         return;
@@ -178,7 +170,7 @@ fn mark(output: &mut Output<'_>, maze: &Grid, cell: (u32, u32, u32), left: u32, 
 
     let half = inner / 2;
     if !maze.has_wall(cell, Side::Up) {
-        block(output, left + 1, top + 1, inner, half, link(maze, cell));
+        block(output, left + 1, top + 1, inner, half, link(session, cell));
     }
     if !maze.has_wall(cell, Side::Down) {
         // Un passage se nomme par sa case du dessous, des deux côtés.
@@ -189,7 +181,7 @@ fn mark(output: &mut Output<'_>, maze: &Grid, cell: (u32, u32, u32), left: u32, 
             top + 1 + inner - half,
             inner,
             half,
-            link(maze, below),
+            link(session, below),
         );
     }
 }
@@ -199,7 +191,8 @@ fn mark(output: &mut Output<'_>, maze: &Grid, cell: (u32, u32, u32), left: u32, 
 /// Le rang se recompte à chaque image plutôt que de se ranger quelque part : ce
 /// plan est un contrôle qu'on retire à l'étape 9, et lui donner un état dans le
 /// monde serait lui donner plus de place qu'il n'en mérite.
-fn link(maze: &Grid, below: (u32, u32, u32)) -> [u8; 4] {
+fn link(session: &Session, below: (u32, u32, u32)) -> [u8; 4] {
+    let maze = &session.scenery.maze;
     let (width, height, levels) = maze.extent();
     let mut rank = 0;
     for z in 0..levels {
@@ -217,8 +210,14 @@ fn link(maze: &Grid, below: (u32, u32, u32)) -> [u8; 4] {
     LINKS[rank % LINKS.len()]
 }
 
+/// Le fond du plan, derrière tout le reste.
+const BACKDROP: [u8; 4] = [0x00, 0x00, 0x00, 0xFF];
+
 /// La teinte d'un mur.
 const WALL: [u8; 4] = [0x90, 0x94, 0xA4, 0xFF];
+
+/// Celle de la case où l'on se trouve.
+const HERE: [u8; 4] = [0xFF, 0xFF, 0xFF, 0xFF];
 
 /// Celle de la case d'entrée.
 const START: [u8; 4] = [0x40, 0xC0, 0x60, 0xFF];
@@ -230,8 +229,7 @@ const EXIT: [u8; 4] = [0xC8, 0x50, 0x40, 0xFF];
 ///
 /// Douze, bien écartées sur le cercle : deux passages qui la partageraient sont
 /// distants de douze rangs dans l'ordre de lecture, donc jamais voisins à
-/// l'écran. Ni le vert de l'entrée ni le rouge de la sortie n'y figurent, et les
-/// marques de case y sont pleines quand un passage n'est qu'une moitié.
+/// l'écran.
 const LINKS: [[u8; 4]; 12] = [
     [0xE8, 0x7A, 0x5A, 0xFF],
     [0xE8, 0xA8, 0x40, 0xFF],
