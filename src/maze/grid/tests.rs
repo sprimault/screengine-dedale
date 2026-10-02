@@ -174,13 +174,16 @@ fn sans_boucle_le_labyrinthe_est_un_arbre() {
     assert_eq!(distances(&grid).len() as u32, grid.count());
 }
 
-/// Une case qui porte une volée n'a de passages que dans l'axe de sa montée.
+/// Une case d'escalier n'ouvre que l'issue que la cage lui laisse : celle du bas
+/// vers l'entrée, celle du haut vers la sortie.
 ///
-/// C'est la contrainte que l'escalier impose : ailleurs, le passage déboucherait
-/// au milieu des marches. Elle vaut pour la case du bas **et** pour celle du
-/// haut, que la cage occupe aussi — une cage fait deux étages de haut.
+/// **Une seule par case, et non les deux faces de l'axe** : les deux autres n'ont
+/// pas de volume derrière elles — en bas, côté montée, le sol est déjà arrivé à
+/// la cote de l'étage suivant ; en haut, côté entrée, on surplombe le vide de la
+/// cage. Un passage percé là déboucherait sur un mur, et la connexité que cette
+/// suite certifie sur la grille serait fausse dans la carte.
 #[test]
-fn une_volee_n_ouvre_que_son_axe() {
+fn une_volee_n_ouvre_que_son_entree_et_sa_sortie() {
     let grid = Grid::generate(settings());
     assert!(
         !grid.stairs().is_empty(),
@@ -188,18 +191,39 @@ fn une_volee_n_ouvre_que_son_axe() {
     );
 
     for stair in grid.stairs() {
-        for cell in [stair.foot, stair.head()] {
+        let issues = [
+            (stair.foot, stair.climb.facing()),
+            (stair.head(), stair.climb),
+        ];
+        for (cell, issue) in issues {
             for side in [Side::West, Side::East, Side::South, Side::North] {
-                if side == stair.climb || side == stair.climb.facing() {
+                if side == issue {
                     continue;
                 }
                 assert!(
                     grid.has_wall(cell, side),
-                    "la case {cell:?} d'une volée s'ouvre par {side:?}, hors de son axe"
+                    "la case {cell:?} s'ouvre par {side:?}, et sa seule issue est {issue:?}"
                 );
             }
         }
     }
+}
+
+/// Deux cases de côté ne laissent aucune place à une cage, et c'est un réglage
+/// faux plutôt qu'une carte en morceaux.
+///
+/// Le pied et la tête ont des issues **opposées** : sur deux cases, l'un des deux
+/// la cherche hors de la grille, et la case qu'il abandonne cesse d'être reliée à
+/// son étage. Aucune position n'y échappe, d'où la panique après les tirages.
+#[test]
+#[should_panic(expected = "d'un seul tenant")]
+fn une_grille_trop_etroite_pour_une_cage_panique() {
+    let _ = Grid::generate(Settings {
+        extent: (2, 2, 2),
+        stairs: 1,
+        loops: 0,
+        ..settings()
+    });
 }
 
 /// Il y a au moins une volée par paire d'étages consécutifs, faute de quoi un
