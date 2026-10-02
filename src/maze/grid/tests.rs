@@ -19,7 +19,8 @@ fn settings() -> Settings {
     Settings {
         extent: (12, 10, 3),
         seed: 0x5EED,
-        vertical_odds: 8,
+        stairs: 5,
+        loops: 7,
     }
 }
 
@@ -118,29 +119,114 @@ fn les_murs_sont_reciproques() {
     }
 }
 
-/// Entre deux cases, une route et une seule : le graphe est connexe et porte
-/// exactement `cases − 1` passages, ce qui le caractérise comme un arbre.
-#[test]
-fn une_seule_route_entre_deux_cases() {
-    let grid = Grid::generate(settings());
-
+/// Le nombre de passages du labyrinthe.
+fn passages(grid: &Grid) -> u32 {
     let mut halves = 0;
-    for cell in cells(&grid) {
+    for cell in cells(grid) {
         for side in Side::ALL {
             if grid.neighbour(cell, side).is_some() && !grid.has_wall(cell, side) {
                 halves += 1;
             }
         }
     }
-    assert_eq!(halves % 2, 0, "un passage compté une seule fois");
-    assert_eq!(halves / 2, grid.count() - 1, "le compte des passages");
+    assert_eq!(halves % 2, 0, "un passage se compte une seule fois");
+    halves / 2
+}
 
-    let reached = distances(&grid);
+/// Toutes les cases se rejoignent, et c'est ce qui ne se négocie jamais.
+///
+/// Un labyrinthe en morceaux se charge et se dessine sans que rien ne proteste
+/// — seule une mesure le dirait, et seulement si quelqu'un la prend.
+#[test]
+fn toutes_les_cases_se_rejoignent() {
+    let grid = Grid::generate(settings());
+    assert_eq!(distances(&grid).len() as u32, grid.count());
+}
+
+/// Le nombre de boucles est **exactement** celui qu'on a demandé.
+///
+/// Le nombre cyclomatique vaut `passages − cases + 1` sur un graphe connexe, et
+/// il se règle par construction : chaque volée au-delà du minimum en ouvre une,
+/// chaque raccourci horizontal aussi. Un encadrement ne dirait rien ; c'est
+/// l'égalité qui atteste que la passe perce ce qu'elle annonce.
+#[test]
+fn le_compte_des_boucles_est_exact() {
+    let grid = Grid::generate(settings());
+    let levels = grid.extent().2;
+    let extra = grid.stairs().len() as u32 - (levels - 1);
     assert_eq!(
-        reached.len() as u32,
-        grid.count(),
-        "toutes les cases sont reliées"
+        passages(&grid) - grid.count() + 1,
+        settings().loops + extra,
+        "boucles demandées contre boucles percées"
     );
+}
+
+/// Sans boucle ni volée surnuméraire, le labyrinthe est parfait : une route et
+/// une seule entre deux cases.
+#[test]
+fn sans_boucle_le_labyrinthe_est_un_arbre() {
+    let grid = Grid::generate(Settings {
+        stairs: 0,
+        loops: 0,
+        ..settings()
+    });
+    assert_eq!(passages(&grid), grid.count() - 1);
+    assert_eq!(distances(&grid).len() as u32, grid.count());
+}
+
+/// Une case qui porte une volée n'a de passages que dans l'axe de sa montée.
+///
+/// C'est la contrainte que l'escalier impose : ailleurs, le passage déboucherait
+/// au milieu des marches. Elle vaut pour la case du bas **et** pour celle du
+/// haut, que la cage occupe aussi — une cage fait deux étages de haut.
+#[test]
+fn une_volee_n_ouvre_que_son_axe() {
+    let grid = Grid::generate(settings());
+    assert!(
+        !grid.stairs().is_empty(),
+        "la grille d'épreuve a des volées"
+    );
+
+    for stair in grid.stairs() {
+        for cell in [stair.foot, stair.head()] {
+            for side in [Side::West, Side::East, Side::South, Side::North] {
+                if side == stair.climb || side == stair.climb.facing() {
+                    continue;
+                }
+                assert!(
+                    grid.has_wall(cell, side),
+                    "la case {cell:?} d'une volée s'ouvre par {side:?}, hors de son axe"
+                );
+            }
+        }
+    }
+}
+
+/// Il y a au moins une volée par paire d'étages consécutifs, faute de quoi un
+/// niveau serait inatteignable.
+#[test]
+fn chaque_paire_d_etages_a_sa_volee() {
+    let grid = Grid::generate(settings());
+    let levels = grid.extent().2;
+    for level in 0..levels - 1 {
+        assert!(
+            grid.stairs().iter().any(|stair| stair.foot.2 == level),
+            "aucune volée entre l'étage {level} et le suivant"
+        );
+    }
+}
+
+/// Deux volées ne se chevauchent pas : une cage tient deux cases superposées.
+#[test]
+fn deux_volees_ne_se_chevauchent_pas() {
+    let grid = Grid::generate(settings());
+    let mut taken = Vec::new();
+    for stair in grid.stairs() {
+        for cell in [stair.foot, stair.head()] {
+            assert!(!taken.contains(&cell), "la case {cell:?} porte deux volées");
+            taken.push(cell);
+        }
+    }
 }
 
 /// Les faces qui donnent sur le vide restent fermées, ce qui laisse chaque
@@ -180,7 +266,8 @@ fn un_seul_etage_ne_monte_pas() {
 fn une_montee_sans_alternative_est_retenue() {
     let grid = Grid::generate(Settings {
         extent: (1, 1, 2),
-        vertical_odds: 1_000,
+        stairs: 1,
+        loops: 0,
         ..settings()
     });
     assert!(!grid.has_wall((0, 0, 0), Side::Up));

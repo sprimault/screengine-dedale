@@ -16,10 +16,8 @@ cela s'adresse à quelqu'un.
 - **Le squelette du jeu** : la fenêtre s'ouvre, la boucle tourne, le moteur est lié
   par un commit épinglé, et l'interface se dessine dans le tampon de sortie — le
   seul endroit où elle a sa place.
-- **La grille du labyrinthe**, engendrée à trois dimensions depuis une graine : une
-  route et une seule entre deux cases, des étages reliés par des passages, et le
-  même labyrinthe à chaque fois. Un plan la dessine à plat dans le tampon de
-  sortie, le temps qu'un décor vienne à sa place.
+- **La grille du labyrinthe**, engendrée en trois dimensions depuis une graine : des
+  étages reliés par des escaliers, et le même labyrinthe à chaque fois.
 - **La carte, écrite depuis la grille** : une cellule par case et une par passage,
   des murs qui ont une épaisseur, et aucun fichier intermédiaire — la graine est la
   forme de rejeu.
@@ -32,9 +30,8 @@ cela s'adresse à quelqu'un.
 - **The game skeleton**: the window opens, the loop runs, the engine is linked by a
   pinned commit, and the interface draws into the output buffer — the only place it
   belongs.
-- **The maze grid**, generated in three dimensions from a seed: one route and only
-  one between two cells, floors linked by passages, and the same maze every time. A
-  plan draws it flat into the output buffer, until scenery takes its place.
+- **The maze grid**, generated in three dimensions from a seed: floors linked by
+  stairs, and the same maze every time.
 - **The map, written from the grid**: one cell per case and one per passage, walls
   that have a thickness, and no intermediate file — the seed is the form of replay.
 - **The maze can be walked** in first person, the camera's cell followed through
