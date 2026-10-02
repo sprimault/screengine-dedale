@@ -4,8 +4,8 @@
 //! Les épreuves de la scène.
 
 use super::*;
-use screengine_play::FreeCamera;
-use screengine_play::screengine::{BYTES_PER_PIXEL, Config, Context};
+use screengine_play::screengine::{BYTES_PER_PIXEL, Config};
+use screengine_play::{Context, FreeCamera};
 
 /// Les réglages du labyrinthe d'épreuve.
 fn settings() -> Settings {

@@ -135,20 +135,20 @@ fn un_passage_se_franchit() {
     assert!(crossed > 0, "la grille d'épreuve n'a aucun passage");
 }
 
-/// Un pas qui franchit **deux** portails rend soit la case d'arrivée, soit zéro
-/// — et jamais une cellule fausse.
+/// Un pas qui franchit **deux** portails rend la case d'arrivée.
 ///
-/// Le contrat annonce zéro « quand il sort par un portail non apparié ou par une
-/// surface ». Franchir plus d'un portail est un troisième cas qu'il ne mentionne
-/// pas, et le résultat y **varie avec la géométrie** : mesuré ici, le même pas
-/// rend la cellule d'arrivée dans un sens et zéro dans un autre.
+/// Ce test a longtemps admis zéro à la place, parce que le résultat variait avec
+/// l'orientation du pas : la traversée prenait le premier portail dans l'ordre du
+/// fichier et non le premier le long du segment, donc un pas qui coupait une
+/// cellule de part en part pouvait repartir en arrière. **La clause permissive est
+/// tombée avec le correctif**, et l'égalité est ce qui empêche qu'il revienne sans
+/// qu'on le voie.
 ///
-/// Ce que le jeu peut donc exiger tient en deux clauses, et elles suffisent :
-/// jamais de cellule fausse, et la localisation rattrape toujours. C'est
-/// exactement ce que `Game::step` suppose, et ce test est là pour qu'on ne
-/// retire pas son repli en le croyant inutile.
+/// La localisation reste vérifiée dans la foulée : c'est le repli de `Game::step`,
+/// qui garde sa raison — une caméra qui vole sort vraiment du décor, et zéro le
+/// dira alors légitimement.
 #[test]
-fn un_pas_long_rend_la_case_ou_rien() {
+fn un_pas_long_rend_la_case_d_arrivee() {
     let grid = grid();
     let map = World::load(&world(&grid)).expect("carte engendrée valide");
 
@@ -159,10 +159,10 @@ fn un_pas_long_rend_la_case_ou_rien() {
             }
             let next = grid.neighbour(at, side).expect("un passage a une voisine");
             let arrival = cell_id(&grid, next);
-            let followed = map.track(cell_id(&grid, at), centre(at), centre(next));
-            assert!(
-                followed == arrival || followed == 0,
-                "le pas de {at:?} vers {next:?} rend {followed}, ni {arrival} ni zéro"
+            assert_eq!(
+                map.track(cell_id(&grid, at), centre(at), centre(next)),
+                arrival,
+                "le pas de {at:?} vers {next:?} n'arrive pas dans sa case"
             );
             assert_eq!(
                 map.locate(centre(next)),
@@ -203,7 +203,7 @@ fn un_mur_arrete() {
 ///
 /// Ce n'est pas un défaut mais l'état attendu : un portail non apparié est un
 /// mur, et une cellule close en est faite de six. L'épreuve est là pour que le
-/// jour où `E1.2b` les relie, elle rougisse et soit reprise.
+/// jour où la cellule-escalier les relie, elle rougisse et soit reprise.
 #[test]
 fn les_etages_ne_se_rejoignent_pas() {
     let grid = grid();
