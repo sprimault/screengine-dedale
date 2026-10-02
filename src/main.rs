@@ -24,8 +24,11 @@ use screengine_play::{Error, KeyCode, Output, Play};
 /// Seize cases de côté sur deux étages, assez pour que la traversée du moteur
 /// ait de quoi éliminer. Six volées plutôt que la seule qu'un arbre exigerait :
 /// un immeuble a plusieurs cages **et** des étages qu'on parcourt, et c'est
-/// précisément ce que ce décor doit montrer du moteur. Les cinq en trop ouvrent
-/// cinq boucles verticales, auxquelles s'ajoutent huit raccourcis horizontaux.
+/// précisément ce que ce décor doit montrer du moteur. Chacune en trop ouvre une
+/// boucle verticale, et huit raccourcis horizontaux s'y ajoutent.
+///
+/// Six **demandées** : une cage aveugle trois faces de chacune de ses deux cases,
+/// et celle qui couperait le labyrinthe est écartée. Ces six-là tiennent.
 const MAZE: Settings = Settings {
     extent: (16, 16, 2),
     seed: 0x5EED_1A8E,

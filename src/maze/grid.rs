@@ -20,12 +20,17 @@
 //! cyclomatique vaut ce qu'on a demandé et rien d'autre.
 //!
 //! **Les escaliers se réservent avant le creusement**, et c'est la seule voie qui
-//! termine. Une case qui porte une volée ne peut s'ouvrir que dans l'axe de sa
-//! montée — ailleurs, le passage déboucherait au milieu des marches. L'imposer
-//! après coup déconnecterait, puisque dans un arbre toute arête est l'unique
-//! route vers quelque chose ; l'imposer pendant romprait l'invariant qui garantit
-//! que la chasse trouve toujours. Retirer ces murs du graphe **avant** rend la
-//! contrainte vraie par construction, sans un seul rejet.
+//! termine. Une cage n'a que deux ouvertures — l'entrée en bas, la sortie en
+//! haut —, donc chacune de ses deux cases garde une seule issue horizontale ;
+//! partout ailleurs le passage déboucherait au milieu des marches ou au-dessus du
+//! vide. L'imposer après coup déconnecterait, puisque dans un arbre toute arête
+//! est l'unique route vers quelque chose ; l'imposer pendant romprait l'invariant
+//! qui garantit que la chasse trouve toujours. Retirer ces murs du graphe
+//! **avant** rend la contrainte vraie par construction, sans un seul rejet.
+//!
+//! Le prix en est un contrôle : en retirant tant d'arêtes, un placement de volées
+//! peut couper le graphe que le creusement emprunte, et le tirage se refait
+//! jusqu'à ce qu'un parcours le déclare d'un seul tenant.
 
 use std::collections::VecDeque;
 
@@ -150,8 +155,13 @@ pub struct Settings {
 ///
 /// La volée monte vers l'étage du dessus en suivant un axe horizontal : on entre
 /// par la face opposée à `climb`, on sort par celle de `climb`, un étage plus
-/// haut. Les deux faces de l'autre axe sont aveugles, et ce sont elles que la
-/// réservation protège.
+/// haut.
+///
+/// **Ce sont là ses deux seules ouvertures**, et non deux par case : les trois
+/// autres faces de chaque case sont aveugles, et c'est ce que la réservation
+/// protège. En bas, du côté de la montée, le sol est déjà arrivé à la cote de
+/// l'étage suivant ; en haut, du côté de l'entrée, on surplombe le vide de la
+/// cage.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Stair {
     /// La case du bas, celle où la volée commence.
@@ -344,14 +354,80 @@ impl Grid {
         // seul tenant, et ça ne se négocie pas. Le graphe quotient des étages
         // est une chaîne, donc il n'y a aucune topologie à choisir — seulement
         // des positions.
-        for level in 0..levels - 1 {
-            self.place(rng, level);
+        //
+        // **Par jeux entiers et non volée par volée** : la connexité ne se juge
+        // qu'une fois la chaîne complète — tant qu'il manque une paire, les
+        // étages du dessus sont légitimement hors d'atteinte —, et la volée
+        // fautive n'est pas forcément la dernière posée.
+        let mut linked = false;
+        for _ in 0..64 {
+            self.stairs.clear();
+            for level in 0..levels - 1 {
+                self.place(rng, level);
+            }
+            linked = self.reaches_all();
+            if linked {
+                break;
+            }
         }
-        // Les suivantes ouvrent chacune une boucle verticale.
+        assert!(
+            linked,
+            "aucune position de volée ne laisse le labyrinthe d'un seul tenant : \
+             il y faut au moins trois cases sur un des deux axes horizontaux, \
+             pour que le pied et la tête aient chacun leur issue dans la grille"
+        );
+
+        // Les suivantes ouvrent chacune une boucle verticale, et chacune aveugle
+        // deux cases de plus : celle qui déconnecte est écartée, ce qui en pose
+        // moins que demandé plutôt que de rendre une carte en morceaux.
         for _ in levels - 1..count.max(levels - 1) {
             let level = rng.below(levels - 1);
+            let before = self.stairs.len();
             self.place(rng, level);
+            if self.stairs.len() > before && !self.reaches_all() {
+                self.stairs.pop();
+            }
         }
+    }
+
+    /// Vrai si le graphe que le creusement peut emprunter relie toutes les cases.
+    ///
+    /// Ce graphe n'est pas celui de la grille : il porte les arêtes horizontales
+    /// qu'aucune volée n'aveugle, et **les seules volées obligatoires** — les
+    /// surnuméraires se percent après le creusement, donc s'y fier validerait une
+    /// connexité qu'il n'atteint pas.
+    ///
+    /// Sans ce contrôle, l'échec arrive dans `dig`, où la chasse finit les mains
+    /// vides : c'est tard, et le message ne dit pas que la faute est au placement.
+    fn reaches_all(&self) -> bool {
+        let mut seen = vec![false; self.walls.len()];
+        let mut stack = vec![(0i32, 0i32, 0i32)];
+        seen[self.offset(0, 0, 0)] = true;
+        let mut count = 1;
+
+        while let Some(cell) = stack.pop() {
+            for side in Side::ALL {
+                if side.is_vertical() && !self.is_flight(cell, side) {
+                    continue;
+                }
+                if self.blind(cell, side) {
+                    continue;
+                }
+                let (dx, dy, dz) = side.step();
+                let next = (cell.0 + dx, cell.1 + dy, cell.2 + dz);
+                if self.at(next.0, next.1, next.2) == 0 {
+                    continue;
+                }
+                let offset = self.offset(next.0, next.1, next.2);
+                if seen[offset] {
+                    continue;
+                }
+                seen[offset] = true;
+                count += 1;
+                stack.push(next);
+            }
+        }
+        count == self.count()
     }
 
     /// Pose une volée à un étage donné, sur une case que nulle autre n'occupe.
@@ -389,14 +465,21 @@ impl Grid {
 
     /// Vrai si ce mur est aveuglé par une volée, **d'un côté ou de l'autre**.
     ///
-    /// Les deux faces perpendiculaires à la montée sont du solide : un passage
-    /// y déboucherait au milieu des marches, ce qui n'est pas constructible.
+    /// Une cage n'a que **deux** ouvertures, et non deux par case : en bas celle
+    /// par laquelle on entre, en haut celle par laquelle on sort. Les deux autres
+    /// faces de l'axe de montée n'ont pas de volume derrière elles — côté montée
+    /// en bas le sol est déjà arrivé à la cote de l'étage suivant, côté entrée en
+    /// haut on surplombe le vide de la cage. Un passage percé là déboucherait sur
+    /// un mur : le portail ne s'apparierait pas, ce qui est un mur et non une
+    /// erreur, et la connexité du labyrinthe deviendrait fausse en silence.
+    ///
     /// Les retirer du graphe **avant** de creuser est ce qui rend la contrainte
     /// vraie sans jamais avoir à rejeter un perçage.
     ///
     /// **Les deux côtés, et c'est tout le piège** : un mur se perce des deux
     /// faces à la fois, donc l'interdire d'un seul côté laisse la voisine
-    /// l'ouvrir pour nous.
+    /// l'ouvrir pour nous. D'où les deux formes du test — `side` depuis la case
+    /// proche, son opposé depuis la lointaine.
     fn blind(&self, cell: (i32, i32, i32), side: Side) -> bool {
         if side.is_vertical() {
             return false;
@@ -409,10 +492,11 @@ impl Grid {
             (cell.2 + dz) as u32,
         );
         self.stairs.iter().any(|stair| {
-            let touched = [stair.foot, stair.head()];
-            (touched.contains(&near) || touched.contains(&far))
-                && side != stair.climb
-                && side != stair.climb.facing()
+            let entry = stair.climb.facing();
+            (near == stair.foot && side != entry)
+                || (far == stair.foot && side.facing() != entry)
+                || (near == stair.head() && side != stair.climb)
+                || (far == stair.head() && side.facing() != stair.climb)
         })
     }
 
