@@ -107,7 +107,7 @@ const TREAD: f32 = (INNER - LANDING) / STEPS as f32;
 /// L'emplacement du matériau des murs.
 const WALL: u32 = 1;
 
-/// Celui du sol et du plafond.
+/// Celui du sol, du plafond et des marches — girons et contremarches.
 const FLOOR: u32 = 2;
 
 /// Les surfaces qu'une cellule de case ou de passage réserve.
@@ -683,12 +683,15 @@ fn stair(grid: &Grid, flight: Stair, out: &mut Vec<u8>) {
     // une coïncidence : pris de l'entrée vers la sortie puis d'un bord à
     // l'autre, il donne une normale vers le haut sur une marche et vers
     // l'entrée sur une contremarche — l'intérieur du volume dans les deux cas.
+    // L'inclinaison décide du repère et non du matériau : un escalier est d'une
+    // seule matière, celle qu'on foule, et c'est la contremarche qu'on voit de
+    // face en montant.
     let mut faces = Vec::with_capacity(STAIR_SURFACES as usize);
     for k in 0..profile.len() as u32 - 1 {
         let flat = profile[k as usize].1 == profile[k as usize + 1].1;
         faces.push(Face {
             indices: vec![2 * k, 2 * k + 2, 2 * k + 3, 2 * k + 1],
-            material: if flat { FLOOR } else { WALL },
+            material: FLOOR,
             frame: if flat { FLAT } else { (frame.across(), UPWARD) },
         });
     }

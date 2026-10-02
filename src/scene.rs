@@ -40,7 +40,11 @@ pub const EYE: f32 = 1.4;
 /// l'ambiance, et `assets/textures/` porte déjà deux variantes moussues.
 const WALL: &[u8] = include_bytes!("../assets/textures/mur-42.png");
 
-/// Celle du sol et du plafond, provisoire pour la même raison.
+/// Celle du sol, du plafond et des marches, provisoire pour la même raison.
+///
+/// **Les marches la prennent faute d'une planche à elles** : un escalier est
+/// d'une seule matière, et c'est celle qu'on foule. Un matériau `stair` se
+/// justifiera à l'étape 8, quand il y aura une image à lui donner.
 const FLOOR: &[u8] = include_bytes!("../assets/textures/sol-pave.png");
 
 /// L'état du monde : la carte chargée, et ce qu'il faut pour la dessiner.
