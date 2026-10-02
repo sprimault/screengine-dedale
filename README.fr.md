@@ -25,8 +25,9 @@ police en CC0, dont [`THIRD-PARTY-NOTICES`](THIRD-PARTY-NOTICES) rend compte.
 
 ## État
 
-**Étape 0 : le squelette.** La fenêtre s'ouvre, la boucle tourne, le moteur est lié,
-et l'interface a son tampon. Rien de jouable encore.
+**Étape 1 : le labyrinthe.** Un labyrinthe engendré qu'on parcourt à la première
+personne, des étages reliés par des cages d'escalier. Pas encore un jeu : ni
+monstres, ni tir, ni ramassages.
 
 - [`ROADMAP.md`](ROADMAP.md) — les étapes et ce qui est hors périmètre
 - [`CHANGELOG.md`](CHANGELOG.md) — ce que chaque version a apporté, daté
@@ -59,3 +60,18 @@ make test     les tests
 
 Le détail, et pourquoi la chaîne écrit où elle écrit :
 [`docs/construction.md`](docs/construction.md).
+
+## Commandes
+
+Clic gauche prend le curseur, clic du milieu le rend, `Échap` quitte.
+
+| Touche | Effet |
+|---|---|
+| `Z` `S`, ou flèches haut et bas | avancer, reculer |
+| `Q` `D`, ou flèches gauche et droite | pivoter sur place |
+| souris | orienter la vue, le curseur pris |
+| `Espace` `C` | monter, descendre |
+
+**La vue vole, elle ne marche pas encore** : rien n'arrête la caméra et l'altitude ne
+change qu'avec `Espace` et `C`, si bien qu'un escalier se gravit à la main. La marche
+et la gravité viennent à l'étape suivante.
