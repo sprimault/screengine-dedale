@@ -15,7 +15,7 @@
 
 use super::*;
 use crate::maze::grid::Settings;
-use screengine_play::{Vec3, World};
+use screengine_play::{SWEEP_CELLS, Surfaces, Vec3, World};
 
 /// Une grille d'épreuve : deux étages, assez de cases pour que les deux sortes
 /// de côté — mur et passage — se rencontrent partout.
@@ -276,26 +276,37 @@ fn les_etages_ne_se_rejoignent_que_par_une_cage() {
 /// posée dans un mur : elle n'éclairerait rien, et seule la cuisson le
 /// montrerait, après coup. Le cas qui le mérite est la cage, dont le sol monte :
 /// au centre de son empreinte, la cote d'un plafond d'étage est sous les marches.
+///
+/// Chaque lampe porte l'identifiant de la cellule qu'elle éclaire, ce qui rend la
+/// correspondance vérifiable sans rien supposer de l'ordre d'écriture.
 #[test]
 fn chaque_cellule_de_decor_a_sa_lampe() {
     let grid = grid();
     let map = World::load(&world(&grid)).expect("carte engendrée valide");
 
-    // `Light` ne porte pas son identifiant, là où le format en a un : les lampes
-    // se relisent donc dans l'ordre où elles sont écrites, et parcourir les cases
-    // dans le même ordre vérifie du même coup que cet ordre est tenu.
     let lit: Vec<(u32, u32, u32)> = cases(&grid)
         .into_iter()
         .filter(|at| cover(&grid, *at) == cell_id(&grid, *at))
         .collect();
     assert_eq!(map.light_count(), lit.len() as u32);
 
-    for (index, at) in lit.into_iter().enumerate() {
-        let lamp = map.light(index as u32).expect("une lampe annoncée existe");
+    // L'identifiant d'une lampe est celui de la cellule qu'elle éclaire, donc le
+    // rang suffit à la désigner sans que l'ordre d'écriture ait à être tenu.
+    for index in 0..map.light_count() {
+        let id = map
+            .light_id(index)
+            .expect("une lampe annoncée a un identifiant");
+        let at = lit
+            .iter()
+            .copied()
+            .find(|at| cell_id(&grid, *at) == id)
+            .unwrap_or_else(|| panic!("la lampe {id} n'éclaire aucune cellule de décor"));
+
+        let lamp = map.light(index).expect("une lampe annoncée existe");
         assert!(lamp.radius > 0.0, "la lampe de {at:?} n'a pas de rayon");
         assert_eq!(
             map.locate(lamp.position),
-            cell_id(&grid, at),
+            id,
             "la lampe de {at:?} n'est pas dans la cellule qu'elle éclaire"
         );
     }
@@ -338,16 +349,10 @@ fn le_depart_et_la_sortie_sont_dans_la_carte() {
 
 /// Les pas d'une case, par chaque passage ouvert, avec la cellule de départ.
 ///
-/// **L'égalité avec le chemin brut du moteur n'est pas éprouvable pour l'instant**,
-/// et la raison est chez lui : le volume dilaté d'une face est une dalle autour de
-/// son plan, traitée comme un demi-espace infini. Une boîte loin derrière un mur
-/// et qui s'en éloigne obtient un temps d'impact très négatif, ramené à zéro, puis
-/// passe le test d'appartenance parce que sa projection tombe dans le polygone.
-/// D'où un contact immédiat contre un mur que le segment ne croise jamais.
-///
-/// Le chemin traversant porte le même défaut, simplement plus rare — il demande
-/// qu'une cellule visitée ait un mur dont le départ est du mauvais côté, ce qu'un
-/// coude produit. Les deux épreuves d'oracle reviendront quand il sera corrigé.
+/// **Le départ est le point sûr d'une case et non son centre** : `ground` le place
+/// au milieu d'un palier dans une cage, là où le centre tombe sous les marches.
+/// C'est ce qui rend ces pas utilisables comme échantillon d'oracle — à une
+/// réserve près, qui est le départ dans le solide.
 fn steps(grid: &Grid) -> Vec<(u32, Vec3, Vec3)> {
     let mut out = Vec::new();
     for at in cases(grid) {
@@ -387,8 +392,7 @@ fn un_pas_de_joueur_n_epuise_pas_le_balayage() {
             let hit = map.sweep(cell, half, from, to).expect("la cellule existe");
             assert!(
                 !hit.incomplete,
-                "un pas d'une case de {from:?} vers {to:?} épuise les {} cellules du balayage",
-                screengine_play::screengine::SWEEP_CELLS
+                "un pas d'une case de {from:?} vers {to:?} épuise les {SWEEP_CELLS} cellules du balayage"
             );
         }
     }
@@ -396,23 +400,19 @@ fn un_pas_de_joueur_n_epuise_pas_le_balayage() {
 
 /// Un pas d'une case par un passage ouvert ne rencontre rien.
 ///
-/// **C'est le défaut du balayage dilaté, vu depuis un décor réel.** Une face est
-/// une dalle autour de son plan, et le moteur la traite comme un demi-espace :
-/// une boîte derrière un mur et qui s'en éloigne obtient un contact immédiat
-/// contre lui. Le chemin traversant ne l'évite pas, il le rend rare — il faut
-/// qu'une cellule visitée porte un mur dont le départ est du mauvais côté, ce
-/// qu'un coude de couloir produit, et ce labyrinthe n'est fait que de coudes.
+/// **Elle est née d'un défaut du moteur, et c'est elle qui l'a établi** : une
+/// boîte derrière le plan d'un mur et qui s'en éloigne obtenait un contact
+/// immédiat contre lui, à n'importe quelle distance. Un labyrinthe n'est fait que
+/// de coudes, donc chaque pas y rencontrait un mur du mauvais côté — là où les
+/// décors de conformance, d'un seul tenant, n'en offraient aucun.
 ///
 /// Les cases d'escalier sont écartées : un pas qui y entre monte des marches, et
 /// un contact y est juste.
 ///
-/// **En attente du correctif, et c'est pour cela qu'elle est écrite maintenant** :
-/// elle échoue dès le premier pas, contre un mur de la cellule de départ dont la
-/// boîte s'éloigne. Le déplacement du joueur ne peut pas s'écrire sur un balayage
-/// qui rend un contact immédiat partout, donc cette épreuve est ce qui dira que
-/// la voie est libre.
+/// **C'est le déplacement de l'étape 2 qui en dépend** : on ne l'écrit pas sur un
+/// balayage qui rend un contact immédiat partout, et c'est cette épreuve qui dit
+/// que la voie est libre.
 #[test]
-#[ignore = "le balayage rend un contact immédiat contre un mur dont la boîte s'éloigne"]
 fn un_pas_dans_un_couloir_ouvert_est_libre() {
     let grid = grid();
     let map = World::load(&world(&grid)).expect("carte engendrée valide");
@@ -439,6 +439,63 @@ fn un_pas_dans_un_couloir_ouvert_est_libre() {
                 hit.fraction, 1.0,
                 "le pas de {at:?} vers {next:?} s'arrête à {} contre la surface {}",
                 hit.fraction, hit.surface
+            );
+        }
+    }
+}
+
+/// Le balayage traversant rend exactement ce que rend le chemin brut.
+///
+/// **C'est l'oracle de la collision, et le moteur le dit ainsi** : le chemin
+/// rapide suit les portails et s'arrête à une borne, le brut ne suit rien et
+/// visite tout. Sur une carte bien formée les deux rendent les mêmes bits, et
+/// l'égalité est le seul contrôle qui attrape une traversée trop étroite.
+///
+/// **Les départs dans le solide s'écartent, et ce n'est pas un relâchement** :
+/// là, les deux s'accordent sur la fraction, nulle, mais pas nécessairement sur
+/// la surface — elle se départage par la moindre pénétration, et la plus
+/// superficielle peut vivre dans une cellule que la traversée n'atteint pas. Le
+/// moteur conclut que c'est au décor de rester hors de ce cas plutôt qu'à la
+/// comparaison de se relâcher, et une boîte de joueur posée au milieu d'un palier
+/// de cage y tombe.
+#[test]
+fn le_balayage_s_accorde_avec_le_chemin_brut() {
+    let grid = grid();
+    let map = World::load(&world(&grid)).expect("carte engendrée valide");
+    let half = Vec3::new(0.3, 0.3, 0.9);
+
+    for (cell, from, to) in steps(&grid) {
+        let walked = map.sweep(cell, half, from, to).expect("la cellule existe");
+        let brute = map.sweep_brute(half, from, to);
+        if walked.start_solid || brute.start_solid {
+            continue;
+        }
+        assert_eq!(
+            walked, brute,
+            "le balayage de {from:?} vers {to:?} diverge du chemin brut"
+        );
+    }
+}
+
+/// Le rayon traversant rend exactement ce que rend le chemin brut.
+///
+/// Même oracle que le balayage, sur une boîte de côté nul : c'est ce que le tir
+/// de l'étape 4 emploiera, et il n'a pas d'épaisseur à faire pénétrer — d'où un
+/// départ qui n'est jamais solide, et aucun cas à écarter.
+#[test]
+fn le_rayon_s_accorde_avec_le_chemin_brut() {
+    let grid = grid();
+    let map = World::load(&world(&grid)).expect("carte engendrée valide");
+
+    for (cell, from, to) in steps(&grid) {
+        for surfaces in [Surfaces::Solid, Surfaces::All] {
+            let walked = map
+                .pick(cell, from, to, surfaces)
+                .expect("la cellule existe");
+            assert_eq!(
+                walked,
+                map.pick_brute(from, to, surfaces),
+                "le rayon de {from:?} vers {to:?} diverge du chemin brut"
             );
         }
     }
