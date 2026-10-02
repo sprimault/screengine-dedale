@@ -438,13 +438,13 @@ impl Grid {
     fn place(&mut self, rng: &mut Rng, level: u32) {
         let (width, height, _) = self.extent;
         for _ in 0..256 {
+            // Les quatre orientations, et pas seulement les deux croissantes :
+            // un immeuble a des cages dans tous les sens, et deux directions
+            // laissées de côté sont deux chemins de l'export que rien
+            // n'exécute.
             let stair = Stair {
                 foot: (rng.below(width), rng.below(height), level),
-                climb: if rng.below(2) == 0 {
-                    Side::East
-                } else {
-                    Side::North
-                },
+                climb: Side::ALL[rng.below(4) as usize],
             };
             let busy = self.stairs.iter().any(|other| {
                 let taken = [other.foot, other.head()];

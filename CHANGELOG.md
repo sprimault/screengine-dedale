@@ -23,6 +23,8 @@ cela s'adresse à quelqu'un.
   forme de rejeu.
 - **Le labyrinthe se parcourt** à la première personne, la cellule de la caméra
   suivie par les traversées de portails.
+- **Des escaliers relient les étages** : une cage de deux niveaux, douze marches, et
+  c'est par là qu'on monte.
 
 ***
 
@@ -36,3 +38,5 @@ cela s'adresse à quelqu'un.
   that have a thickness, and no intermediate file — the seed is the form of replay.
 - **The maze can be walked** in first person, the camera's cell followed through
   portal crossings.
+- **Stairs link the floors**: a two-level stairwell, twelve steps, and that is the
+  way up.
