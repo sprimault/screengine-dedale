@@ -25,6 +25,8 @@ cela s'adresse à quelqu'un.
   suivie par les traversées de portails.
 - **Des escaliers relient les étages** : une cage de deux niveaux, douze marches, et
   c'est par là qu'on monte.
+- **La carte porte son éclairage et ses repères** : une lampe par salle et par cage,
+  l'entrée et la sortie placées dedans.
 
 ***
 
@@ -40,3 +42,5 @@ cela s'adresse à quelqu'un.
   portal crossings.
 - **Stairs link the floors**: a two-level stairwell, twelve steps, and that is the
   way up.
+- **The map carries its lighting and its markers**: one lamp per room and per
+  stairwell, entrance and exit placed inside.

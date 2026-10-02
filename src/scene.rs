@@ -20,7 +20,7 @@ use screengine_play::{
     Affine3, Camera, Context, Error, Texture, Vec3, Visibility, World, load_png,
 };
 
-use crate::maze::export::{self, CELL, LEVEL};
+use crate::maze::export;
 use crate::maze::grid::{Grid, Settings};
 
 #[cfg(test)]
@@ -82,13 +82,14 @@ impl Scenery {
     }
 
     /// Où l'on entre dans le labyrinthe, œil compris.
+    ///
+    /// **Le centre de la case ne suffit pas** : si le départ tombe sur une case
+    /// d'escalier, son centre est dans le solide sous les marches, et la caméra
+    /// commence dans un mur. Rien ne l'interdit — le départ est le centre de la
+    /// grille, et les volées sont tirées au hasard.
     pub fn entrance(&self) -> Vec3 {
-        let (x, y, level) = self.maze.start();
-        Vec3::new(
-            (x as f32 + 0.5) * CELL,
-            (y as f32 + 0.5) * CELL,
-            level as f32 * LEVEL + EYE,
-        )
+        let spot = export::ground(&self.maze, self.maze.start());
+        Vec3::new(spot[0], spot[1], spot[2] + EYE)
     }
 }
 
@@ -126,8 +127,10 @@ pub fn submit(
         &scenery.map,
         view.cell,
         // Aucune lightmap : la soumission retombe alors sur le chemin non
-        // éclairé, sans erreur. L'ambiance est l'étape 8, et on ne règle pas un
-        // tamisage dans un couloir qu'on vient d'ouvrir.
+        // éclairé, sans erreur. La carte porte pourtant ses lumières — c'est la
+        // géométrie qui décide de ce qu'une lampe atteint, donc les écrire tard
+        // obligerait à réexporter —, mais rien n'est cuit avant l'étape 8, et on
+        // ne règle pas un tamisage dans un couloir qu'on vient d'ouvrir.
         None,
         |rank| scenery.materials.get(rank as usize),
     )
