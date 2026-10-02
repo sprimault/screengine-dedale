@@ -47,46 +47,15 @@ fn centre(at: (u32, u32, u32)) -> Vec3 {
     )
 }
 
-/// La cellule qui contient une case.
+/// Un point à l'intérieur de la cellule qui contient une case, un mètre au-dessus
+/// de son sol.
 ///
-/// Ce n'est plus toujours la sienne : une cage couvre deux cases superposées, et
-/// les deux rendent l'identifiant de son pied.
-fn cover(grid: &Grid, at: (u32, u32, u32)) -> u32 {
-    let flight = grid
-        .stairs()
-        .iter()
-        .find(|stair| stair.foot == at || stair.head() == at);
-    cell_id(grid, flight.map_or(at, |stair| stair.foot))
-}
-
-/// Un point à l'intérieur de la cellule qui contient une case, à hauteur d'œil.
-///
-/// **Le centre ne convient plus pour une case d'escalier** : au milieu de la cage,
-/// le sol est déjà monté à mi-étage, et un point à un mètre du sol de l'étage y
-/// est dans le solide. Celui-ci se place près de l'issue de la case — le palier
-/// pour celle du bas, le haut de la volée pour celle du haut —, donc dans le
-/// volume et du bon côté pour franchir son portail.
+/// Le sol vient de `ground`, que l'export emploie pour poser ses entités : les
+/// deux ont besoin du même point sûr, et le dupliquer ferait qu'une correction ne
+/// vaudrait que d'un côté.
 fn inside(grid: &Grid, at: (u32, u32, u32)) -> Vec3 {
-    let Some(stair) = grid
-        .stairs()
-        .iter()
-        .find(|stair| stair.foot == at || stair.head() == at)
-    else {
-        return centre(at);
-    };
-
-    let towards = if stair.foot == at {
-        stair.climb.facing()
-    } else {
-        stair.climb
-    };
-    let (dx, dy, _) = towards.step();
-    let lift = if stair.foot == at { 0.0 } else { LEVEL };
-    Vec3::new(
-        (at.0 as f32 + 0.5) * CELL + dx as f32 * 1.3,
-        (at.1 as f32 + 0.5) * CELL + dy as f32 * 1.3,
-        stair.foot.2 as f32 * LEVEL + lift + 1.0,
-    )
+    let spot = ground(grid, at);
+    Vec3::new(spot[0], spot[1], spot[2] + 1.0)
 }
 
 /// Toutes les cases, dans l'ordre des axes.
@@ -297,6 +266,73 @@ fn les_etages_ne_se_rejoignent_que_par_une_cage() {
                 stair.foot
             );
         }
+    }
+}
+
+/// Chaque cellule de décor a sa lampe, et aucune lampe n'est dans le solide.
+///
+/// **La localisation est ce qui compte ici.** Une lampe n'a pas de cellule — la
+/// sélection est géométrique —, donc le chargement ne dira jamais qu'elle est
+/// posée dans un mur : elle n'éclairerait rien, et seule la cuisson le
+/// montrerait, après coup. Le cas qui le mérite est la cage, dont le sol monte :
+/// au centre de son empreinte, la cote d'un plafond d'étage est sous les marches.
+#[test]
+fn chaque_cellule_de_decor_a_sa_lampe() {
+    let grid = grid();
+    let map = World::load(&world(&grid)).expect("carte engendrée valide");
+
+    // `Light` ne porte pas son identifiant, là où le format en a un : les lampes
+    // se relisent donc dans l'ordre où elles sont écrites, et parcourir les cases
+    // dans le même ordre vérifie du même coup que cet ordre est tenu.
+    let lit: Vec<(u32, u32, u32)> = cases(&grid)
+        .into_iter()
+        .filter(|at| cover(&grid, *at) == cell_id(&grid, *at))
+        .collect();
+    assert_eq!(map.light_count(), lit.len() as u32);
+
+    for (index, at) in lit.into_iter().enumerate() {
+        let lamp = map.light(index as u32).expect("une lampe annoncée existe");
+        assert!(lamp.radius > 0.0, "la lampe de {at:?} n'a pas de rayon");
+        assert_eq!(
+            map.locate(lamp.position),
+            cell_id(&grid, at),
+            "la lampe de {at:?} n'est pas dans la cellule qu'elle éclaire"
+        );
+    }
+}
+
+/// Le départ et la sortie sont dans la carte, chacun dans une cellule qui existe
+/// et à une place où l'on tient.
+///
+/// La cellule d'une entité est vérifiée au chargement, mais pas sa position : une
+/// entité au milieu d'un mur se charge sans un mot. Ce qui l'attrape est la
+/// localisation de sa pose, relevée d'un mètre — un placement est au sol, donc
+/// pile sur une frontière.
+#[test]
+fn le_depart_et_la_sortie_sont_dans_la_carte() {
+    let grid = grid();
+    let map = World::load(&world(&grid)).expect("carte engendrée valide");
+    assert_eq!(map.entity_count(), 2);
+
+    for (index, (class, at)) in [("start", grid.start()), ("exit", grid.exit())]
+        .into_iter()
+        .enumerate()
+    {
+        let index = index as u32;
+        assert_eq!(map.entity_class(index), Some(class));
+        let (_, cell) = map.entity_ids(index).expect("une entité annoncée existe");
+        assert_eq!(
+            cell,
+            cover(&grid, at),
+            "l'entité {class} annonce une cellule qui n'est pas la sienne"
+        );
+
+        let (pose, _) = map.entity_pose(index).expect("une entité a une pose");
+        assert_eq!(
+            map.locate(Vec3::new(pose.x, pose.y, pose.z + 1.0)),
+            cell,
+            "l'entité {class} est posée hors de sa cellule"
+        );
     }
 }
 

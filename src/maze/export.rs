@@ -121,6 +121,29 @@ const PRISM_SURFACES: u32 = 6;
 /// Ses portails, pour la même raison.
 const PRISM_PORTALS: u32 = 4;
 
+/// De combien une lampe pend sous son plafond.
+///
+/// **Pas collée, et le calcul l'impose** : l'atténuation porte un terme de
+/// Lambert, donc une lampe posée dans le plan du plafond l'aurait dans son dos et
+/// le laisserait noir.
+const DROP: f32 = 0.3;
+
+/// Le rayon d'une lampe de case.
+///
+/// De quoi couvrir sa cellule jusqu'aux coins et déborder sur ses voisines à un
+/// portail, qui sont tout ce qu'elle peut atteindre.
+const ROOM: f32 = 5.0;
+
+/// Celui d'une lampe de cage, qui a deux étages à remplir.
+const CAGE: f32 = 8.0;
+
+/// La teinte des lampes, et son octet réservé.
+///
+/// Blanche et provisoire : l'ambiance se règle à la cuisson, et un labyrinthe où
+/// des démons passent la voudra plus froide. Le quatrième octet est **réservé et
+/// nul obligatoire**, ce n'est pas du remplissage.
+const GLOW: [u8; 4] = [0xFF, 0xF4, 0xE0, 0x00];
+
 /// Les surfaces qu'une cage réserve : deux par marche, plus le palier, le
 /// plafond, les deux flancs et le linteau de son entrée.
 const STAIR_SURFACES: u32 = 2 * STEPS + 5;
@@ -178,28 +201,34 @@ const ENTRY: usize = 12;
 /// chargement accepte. Les trois sont des défauts de ce module, jamais des
 /// entrées de l'appelant.
 pub fn world(grid: &Grid) -> Vec<u8> {
-    let cells = cells(grid);
-    let materials = materials();
+    let sections = [
+        (b"CELL", cells(grid)),
+        (b"ENTS", entities(grid)),
+        (b"LGTS", lights(grid)),
+        (b"MATS", materials()),
+    ];
 
     // Les genres se rangent par ordre croissant et pavent le fichier sans trou :
-    // `CELL` avant `MATS`, et la première section commence juste après la table.
-    let first = HEADER + ENTRY * 2;
-    let total = first + cells.len() + materials.len();
+    // c'est l'ordre alphabétique de leurs quatre lettres, et la première section
+    // commence juste après la table.
+    let first = HEADER + ENTRY * sections.len();
+    let total = first + sections.iter().map(|(_, body)| body.len()).sum::<usize>();
 
     let mut out = Vec::with_capacity(total);
     out.extend_from_slice(&SIGNATURE);
     out.extend_from_slice(b"WRLD");
-    words(&[VERSION, total as u32, 2], &mut out);
+    words(&[VERSION, total as u32, sections.len() as u32], &mut out);
 
     let mut offset = first;
-    for (tag, body) in [(b"CELL", &cells), (b"MATS", &materials)] {
-        out.extend_from_slice(tag);
+    for (tag, body) in &sections {
+        out.extend_from_slice(*tag);
         words(&[offset as u32, body.len() as u32], &mut out);
         offset += body.len();
     }
 
-    out.extend_from_slice(&cells);
-    out.extend_from_slice(&materials);
+    for (_, body) in &sections {
+        out.extend_from_slice(body);
+    }
     out
 }
 
@@ -272,6 +301,140 @@ fn flight_from(grid: &Grid, at: (u32, u32, u32)) -> Option<Stair> {
 /// Vrai si cette case est la tête d'une volée, donc déjà prise par sa cage.
 fn under_flight(grid: &Grid, at: (u32, u32, u32)) -> bool {
     grid.stairs().iter().any(|stair| stair.head() == at)
+}
+
+/// La cellule qui contient une case.
+///
+/// Ce n'est plus toujours la sienne : une cage couvre deux cases superposées, et
+/// les deux rendent l'identifiant de son pied.
+pub fn cover(grid: &Grid, at: (u32, u32, u32)) -> u32 {
+    let flight = flight_of(grid, at);
+    cell_id(grid, flight.map_or(at, |stair| stair.foot))
+}
+
+/// Le sol de la cellule qui contient une case, en son point le plus sûr.
+///
+/// **Le centre ne convient pas pour une case d'escalier** : au milieu de la cage,
+/// le sol est déjà monté à mi-étage, et une cote prise à l'étage de la case y
+/// tombe dans le solide. Ce point-ci se place au milieu du palier pour la case du
+/// bas, et sur la dernière marche pour celle du haut — les deux seuls endroits de
+/// la cage dont la cote du sol est celle d'un étage.
+pub fn ground(grid: &Grid, at: (u32, u32, u32)) -> [f32; 3] {
+    let centre = [(at.0 as f32 + 0.5) * CELL, (at.1 as f32 + 0.5) * CELL];
+    let Some(stair) = flight_of(grid, at) else {
+        return [centre[0], centre[1], floor_of(at.2)];
+    };
+
+    // Le milieu du palier, et la dernière marche est à la même distance du bord
+    // opposé : un seul décalage sert les deux cases.
+    let offset = INNER / 2.0 - LANDING / 2.0;
+    let towards = if stair.foot == at {
+        stair.climb.facing()
+    } else {
+        stair.climb
+    };
+    let (dx, dy, _) = towards.step();
+    [
+        centre[0] + dx as f32 * offset,
+        centre[1] + dy as f32 * offset,
+        floor_of(at.2),
+    ]
+}
+
+/// La volée dont cette case est le pied ou la tête.
+fn flight_of(grid: &Grid, at: (u32, u32, u32)) -> Option<Stair> {
+    grid.stairs()
+        .iter()
+        .copied()
+        .find(|stair| stair.foot == at || stair.head() == at)
+}
+
+/// La section des lumières : une par cellule de case, une par cage.
+///
+/// **Aucune dans les passages**, et c'est la clause de propagation qui le permet :
+/// l'ensemble des occulteurs d'une cellule est elle-même et ses voisines à **un**
+/// portail, donc un passage reçoit la lumière des deux cases qu'il relie. Une
+/// cellule à deux portails de toute lampe resterait noire, et c'est ce qui donne
+/// sa lampe à chaque cage.
+///
+/// **Rien n'est cuit ici.** Une soumission dont la cellule n'a pas d'atlas retombe
+/// sur le chemin non éclairé, sans erreur : ces lumières attendent la cuisson, et
+/// l'ambiance se règle avec elle. Les écrire maintenant évite de réexporter, parce
+/// que c'est la **géométrie** qui décide de ce qu'une lampe peut atteindre.
+fn lights(grid: &Grid) -> Vec<u8> {
+    let (width, height, levels) = grid.extent();
+    let mut out = Vec::new();
+
+    for z in 0..levels {
+        for y in 0..height {
+            for x in 0..width {
+                let at = (x, y, z);
+                if under_flight(grid, at) {
+                    continue;
+                }
+                let tall = flight_from(grid, at).is_some();
+                let spot = [
+                    (x as f32 + 0.5) * CELL,
+                    (y as f32 + 0.5) * CELL,
+                    floor_of(at.2) + if tall { LEVEL + CEILING } else { CEILING } - DROP,
+                ];
+                light(
+                    cell_id(grid, at),
+                    spot,
+                    if tall { CAGE } else { ROOM },
+                    &mut out,
+                );
+            }
+        }
+    }
+    out
+}
+
+/// Une lumière : son identifiant, sa position, son rayon, sa teinte.
+fn light(id: u32, spot: [f32; 3], radius: f32, out: &mut Vec<u8>) {
+    words(&[id], out);
+    floats(&[spot[0], spot[1], spot[2], radius], out);
+    out.extend_from_slice(&GLOW);
+}
+
+/// La section des entités : où l'on entre, et par où l'on sort.
+///
+/// **La carte les porte plutôt qu'une structure parallèle** : le moteur décode
+/// cette section, la valide — la cellule doit exister, le quaternion ne doit pas
+/// être nul — et l'expose sans jamais lire la classe ni les données. Le placement
+/// vit donc avec le décor qu'il désigne, et se recharge avec lui.
+fn entities(grid: &Grid) -> Vec<u8> {
+    let mut out = Vec::new();
+    for (rank, (class, at)) in [("start", grid.start()), ("exit", grid.exit())]
+        .into_iter()
+        .enumerate()
+    {
+        entity(
+            rank as u32 + 1,
+            cover(grid, at),
+            class,
+            ground(grid, at),
+            &mut out,
+        );
+    }
+    out
+}
+
+/// Une entité : sa longueur, ses identifiants, sa classe, sa pose, ses données.
+fn entity(id: u32, cell: u32, class: &str, spot: [f32; 3], out: &mut Vec<u8>) {
+    let mut body = Vec::new();
+    words(&[id, cell], &mut body);
+    body.extend_from_slice(&(class.len() as u16).to_le_bytes());
+    body.extend_from_slice(class.as_bytes());
+    // L'identité se range `x, y, z, w`, la partie réelle en dernier : un départ
+    // n'a pas d'orientation, et un quaternion nul serait refusé.
+    floats(&[spot[0], spot[1], spot[2], 0.0, 0.0, 0.0, 1.0], &mut body);
+    // Aucune donnée : la classe suffit à les distinguer, et un bloc que le moteur
+    // recopie sans le lire ne porterait rien que le jeu ne sache déjà.
+    words(&[0], &mut body);
+
+    words(&[body.len() as u32], out);
+    out.extend_from_slice(&body);
 }
 
 /// La section des matériaux : le fichier porte des noms, jamais des images.
