@@ -23,7 +23,8 @@ fn grid() -> Grid {
     Grid::generate(Settings {
         extent: (16, 16, 2),
         seed: 0x5EED_1A8E,
-        vertical_odds: 16,
+        stairs: 6,
+        loops: 8,
     })
 }
 

@@ -21,13 +21,16 @@ use screengine_play::{Error, KeyCode, Output, Play};
 
 /// Les réglages du labyrinthe.
 ///
-/// Seize cases de côté sur deux étages : assez pour que la traversée du moteur
-/// ait de quoi éliminer, et assez peu pour que la carte entière tienne dans la
-/// capacité de triangles que la boucle impose sans qu'on puisse la relever.
+/// Seize cases de côté sur deux étages, assez pour que la traversée du moteur
+/// ait de quoi éliminer. Six volées plutôt que la seule qu'un arbre exigerait :
+/// un immeuble a plusieurs cages **et** des étages qu'on parcourt, et c'est
+/// précisément ce que ce décor doit montrer du moteur. Les cinq en trop ouvrent
+/// cinq boucles verticales, auxquelles s'ajoutent huit raccourcis horizontaux.
 const MAZE: Settings = Settings {
     extent: (16, 16, 2),
     seed: 0x5EED_1A8E,
-    vertical_odds: 16,
+    stairs: 6,
+    loops: 8,
 };
 
 /// Ce que la boucle garde : le monde d'un côté, la partie de l'autre.
@@ -168,46 +171,26 @@ fn mark(
         return;
     }
 
+    // Une volée tient deux cases superposées, et les deux portent sa teinte :
+    // c'est ce qui permet de la suivre d'un plan à l'autre. La moitié haute dit
+    // qu'on monte depuis cette case, la moitié basse qu'on y arrive.
     let half = inner / 2;
-    if !maze.has_wall(cell, Side::Up) {
-        block(output, left + 1, top + 1, inner, half, link(session, cell));
-    }
-    if !maze.has_wall(cell, Side::Down) {
-        // Un passage se nomme par sa case du dessous, des deux côtés.
-        let below = (cell.0, cell.1, cell.2 - 1);
-        block(
-            output,
-            left + 1,
-            top + 1 + inner - half,
-            inner,
-            half,
-            link(session, below),
-        );
-    }
-}
-
-/// La teinte d'un passage, nommé par sa case du dessous.
-///
-/// Le rang se recompte à chaque image plutôt que de se ranger quelque part : ce
-/// plan est un contrôle qu'on retire à l'étape 9, et lui donner un état dans le
-/// monde serait lui donner plus de place qu'il n'en mérite.
-fn link(session: &Session, below: (u32, u32, u32)) -> [u8; 4] {
-    let maze = &session.scenery.maze;
-    let (width, height, levels) = maze.extent();
-    let mut rank = 0;
-    for z in 0..levels {
-        for y in 0..height {
-            for x in 0..width {
-                if (x, y, z) == below {
-                    return LINKS[rank % LINKS.len()];
-                }
-                if !maze.has_wall((x, y, z), Side::Up) {
-                    rank += 1;
-                }
-            }
+    for (rank, stair) in maze.stairs().iter().enumerate() {
+        let colour = LINKS[rank % LINKS.len()];
+        if cell == stair.foot {
+            block(output, left + 1, top + 1, inner, half, colour);
+        }
+        if cell == stair.head() {
+            block(
+                output,
+                left + 1,
+                top + 1 + inner - half,
+                inner,
+                half,
+                colour,
+            );
         }
     }
-    LINKS[rank % LINKS.len()]
 }
 
 /// Le fond du plan, derrière tout le reste.
