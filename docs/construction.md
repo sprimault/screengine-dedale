@@ -19,6 +19,7 @@ racine, ce qui marche : la redirection est une contrainte de poste, pas du proje
 | `make run` | lance le jeu dans une fenêtre |
 | `make release` | compile en release, LTO et une unité de génération |
 | `make test` | les tests |
+| `make attentes` | les épreuves écrites avant le correctif du moteur qu'elles attendent, que `make test` saute |
 | `make fmt` | `cargo fmt --check` |
 | `make lint` | clippy en `-D warnings`, cibles de test comprises |
 | `make deny` | licences, sources, doublons |

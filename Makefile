@@ -9,13 +9,14 @@
 
 SORTIE ?= .tmp
 
-.PHONY: aide build run release test fmt lint audit deny clean
+.PHONY: aide build run release test attentes fmt lint audit deny clean
 
 aide:
 	@echo "make build    compile le jeu, profil dev"
 	@echo "make run      lance le jeu dans une fenêtre"
 	@echo "make release  compile en release"
 	@echo "make test     les tests du jeu"
+	@echo "make attentes les épreuves en attente d'un correctif du moteur"
 	@echo "make fmt      cargo fmt --check"
 	@echo "make lint     clippy -D warnings"
 	@echo "make audit    les avis de sécurité, interrogés en direct"
@@ -34,6 +35,13 @@ release:
 
 test:
 	cargo test
+
+# Les épreuves qu'un défaut du moteur fait échouer, écrites avant son correctif
+# et marquées `#[ignore = "…"]` avec la raison. `make test` les saute — c'est pour
+# cela qu'elles sont marquées —, donc elles ne se relancent que par ici, et une
+# attente qu'on ne relance jamais est la dette que le marqueur devait éviter.
+attentes:
+	cargo test -- --ignored
 
 fmt:
 	cargo fmt --check
