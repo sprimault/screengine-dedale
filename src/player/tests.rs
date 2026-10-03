@@ -10,7 +10,7 @@
 //! Chacune a été vérifiée en la faisant échouer une fois, sur un code falsifié.
 
 use super::*;
-use crate::maze::grid::Settings;
+use crate::maze::grid::{Settings, Side};
 
 /// Un labyrinthe d'épreuve, par sa graine.
 ///
@@ -32,6 +32,41 @@ fn maze(seed: u64) -> (Grid, World) {
 
 /// Les graines éprouvées, dont celle du jeu.
 const SEEDS: [u64; 6] = [0x5EED_1A8E, 1, 2, 3, 0xD1CE, 0xFACE];
+
+/// Les quatre côtés horizontaux, ceux qu'un pas de marche emprunte.
+fn sides() -> Vec<Side> {
+    Side::ALL.into_iter().filter(|s| !s.is_vertical()).collect()
+}
+
+/// Toutes les cases d'une grille, dans l'ordre des axes.
+fn cases(grid: &Grid) -> Vec<(u32, u32, u32)> {
+    let (width, height, levels) = grid.extent();
+    let mut out = Vec::with_capacity((width * height * levels) as usize);
+    for z in 0..levels {
+        for y in 0..height {
+            for x in 0..width {
+                out.push((x, y, z));
+            }
+        }
+    }
+    out
+}
+
+/// Vrai si cette case a un sol plat, donc si aucune cage ne l'occupe.
+///
+/// **Comparer la cellule à l'identifiant de la case ne suffit pas** : pour le
+/// **pied** d'une cage, les deux sont égaux — c'est elle qui donne son rang à la
+/// cellule —, et seule la tête en diffère. Il faut donc interroger les volées.
+///
+/// C'est ce que veulent les deux prédicats de pas : le sol d'une cage monte, donc
+/// un pas horizontal y rencontre une marche ou une rampe, ce qui est juste et
+/// n'éprouve ni un mur ni un passage.
+fn plain(grid: &Grid, at: (u32, u32, u32)) -> bool {
+    !grid
+        .stairs()
+        .iter()
+        .any(|stair| stair.foot == at || stair.head() == at)
+}
 
 /// Le joueur naît debout, jamais dans le solide.
 ///
@@ -133,4 +168,82 @@ fn l_oeil_est_au_dessus_du_corps() {
         "l'œil est à {} du sol, ce qui n'est pas une taille d'homme",
         eye.z - (player.centre.z - HALF.z)
     );
+}
+
+/// Le joueur ne franchit aucun mur plein, quelle que soit la direction.
+///
+/// **C'est le prédicat du lot**, et il porte sur la boucle et non sur la boîte :
+/// `un_mur_plein_arrete_un_pas` éprouve déjà `sweep` sur un volume nu, celui-ci
+/// éprouve ce que le joueur en fait — la cellule qu'il passe, la fraction qu'il
+/// applique, et le suivi qui vient derrière.
+///
+/// Le pas vaut une case entière, soit deux fois et demie ce qui sépare le corps du
+/// mur : un arrêt ne peut donc pas être un hasard d'arrondi, et la distance rendue
+/// dit de combien il a vraiment avancé.
+#[test]
+fn le_joueur_ne_franchit_pas_un_mur() {
+    let (grid, map) = maze(SEEDS[0]);
+
+    for at in cases(&grid) {
+        if !plain(&grid, at) {
+            continue;
+        }
+        for side in sides() {
+            if !grid.has_wall(at, side) {
+                continue;
+            }
+            let mut player = Player::stand(&grid, &map, at);
+            let before = player.centre;
+            let (dx, dy, _) = side.step();
+            let step = Vec3::new(dx as f32 * export::CELL, dy as f32 * export::CELL, 0.0);
+
+            let travel = player.advance(&map, step);
+            let gone = player.centre - before;
+
+            assert!(
+                gone.dot(gone).sqrt() < export::CELL,
+                "le joueur franchit le mur {side:?} de {at:?}, il a parcouru {}",
+                gone.dot(gone).sqrt()
+            );
+            assert_eq!(
+                travel,
+                gone.dot(gone).sqrt(),
+                "la distance rendue n'est pas celle parcourue"
+            );
+        }
+    }
+}
+
+/// Un pas dans un passage ouvert reste libre.
+///
+/// **Le filtrage ne doit pas inventer d'obstacle**, et c'est l'autre moitié du
+/// prédicat : un contrôle qui arrête tout passerait l'épreuve précédente. Le pas
+/// va d'un point sûr au point sûr voisin, comme les épreuves de l'export.
+#[test]
+fn un_passage_ouvert_laisse_passer_le_joueur() {
+    let (grid, map) = maze(SEEDS[0]);
+
+    for at in cases(&grid) {
+        if !plain(&grid, at) {
+            continue;
+        }
+        for side in sides() {
+            if grid.has_wall(at, side) {
+                continue;
+            }
+            let next = grid.neighbour(at, side).expect("un passage a une voisine");
+            if !plain(&grid, next) {
+                continue;
+            }
+
+            let mut player = Player::stand(&grid, &map, at);
+            let target = Player::stand(&grid, &map, next).centre;
+            let travel = player.advance(&map, target - player.centre);
+
+            assert!(
+                travel > 0.0,
+                "le joueur ne passe pas de {at:?} vers {next:?}"
+            );
+        }
+    }
 }

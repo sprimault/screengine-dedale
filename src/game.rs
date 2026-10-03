@@ -25,11 +25,15 @@ pub struct Game {
     /// La caméra que le joueur dirige.
     ///
     /// **Elle ne porte plus la pose, seulement l'orientation et ce qu'elle veut
-    /// parcourir** : le corps porte la position, et la caméra est recalée sur son
-    /// œil à chaque pas. En vol libre le temps de cette étape — rien n'arrête
-    /// encore ce qu'elle demande, et elle traverse les murs. Le vol du moteur
-    /// garde son altitude, donc le jeu y ajoute deux touches, sans quoi un décor à
-    /// étages ne s'inspecte pas.
+    /// parcourir** : le corps porte la position, la caméra est recalée sur son œil
+    /// à chaque pas, et **ce qu'elle demande est filtré par le décor**.
+    ///
+    /// Le vol du moteur garde son altitude, donc le jeu y ajoute deux touches,
+    /// sans quoi un décor à étages ne s'inspecte pas. Elles passent par le même
+    /// balayage que le reste — l'altitude change avant que le déplacement ne soit
+    /// mesuré —, donc on ne traverse ni sol ni plafond, et un escalier se gravit en
+    /// montant tout en avançant. C'est ce que la gravité et le seuil de marche
+    /// remplaceront.
     camera: FreeCamera,
     /// L'arme qu'il tient, et où elle en est de son balancement.
     weapon: Weapon,
@@ -83,16 +87,15 @@ impl Game {
         self.hover(tick);
         let moved = self.camera.position - before;
 
-        self.player.advance(map, moved);
-        // Le corps porte la pose, donc la caméra se recale sur son œil : une
+        // Le corps rend ce qu'il a **réellement** parcouru, le décor l'ayant
+        // filtré. Il porte la pose, donc la caméra se recale sur son œil : une
         // seule position fait foi, et ce n'est pas celle-ci.
+        let travel = self.player.advance(map, moved);
         self.camera.position = self.player.eye();
 
-        // **Le balancement suit ce qui a été parcouru**, mesuré après coup et non
-        // déduit des touches : le jour où le décor freinera le déplacement, l'arme
-        // s'arrêtera d'elle-même sans qu'une ligne change ici.
-        self.weapon
-            .advance(moved.dot(moved).sqrt(), self.camera.yaw, tick.dt());
+        // **Le balancement suit cette distance et non les touches** : contre un
+        // mur elle vaut zéro, donc l'arme s'arrête d'elle-même.
+        self.weapon.advance(travel, self.camera.yaw, tick.dt());
     }
 
     /// Élève ou abaisse la caméra, à vitesse constante.
