@@ -281,13 +281,11 @@ fn la_traversee_rend_la_meme_image_que_le_decor_entier() {
 /// ne voit que ce qu'on lui montre, et le centre d'une case ne montre aucune
 /// embrasure de près.
 ///
-/// **En attente nommée, et c'est elle qui dira que le correctif tient** : un
-/// portail que le plan proche croise n'est pas déplié par la traversée, qui annonce
-/// pourtant une image complète. **Elle reste ensuite**, comme garde contre la
-/// régression — ce qu'un relevé ne peut pas faire, puisqu'il demande quelqu'un qui
-/// marche.
+/// **Elle est née rouge et c'est elle qui a dit que le correctif tenait** : un
+/// portail que le plan proche croisait n'était pas déplié, et la traversée annonçait
+/// pourtant une image complète. **Elle reste comme garde contre la régression** —
+/// ce qu'un relevé ne peut pas faire, puisqu'il demande quelqu'un qui marche.
 #[test]
-#[ignore = "un portail que le plan proche croise n'est pas déplié, et la traversée l'annonce complète"]
 fn la_traversee_rend_la_meme_image_contre_un_portail() {
     let scenery = Scenery::new(settings()).expect("labyrinthe et planches valides");
     let poses = poses_contre_un_portail(&scenery);
@@ -354,13 +352,12 @@ const WALKED: [(f32, f32, f32, f32); 30] = [
 /// non par un quaternion écrit ici : c'est ce qui garantit qu'on repose la même
 /// orientation sans redeviner l'ordre de composition du lacet et du tangage.
 ///
-/// **Et elle a mesuré le partage** : quatorze de ces trente poses sont tombées à
-/// zéro divergence d'une version du moteur à la suivante, et ce sont celles dont le
-/// lacet est à moins de deux degrés de l'axe du portail. Les seize autres n'ont pas
-/// bougé d'un pixel, dont deux qui perdent l'écran entier à quatre et dix degrés de
-/// l'axe — ce qui est la configuration qui reste à corriger.
+/// **Et c'est elle qui a mesuré le découpage du correctif** : quatorze de ces
+/// trente poses sont tombées à zéro d'une version du moteur à la suivante, celles
+/// dont le lacet est à moins de deux degrés de l'axe du portail ; les seize autres
+/// n'avaient pas bougé d'un pixel, dont deux qui perdaient l'écran entier à quatre
+/// et dix degrés. La version suivante les a toutes rendues vertes.
 #[test]
-#[ignore = "un portail que le plan proche croise n'est pas déplié, et la traversée l'annonce complète"]
 fn la_traversee_rend_la_meme_image_aux_poses_relevees() {
     let scenery = Scenery::new(settings()).expect("labyrinthe et planches valides");
     let poses: Vec<Camera> = WALKED
