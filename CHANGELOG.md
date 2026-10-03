@@ -10,6 +10,19 @@ Chaque section est **bilingue, français d'abord, séparé par `***`**.
 aucun. La première est donc la `0.1.0`, à l'étape 1 : un labyrinthe qu'on parcourt,
 cela s'adresse à quelqu'un.
 
+## [Non publié]
+
+### Modifié
+- **Les étages sont plus hauts** d'un demi-mètre : un couloir large de trois mètres
+  sous deux et demi paraissait écrasé. Les escaliers et les rampes y sont un peu
+  plus raides.
+
+***
+
+### Changed
+- **Floors are half a metre taller**: a corridor three metres wide under two and a
+  half looked squashed. Stairs and ramps are a little steeper for it.
+
 ## [0.1.1] — 2026-10-03 — Des rampes dans les cages
 
 ### Ajouté

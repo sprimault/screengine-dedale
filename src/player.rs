@@ -36,16 +36,20 @@ pub const HALF: Vec3 = Vec3::new(0.3, 0.3, 0.9);
 /// De combien l'œil est au-dessus du centre du corps.
 ///
 /// Les pieds posés, l'œil se trouve donc à `HALF.z + EYE_ABOVE` du sol, soit un
-/// mètre quarante. Ce n'est pas une cote de la carte : elle décide de l'échelle
-/// qu'on prête au décor, et elle s'est jugée à l'écran.
+/// mètre soixante. Ce n'est pas une cote de la carte : elle décide de l'échelle
+/// qu'on prête au décor, et elle s'est jugée à l'écran, cote lue dans le titre de
+/// la fenêtre.
 ///
-/// **Sept dixièmes, essayés d'abord, donnaient l'impression de toucher le
-/// plafond** : il ne restait qu'un mètre dix au-dessus de l'œil sous deux mètres
-/// cinquante, et le haut du corps passait à sept dixièmes de la dalle. Le compte
-/// anatomique dit la même chose — l'œil à quatre-vingt-neuf centièmes d'un corps
-/// d'un mètre quatre-vingts tombe au sommet du crâne, là où quatre-vingts
-/// centièmes sont la bonne proportion.
-pub const EYE_ABOVE: f32 = 0.5;
+/// **Elle dépend du plafond plus que de l'anatomie.** Sous un plafond de deux
+/// mètres cinquante elle paraissait trop haute — il ne restait que quatre-vingt-dix
+/// centimètres au-dessus de l'œil ; sous trois mètres vingt-cinq il en reste un
+/// mètre soixante-cinq, et c'est la même valeur qui convient.
+///
+/// **Ni elle ni `HALF.z` ne sont exactes en binaire, et cela ne nuit pas** : elles
+/// composent une pose de caméra, jamais une cote écrite dans la carte. L'exactitude
+/// s'impose à ce qui s'apparie au bit près et à ce qui entre dans un volume signé,
+/// pas à ce qui sert à regarder.
+pub const EYE_ABOVE: f32 = 0.7;
 
 // **Ce que le décor laisse de place, vérifié à la compilation.** Un corps plus
 // large qu'une cellule coincerait dans un couloir, un corps plus haut que le
