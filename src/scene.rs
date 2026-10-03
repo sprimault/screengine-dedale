@@ -16,21 +16,13 @@
 
 use std::sync::Arc;
 
-use screengine_play::{
-    Affine3, Camera, Context, Error, Texture, Vec3, Visibility, World, load_png,
-};
+use screengine_play::{Affine3, Camera, Context, Error, Texture, Visibility, World, load_png};
 
 use crate::maze::export;
 use crate::maze::grid::{Grid, Settings};
 
 #[cfg(test)]
 mod tests;
-
-/// La hauteur de l'œil au-dessus du sol.
-///
-/// Elle vit ici le temps que `player.rs` existe : c'est une pose, pas une cote de
-/// la carte, et l'étape 2 la déduira du centre d'un corps plutôt que du sol.
-pub const EYE: f32 = 1.4;
 
 /// La planche des murs.
 ///
@@ -83,17 +75,6 @@ impl Scenery {
             map,
             materials,
         })
-    }
-
-    /// Où l'on entre dans le labyrinthe, œil compris.
-    ///
-    /// **Le centre de la case ne suffit pas** : si le départ tombe sur une case
-    /// d'escalier, son centre est dans le solide sous les marches, et la caméra
-    /// commence dans un mur. Rien ne l'interdit — le départ est le centre de la
-    /// grille, et les volées sont tirées au hasard.
-    pub fn entrance(&self) -> Vec3 {
-        let spot = export::ground(&self.maze, self.maze.start());
-        Vec3::new(spot[0], spot[1], spot[2] + EYE)
     }
 }
 

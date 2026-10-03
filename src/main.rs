@@ -11,6 +11,7 @@
 
 mod game;
 mod maze;
+mod player;
 mod scene;
 
 use game::Game;
@@ -54,7 +55,7 @@ struct Session {
 /// Ouvre la fenêtre ; Échap ferme.
 fn main() -> Result<(), Error> {
     let scenery = Scenery::new(MAZE)?;
-    let game = Game::new(scenery.entrance(), &scenery.map);
+    let game = Game::new(&scenery.maze, &scenery.map);
 
     // Le compte dans le titre, faute d'une police : c'est la seule sortie
     // textuelle du jeu avant l'étape 5. Ce total est celui de la **carte**, et
