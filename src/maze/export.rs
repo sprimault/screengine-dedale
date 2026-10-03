@@ -29,27 +29,33 @@ pub const CELL: f32 = 4.0;
 
 /// La hauteur d'un étage, du sol d'un niveau au sol du suivant.
 ///
-/// Trois mètres, et c'est l'escalier qui l'impose : douze marches de 0,25 y
-/// montent exactement. Dix marches de 0,3 n'y arrivent pas — la cote accumulée
-/// retombe à deux ulp du sol de l'étage, et le portail du haut cesse de
-/// s'apparier, sans erreur, comme toujours avec l'appariement.
+/// **Trois mètres et demi parce qu'un couloir doit respirer.** À trois mètres et
+/// un plafond à deux et demi, un couloir large de trois paraît écrasé : l'œil y
+/// voyait le plafond dès un mètre soixante devant lui, contre deux mètres
+/// quatre-vingt-dix maintenant. C'est l'une des deux cotes qui ne se jugent qu'à
+/// l'écran.
 ///
-/// Elle valait le côté d'une case quand on visait une rampe à 45°. Ce n'était pas
-/// une contrainte du format : l'axe de lightmap prend la direction **unitaire**,
-/// dont le carré vaut un quelle que soit la pente.
-pub const LEVEL: f32 = 3.0;
+/// **Et c'est l'escalier qui dit laquelle était tenable** : quatorze marches de
+/// 0,25 y montent exactement. Une cote dont la division ne tombe pas juste fait
+/// retomber la cote accumulée à deux ulp du sol de l'étage, et le portail du haut
+/// cesse de s'apparier, sans erreur, comme toujours avec l'appariement.
+///
+/// **Le prix est la pente**, et il est assumé : la longueur d'une rampe reste
+/// bornée par la case, donc monter l'étage la raidit — 49,40° au lieu de 45, et
+/// 53,13° pour l'escalier au lieu de 48,81.
+pub const LEVEL: f32 = 3.5;
 
-/// La hauteur sous plafond, ce qui laisse une dalle d'un demi-mètre entre deux
-/// étages.
+/// La hauteur sous plafond, ce qui laisse entre deux étages une dalle de
+/// l'épaisseur d'une marche.
 ///
-/// **Deux mètres et demi parce que c'est exact en binaire**, et 2,4 ne l'est pas.
-/// La somme de Newell qui donne la normale d'une surface se fait en simple
-/// précision : sur un prisme à huit sommets, le résidu d'une cote inexacte reste
-/// sous la tolérance du chargement ; sur le flanc d'une cage, qui en a
-/// vingt-huit, il la dépasse — et le repère de la surface est refusé pour sortir
-/// d'un plan dont il ne sort pas. Le défaut était là depuis le premier export,
-/// et seule une cellule assez grande le réveille.
-pub const CEILING: f32 = 2.5;
+/// **Trois mètres vingt-cinq parce que c'est exact en binaire**, et que la dalle
+/// qui reste vaut `RISE`. La somme de Newell qui donne la normale d'une surface se
+/// fait en simple précision : sur un prisme à huit sommets, le résidu d'une cote
+/// inexacte reste sous la tolérance du chargement ; sur le flanc d'une cage, qui
+/// en a trente, il la dépasse — et le repère de la surface est refusé pour sortir
+/// d'un plan dont il ne sort pas. Le défaut était là depuis le premier export, et
+/// seule une cellule assez grande le réveille.
+pub const CEILING: f32 = 3.25;
 
 /// La demi-épaisseur d'un mur entre deux cellules.
 ///
@@ -83,12 +89,17 @@ const LUXELS: f32 = 4.0;
 pub const INNER: f32 = CELL - 2.0 * MARGIN;
 
 /// Le nombre de marches d'une volée.
-const STEPS: u32 = 12;
+///
+/// **Quatorze, et c'est `LEVEL` qui le fixe** : il faut que la hauteur d'étage s'y
+/// divise exactement, et trois mètres et demi en quatorze donnent le quart de
+/// mètre que la marche avait déjà.
+const STEPS: u32 = 14;
 
 /// La hauteur d'une marche.
 ///
 /// Elle vaut aussi le seuil que l'étape 2 donnera au déplacement : ce qu'on monte
-/// sans sauter se mesure ici, et nulle part ailleurs.
+/// sans sauter se mesure ici, et nulle part ailleurs. **Elle n'a pas bougé quand
+/// l'étage a monté**, et c'est ce qui a décidé du nombre de marches.
 const RISE: f32 = LEVEL / STEPS as f32;
 
 /// Le palier au pied de la volée, entre le portail d'entrée et la première
@@ -103,9 +114,9 @@ const LANDING: f32 = 0.375;
 /// La profondeur d'une marche.
 ///
 /// Ce qui reste de la cellule une fois le palier pris, divisé par le nombre de
-/// marches : `7/32`, donc exact en binaire comme toutes les cotes qui en
-/// découlent. La pente vaut `RISE / TREAD`, soit `8/7` — raide, et c'est le prix
-/// du palier.
+/// marches : `3/16`, donc exact en binaire comme toutes les cotes qui en
+/// découlent. La pente vaut `RISE / TREAD`, soit `4/3` — raide, et c'est le prix
+/// du palier, plus celui d'un étage haut.
 const TREAD: f32 = (INNER - LANDING) / STEPS as f32;
 
 /// Ce que le sol peut monter par unité parcourue à l'horizontale.
@@ -786,10 +797,10 @@ fn stair(grid: &Grid, flight: Stair, out: &mut Vec<u8>) {
         frame: FLAT,
     });
 
-    // Les flancs suivent le profil : vingt-huit sommets en dents de scie sous
-    // des marches, quatre sous une rampe, là où le format en accepte
-    // soixante-quatre par polygone. Celui du premier bord se parcourt à rebours
-    // pour que sa normale regarde l'autre.
+    // Les flancs suivent le profil : trente sommets en dents de scie sous des
+    // marches, quatre sous une rampe, là où le format en accepte soixante-quatre
+    // par polygone. Celui du premier bord se parcourt à rebours pour que sa
+    // normale regarde l'autre.
     let mut near = vec![ceiling, departure];
     let mut far = Vec::with_capacity(profile.len() + 2);
     for k in 0..profile.len() as u32 {
@@ -868,7 +879,7 @@ fn stair(grid: &Grid, flight: Stair, out: &mut Vec<u8>) {
 /// **Six fois le volume signé**, par la divergence, portails compris avec leur
 /// enroulement rentré : négatif puisque les surfaces regardent vers l'intérieur.
 /// Comparé à sa valeur géométrique, ce nombre attrape les deux fautes qu'une
-/// cellule à vingt-neuf surfaces écrites à la main rend probables — une face à
+/// cellule à trente-trois surfaces écrites à la main rend probables — une face à
 /// l'envers, qui change le signe de sa part, et une face oubliée, qui laisse le
 /// volume ouvert. Ni l'une ni l'autre ne lève d'erreur au chargement : l'écran
 /// montre du fond, et rien ne dit où.
@@ -1107,14 +1118,14 @@ fn span(id: u32, indices: &[u32], points: &[[f32; 3]], axis: [f32; 3], limit: f3
 /// Vérifie que les deux axes d'un repère tiennent dans le plan de la surface.
 ///
 /// Le chargement l'exige, par la normale de Newell du polygone, et le refus qu'il
-/// rend ne nomme pas la surface. Avec vingt-neuf surfaces par cage dans quatre
+/// rend ne nomme pas la surface. Avec trente-trois surfaces par cage dans quatre
 /// orientations, c'est la faute la plus probable et la plus coûteuse à chercher.
 fn planar(id: u32, indices: &[u32], points: &[[f32; 3]], along: [f32; 3], across: [f32; 3]) {
     /// La tolérance du chargement, relative et sur le carré du produit scalaire.
     const TOLERANCE: f64 = 1.0 / 1_048_576.0;
 
     // **En simple précision et par la somme de Newell, comme le chargement** :
-    // le résidu d'arrondi d'un polygone à vingt-huit sommets loin de l'origine
+    // le résidu d'arrondi d'un polygone à trente sommets loin de l'origine
     // est précisément ce qu'on cherche à voir, et le calculer en double le
     // ferait disparaître.
     let mut normal = [0.0f32; 3];

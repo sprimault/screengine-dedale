@@ -33,6 +33,16 @@ fn grid() -> Grid {
     })
 }
 
+/// Vrai si cette case appartient à une cage en rampe.
+///
+/// Son point sûr est alors à mi-hauteur d'étage et non à la cote du sol, ce
+/// qu'aucune case ordinaire ne fait.
+fn on_ramp(grid: &Grid, at: (u32, u32, u32)) -> bool {
+    grid.stairs()
+        .iter()
+        .any(|stair| stair.shape == Shape::Ramp && (stair.foot == at || stair.head() == at))
+}
+
 /// Le centre du passage qui prolonge une case vers l'est ou vers le nord.
 fn gateway(at: (u32, u32, u32), side: Side) -> Vec3 {
     let (dx, dy, _) = side.step();
@@ -168,17 +178,32 @@ fn un_passage_se_franchit() {
 /// La localisation reste vérifiée dans la foulée : c'est le repli de `Game::step`,
 /// qui garde sa raison — une caméra qui vole sort vraiment du décor, et zéro le
 /// dira alors légitimement.
+///
+/// **Les cages en rampe sont écartées, et la raison tient à ce qu'on éprouve** :
+/// leur point sûr est au milieu de la pente, donc à mi-hauteur de l'étage, là où
+/// celui d'une case ordinaire est à la cote du sol. Un pas entre les deux n'est
+/// pas horizontal — il descend d'un demi-étage sur une case —, et assez incliné
+/// pour sortir par le mur plutôt que par le portail. Ce que l'épreuve veut dire,
+/// c'est qu'un pas **droit** qui coupe une cellule de part en part arrive où il
+/// doit ; une pente d'un sixième n'est plus ce pas-là. Les cages à marches
+/// restent, leur point sûr étant à la cote de leur étage.
 #[test]
 fn un_pas_long_rend_la_case_d_arrivee() {
     let grid = grid();
     let map = World::load(&world(&grid)).expect("carte engendrée valide");
 
     for at in cases(&grid) {
+        if on_ramp(&grid, at) {
+            continue;
+        }
         for side in [Side::East, Side::North] {
             if grid.has_wall(at, side) {
                 continue;
             }
             let next = grid.neighbour(at, side).expect("un passage a une voisine");
+            if on_ramp(&grid, next) {
+                continue;
+            }
             let arrival = cover(&grid, next);
             assert_eq!(
                 map.track(cover(&grid, at), inside(&grid, at), inside(&grid, next)),

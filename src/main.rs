@@ -76,6 +76,30 @@ fn main() -> Result<(), Error> {
                 tick.exit();
             }
             session.game.step(tick, &session.scenery.map);
+
+            // **La cote de l'œil dans le titre, et c'est ce qui rend les cotes
+            // réglables** : elles ne se jugent qu'à l'écran, et on ne juge pas
+            // une hauteur qu'on ne lit pas. Le reste à titre fixe — la hauteur
+            // d'étage et le plafond — donne l'échelle sans avoir à la retrouver
+            // dans le code.
+            //
+            // Le modulo tient parce que les sols sont aux multiples de la hauteur
+            // d'étage : il rend donc la hauteur au-dessus du sol de l'étage où
+            // l'on est, qui est la seule cote parlante. Au-dessus d'un escalier
+            // il compte depuis le sol du bas, ce qui est exact et se lit.
+            // La cellule avec la cote, et elle vaut autant : **zéro veut dire
+            // hors de tout volume**, et c'est ce qui éteint l'image sans rien
+            // dire d'autre — le moteur ne soumet alors aucune géométrie. Le plan
+            // de contrôle, lui, continue de se dessiner, ce qui rend l'écran noir
+            // difficile à lire autrement.
+            let eye = session.game.view().camera.position.z;
+            tick.set_title(&format!(
+                "{title} — œil {:.2} sur {:.2} d'étage, plafond {:.2}, cellule {}",
+                eye.rem_euclid(export::LEVEL),
+                export::LEVEL,
+                export::CEILING,
+                session.game.cell()
+            ));
         },
         |session, context| {
             // Un refus ne vient que de la capacité de triangles, et une image
