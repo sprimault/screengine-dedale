@@ -519,21 +519,15 @@ fn le_rayon_s_accorde_avec_le_chemin_brut() {
 /// Un pas dont la boîte **touche le sol** franchit un passage ouvert.
 ///
 /// **C'est le même pas que [`un_pas_dans_un_couloir_ouvert_est_libre`], à dix
-/// centimètres près, et ces dix centimètres décident.** Au-dessus de la bande de
-/// contact, les mille douze pas de ce labyrinthe sont libres ; dedans, aucun ne
-/// l'est — la moitié part dans le solide, l'autre s'arrête net à la jointure de
-/// deux cellules, dans un couloir plat et ouvert.
+/// centimètres près, et ces dix centimètres décidaient.** Au-dessus de la bande
+/// de contact, les mille douze pas de ce labyrinthe passaient ; dedans, aucun —
+/// l'arête du seuil n'étant pas vue comme partagée avec le sol d'en face, le
+/// flanc du volume dilaté du sol de départ arrêtait le pas à la jointure de deux
+/// cellules, dans un couloir plat et ouvert.
 ///
-/// La surface qui arrête est le **sol** de la cellule de départ, et l'arrêt tombe
-/// à la course qu'il faut au bord avant de la boîte pour atteindre le plan du
-/// portail. Un sol horizontal ne peut pas arrêter un mouvement horizontal : ce
-/// qui bloque est le flanc du volume dilaté de cette surface, à son arête, parce
-/// que l'arête n'est pas vue comme partagée avec le sol d'en face.
-///
-/// **C'est le cas de tout personnage qui a les pieds au sol**, donc le
-/// déplacement de l'étape 2 bute dessus avant d'avoir commencé.
+/// **C'est le cas de tout personnage qui a les pieds au sol**, donc l'épreuve
+/// dont le déplacement de l'étape 2 dépend.
 #[test]
-#[ignore = "le flanc du sol arrête un pas au travers d'un portail, l'arête n'étant pas vue comme partagée"]
 fn un_pas_au_sol_franchit_un_passage() {
     let grid = grid();
     let map = World::load(&world(&grid)).expect("carte engendrée valide");
