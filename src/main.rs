@@ -12,12 +12,14 @@
 mod game;
 mod maze;
 mod player;
+mod probe;
 mod scene;
 mod weapon;
 
 use game::Game;
 use maze::export;
 use maze::grid::{Settings, Shape, Side};
+use probe::Probe;
 use scene::Scenery;
 use screengine_play::{Error, KeyCode, Output, Play};
 
@@ -51,6 +53,12 @@ struct Session {
     scenery: Scenery,
     /// L'état de la partie.
     game: Game,
+    /// Le relevé de ce que la traversée rend.
+    ///
+    /// **Ni du monde ni de la partie** : c'est un instrument, qui ne décide de
+    /// rien et que le rendu seul alimente. Le ranger dans l'un des deux ferait
+    /// passer un journal pour un état de jeu.
+    probe: Probe,
 }
 
 /// Ouvre la fenêtre ; Échap ferme.
@@ -71,7 +79,11 @@ fn main() -> Result<(), Error> {
     );
 
     Play::new().title(&title).run_with_output(
-        Session { scenery, game },
+        Session {
+            scenery,
+            game,
+            probe: Probe::new(),
+        },
         |session, tick| {
             if tick.input().pressed(KeyCode::Escape) {
                 tick.exit();
@@ -95,11 +107,12 @@ fn main() -> Result<(), Error> {
             // difficile à lire autrement.
             let eye = session.game.view().camera.position.z;
             tick.set_title(&format!(
-                "{title} — œil {:.2} sur {:.2} d'étage, plafond {:.2}, cellule {}",
+                "{title} — œil {:.2} sur {:.2} d'étage, plafond {:.2}, cellule {}, vue {:?}",
                 eye.rem_euclid(export::LEVEL),
                 export::LEVEL,
                 export::CEILING,
-                session.game.cell()
+                session.game.cell(),
+                session.probe.seen()
             ));
         },
         |session, context| {
@@ -108,7 +121,24 @@ fn main() -> Result<(), Error> {
             // rend — complète, tronquée, ou hors cellule — n'est pas encore
             // relevé : il faudra le faire quand un décor approchera ses bornes.
             let view = session.game.view();
-            let _ = scene::submit(context, &session.scenery, &view);
+            // **Ce que la traversée rend se relève**, là où il était jeté : elle
+            // dit si l'image est complète, si elle s'est arrêtée à une de ses
+            // bornes — et il manque alors du décor —, ou si la pose est hors de
+            // tout volume. Un décor de plusieurs centaines de cellules est le
+            // premier à pouvoir les approcher.
+            //
+            // **Le refus se relève aussi**, et c'est même lui qu'on cherche : il ne
+            // peut venir que de la capacité de triangles, et un dépassement annule
+            // la soumission du décor entier — donc une image noire. Il ne fait
+            // toujours pas tomber la boucle : une image manquante vaut mieux qu'un
+            // arrêt.
+            let shown = match scene::submit(context, &session.scenery, &view) {
+                Ok(seen) => probe::State::Shown(seen),
+                Err(_) => probe::State::Refused,
+            };
+            session
+                .probe
+                .note(shown, view.camera.position, session.game.cell());
             // **L'arme après le décor**, et c'est le seul ordre qui vaille : elle
             // est la plus proche de l'œil, donc la profondeur la laisserait gagner
             // de toute façon, mais la soumettre en dernier évite qu'un décor très
@@ -144,8 +174,20 @@ const GAP: u32 = 10;
 /// départ — au milieu de la grille, donc à l'étage supérieur quand il y en a deux
 /// — tombe alors du côté où l'œil arrive d'abord.
 fn overview(session: &mut Session, output: &mut Output<'_>) {
-    let maze = &session.scenery.maze;
+    // **Le relevé regarde l'image avant qu'on dessine dessus**, et c'est tout
+    // l'intérêt de le faire ici : le tampon porte l'image finie, donc un
+    // échantillon dit si elle est noire — ce qu'aucune valeur rendue par la
+    // soumission ne dit. Le plan tracé plus bas compterait sinon comme des pixels
+    // peints.
+    //
+    // Il compte aussi les images présentées, pour les comparer aux rendues : un
+    // écart dirait qu'un tampon a été montré sans que la scène y soit.
+    let eye = session.game.view().camera.position;
     let here = session.game.cell();
+    session.probe.look(output, &session.scenery.map, eye, here);
+    session.probe.present(eye, here);
+
+    let maze = &session.scenery.maze;
     let (width, height, levels) = maze.extent();
 
     // Un fond opaque sous le plan : posé à même le décor, il se confond avec
