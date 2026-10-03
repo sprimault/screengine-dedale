@@ -16,7 +16,7 @@ mod scene;
 
 use game::Game;
 use maze::export;
-use maze::grid::{Settings, Side};
+use maze::grid::{Settings, Shape, Side};
 use scene::Scenery;
 use screengine_play::{Error, KeyCode, Output, Play};
 
@@ -228,21 +228,61 @@ fn mark(
     // Une volée tient deux cases superposées, et les deux portent sa teinte :
     // c'est ce qui permet de la suivre d'un plan à l'autre. La moitié haute dit
     // qu'on monte depuis cette case, la moitié basse qu'on y arrive.
+    //
+    // **Et la forme dit laquelle des deux sortes de cage**, parce que la teinte ne
+    // peut pas : elle est prise par l'appariement, qui est la raison d'être du
+    // marquage. Un escalier garde sa demi-case pleine ; une rampe reçoit un
+    // triangle dont la pointe donne le sens de sa pente — vers la montée au pied,
+    // vers la descente à la tête, donc deux pointes opposées qui distinguent les
+    // deux cases comme les demi-cases le faisaient.
+    //
+    // On ne cherche pas une rampe en visitant six cages quand on règle une cote à
+    // l'écran, et c'est tout ce que ce plan existe pour éviter.
     let half = inner / 2;
     for (rank, stair) in maze.stairs().iter().enumerate() {
         let colour = LINKS[rank % LINKS.len()];
-        if cell == stair.foot {
-            block(output, left + 1, top + 1, inner, half, colour);
+        let foot = cell == stair.foot;
+        if !foot && cell != stair.head() {
+            continue;
         }
-        if cell == stair.head() {
-            block(
+        match stair.shape {
+            Shape::Ramp => {
+                let towards = if foot {
+                    stair.climb
+                } else {
+                    stair.climb.facing()
+                };
+                wedge(output, left + 1, top + 1, inner, towards, colour);
+            }
+            Shape::Steps if foot => block(output, left + 1, top + 1, inner, half, colour),
+            Shape::Steps => block(
                 output,
                 left + 1,
                 top + 1 + inner - half,
                 inner,
                 half,
                 colour,
-            );
+            ),
+        }
+    }
+}
+
+/// Un triangle plein pointant vers un côté, inscrit dans un carré.
+///
+/// **Le nord est en haut de l'écran**, comme pour le reste du plan, donc la pointe
+/// d'une montée vers le nord va vers les ordonnées décroissantes du tampon.
+///
+/// La base fait tout le côté et le triangle en occupe un peu plus de la moitié :
+/// à cinq pixels, une pointe franche se lit mieux qu'un triangle qui remplirait le
+/// carré en perdant son sommet dans les bords.
+fn wedge(output: &mut Output<'_>, x: u32, y: u32, side: u32, towards: Side, color: [u8; 4]) {
+    for rank in 0..side.div_ceil(2) {
+        let span = side - 2 * rank;
+        match towards {
+            Side::East => block(output, x + side - 1 - rank, y + rank, 1, span, color),
+            Side::West => block(output, x + rank, y + rank, 1, span, color),
+            Side::North => block(output, x + rank, y + rank, span, 1, color),
+            _ => block(output, x + rank, y + side - 1 - rank, span, 1, color),
         }
     }
 }
