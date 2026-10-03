@@ -15,6 +15,7 @@ use screengine_play::{Error, FreeCamera, KeyCode, MouseButton, Tick, World};
 
 use crate::maze::grid::Grid;
 use crate::player::Player;
+use crate::probe::Aim;
 use crate::scene::View;
 use crate::weapon::Weapon;
 
@@ -131,6 +132,15 @@ impl Game {
     /// La cellule courante, que le plan de contrôle marque.
     pub fn cell(&self) -> u32 {
         self.player.cell()
+    }
+
+    /// Ce que le relevé note, et qu'une épreuve peut reposer.
+    ///
+    /// **Les deux angles plutôt que la caméra rendue** : c'est la seule forme qui
+    /// se rejoue sans redeviner l'ordre de composition, et c'est de la partie qu'ils
+    /// viennent — le monde n'en sait rien.
+    pub fn aim(&self) -> Aim {
+        Aim::new(&self.camera, self.player.cell())
     }
 
     /// L'arme en main, que le rendu soumet après le décor.
