@@ -11,33 +11,34 @@
 //! La partie **lit** le monde, en revanche, et c'est normal : suivre sa cellule
 //! demande d'interroger la carte.
 
-use screengine_play::{FreeCamera, KeyCode, MouseButton, Tick, Vec3, World};
+use screengine_play::{FreeCamera, KeyCode, MouseButton, Tick, World};
 
+use crate::maze::grid::Grid;
+use crate::player::Player;
 use crate::scene::View;
 
 /// Ce que la partie garde entre deux images.
 pub struct Game {
+    /// Le joueur : son corps, sa pose, sa cellule.
+    player: Player,
     /// La caméra que le joueur dirige.
     ///
-    /// En vol libre le temps de cette étape : rien ne l'arrête, et elle traverse
-    /// les murs. Le vol du moteur garde son altitude, donc le jeu y ajoute deux
-    /// touches — sans quoi un décor à étages ne s'inspecte pas. Le déplacement
-    /// filtré par le balayage est l'étape 2, et c'est elle qui rendra la
-    /// localisation rare.
+    /// **Elle ne porte plus la pose, seulement l'orientation et ce qu'elle veut
+    /// parcourir** : le corps porte la position, et la caméra est recalée sur son
+    /// œil à chaque pas. En vol libre le temps de cette étape — rien n'arrête
+    /// encore ce qu'elle demande, et elle traverse les murs. Le vol du moteur
+    /// garde son altitude, donc le jeu y ajoute deux touches, sans quoi un décor à
+    /// étages ne s'inspecte pas.
     camera: FreeCamera,
-    /// La cellule qui la contient, ou zéro si elle est hors du décor.
-    cell: u32,
-    /// Où elle était au pas précédent.
-    previous: Vec3,
 }
 
 impl Game {
-    /// Une partie qui commence à l'entrée du labyrinthe.
-    pub fn new(entrance: Vec3, map: &World) -> Self {
+    /// Une partie qui commence à l'entrée du labyrinthe, le joueur debout.
+    pub fn new(grid: &Grid, map: &World) -> Self {
+        let player = Player::spawn(grid, map);
         Self {
-            camera: FreeCamera::new(entrance),
-            cell: map.locate(entrance),
-            previous: entrance,
+            camera: FreeCamera::new(player.eye()),
+            player,
         }
     }
 
@@ -57,22 +58,19 @@ impl Game {
             tick.capture_cursor(false);
         }
 
+        // **Ce que la caméra demande, mesuré plutôt que déduit des touches.**
+        // Elle sera bientôt freinée par le décor, et c'est le corps qui portera
+        // alors ce qui a vraiment été parcouru : prendre la différence des deux
+        // poses laisse le filtrage s'interposer sans que rien d'autre ne bouge.
+        let before = self.camera.position;
         self.camera.update(tick);
         self.hover(tick);
-        let position = self.camera.camera().position;
+        let moved = self.camera.position - before;
 
-        // Le suivi transporte la cellule quand le segment franchit un portail
-        // apparié, et rend zéro quand il sort par un mur. Le moteur ne se
-        // relocalise jamais de lui-même : c'est à l'hôte de le demander, et une
-        // caméra qui vole sort souvent. La localisation est en nombre de
-        // surfaces, donc on ne la paie que là.
-        let found = map.track(self.cell, self.previous, position);
-        self.cell = if found == 0 {
-            map.locate(position)
-        } else {
-            found
-        };
-        self.previous = position;
+        self.player.advance(map, moved);
+        // Le corps porte la pose, donc la caméra se recale sur son œil : une
+        // seule position fait foi, et ce n'est pas celle-ci.
+        self.camera.position = self.player.eye();
     }
 
     /// Élève ou abaisse la caméra, à vitesse constante.
@@ -101,12 +99,12 @@ impl Game {
     pub fn view(&self) -> View {
         View {
             camera: self.camera.camera(),
-            cell: self.cell,
+            cell: self.player.cell(),
         }
     }
 
     /// La cellule courante, que le plan de contrôle marque.
     pub fn cell(&self) -> u32 {
-        self.cell
+        self.player.cell()
     }
 }

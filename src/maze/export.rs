@@ -76,7 +76,11 @@ const TEXELS: f32 = 128.0;
 const LUXELS: f32 = 4.0;
 
 /// Le côté intérieur d'une cellule de case, sur un axe horizontal.
-const INNER: f32 = CELL - 2.0 * MARGIN;
+///
+/// Publiée parce qu'elle borne ce qui peut circuler : un volume plus large qu'une
+/// cellule coince dans un couloir, et la cause se chercherait dans le
+/// déplacement.
+pub const INNER: f32 = CELL - 2.0 * MARGIN;
 
 /// Le nombre de marches d'une volée.
 const STEPS: u32 = 12;
@@ -103,6 +107,20 @@ const LANDING: f32 = 0.375;
 /// découlent. La pente vaut `RISE / TREAD`, soit `8/7` — raide, et c'est le prix
 /// du palier.
 const TREAD: f32 = (INNER - LANDING) / STEPS as f32;
+
+/// Ce que le sol peut monter par unité parcourue à l'horizontale.
+///
+/// **Le maximum des deux formes de cage**, et c'est l'escalier qui le donne :
+/// `RISE / TREAD`, soit `8/7`, contre `1` pour une rampe. Ailleurs le sol est
+/// plat.
+///
+/// **C'est ce qu'il faut à qui pose un volume** : une empreinte de soixante
+/// centimètres dépasse le palier d'une cage, qui en fait trente-sept, et
+/// surplombe donc des marches. Posée à la seule cote du sol, elle les pénètre et
+/// part dans le solide. Le dégagement vaut la demi-étendue horizontale fois cette
+/// pente, et il ne se devine pas depuis le jeu : seul l'export sait ce que son
+/// sol fait.
+pub const SLOPE: f32 = RISE / TREAD;
 
 /// L'emplacement du matériau des murs.
 const WALL: u32 = 1;

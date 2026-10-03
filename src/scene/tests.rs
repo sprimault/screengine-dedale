@@ -4,8 +4,9 @@
 //! Les épreuves de la scène.
 
 use super::*;
+use crate::player::{EYE_ABOVE, HALF, Player};
 use screengine_play::screengine::{BYTES_PER_PIXEL, Config};
-use screengine_play::{Affine3, Angle, Context, FreeCamera, Quat, Visibility};
+use screengine_play::{Affine3, Angle, Context, FreeCamera, Quat, Vec3, Visibility};
 
 /// Les réglages du labyrinthe d'épreuve.
 fn settings() -> Settings {
@@ -53,7 +54,8 @@ fn poses(scenery: &Scenery) -> Vec<Camera> {
     let mut out = Vec::with_capacity(8);
     for at in [scenery.maze.start(), scenery.maze.exit()] {
         let spot = export::ground(&scenery.maze, at);
-        let position = Vec3::new(spot[0], spot[1], spot[2] + EYE);
+        // L'œil d'un corps posé : sa demi-hauteur, plus le décalage de l'œil.
+        let position = Vec3::new(spot[0], spot[1], spot[2] + HALF.z + EYE_ABOVE);
         for quarter in 0..4 {
             out.push(Camera {
                 position,
@@ -87,13 +89,14 @@ fn frame(context: &mut Context) -> Vec<u8> {
 #[test]
 fn la_scene_se_rend_hors_fenetre() {
     let scenery = Scenery::new(settings()).expect("labyrinthe et planches valides");
-    let entrance = scenery.entrance();
-    let cell = scenery.map.locate(entrance);
+    // La pose du joueur plutôt qu'une pose écrite ici : c'est celle que le jeu
+    // emploie vraiment, et elle tient compte de la forme du sol sous ses pieds.
+    let player = Player::spawn(&scenery.maze, &scenery.map);
 
     let mut context = context(0);
     let view = View {
-        camera: FreeCamera::new(entrance).camera(),
-        cell,
+        camera: FreeCamera::new(player.eye()).camera(),
+        cell: player.cell(),
     };
     submit(&mut context, &scenery, &view).expect("scène soumise");
     let pixels = frame(&mut context);
