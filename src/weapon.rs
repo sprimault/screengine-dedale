@@ -1,0 +1,195 @@
+// Copyright 2026 Stéphane Primault <sprimault@users.noreply.github.com>
+// SPDX-License-Identifier: MIT OR Apache-2.0
+
+//! L'arme en main : un sprite du monde posé devant l'œil.
+//!
+//! **Ni un quadrilatère plein cadre, ni un dessin sur le tampon fini** — voir
+//! `DECISIONS.md`, `D2`. C'est un objet du monde, orienté caméra, soumis comme un
+//! autre : il reçoit donc le brouillard, les lumières et la courbe de sortie
+//! comme le reste du décor, là où des mains composées sur l'image finie
+//! resteraient à pleine lumière dans un couloir sombre. Le moteur n'y gagne
+//! aucune notion de jeu : il voit un quadrilatère.
+//!
+//! **Elle est un état de partie**, jetée au rechargement de la carte. Sa phase de
+//! balancement avance avec la distance **réellement parcourue**, pas avec le
+//! temps.
+//!
+//! **Ce que cela donnera, et qu'on ne peut pas encore voir** : rien n'arrête
+//! aujourd'hui le déplacement — ni le filtrage, qui reste à écrire, ni le décor,
+//! dont les cellules de case ne retiennent rien. Quand l'un des deux sera là, le
+//! balancement s'arrêtera de lui-même contre un mur sans qu'une ligne change ici,
+//! et des mains qui continueraient dénonceraient un déplacement appliqué avant la
+//! collision.
+
+use std::sync::Arc;
+
+use screengine_play::{
+    Affine3, Angle, Camera, Color, Context, Error, Sprite, SpriteOrientation, Texture, Vec3,
+    load_png_masked,
+};
+
+use crate::player::HALF;
+
+#[cfg(test)]
+mod tests;
+
+/// La planche des mains, au repos.
+///
+/// **Chargée masquée et non pas simplement lue** : sans le format à masque
+/// l'alpha est ignoré, le quadrilatère entier se dessine, et les texels que le
+/// détourage avait vidés reparaissent avec leur couleur — le fond du canon en
+/// tête. La pose de tir attend l'étape 4, qui aura de quoi la déclencher.
+const PLATE: &[u8] = include_bytes!("../assets/sprites/mains-revolver-repos.png");
+
+/// Le côté de la planche, en texels.
+const SIDE: f32 = 512.0;
+
+/// La distance de l'œil au plan de l'arme, en unités de monde.
+///
+/// **Elle est bornée par le corps, et c'est un invariant** : un mur ne peut
+/// couper l'arme que si l'œil s'en approche à moins que cette distance, ce que la
+/// demi-largeur du corps interdit. Le contrôle est à la compilation, plus bas.
+const DISTANCE: f32 = 0.25;
+
+/// Ses demi-étendues, **en unités de monde** et jamais en pixels.
+///
+/// En pixels, l'arme changerait de taille avec la résolution interne, qui est un
+/// réglage. Neuf centièmes à vingt-cinq de distance sous-tendent vingt degrés de
+/// demi-angle, soit environ le tiers de la largeur de l'image.
+const EXTENT: (f32, f32) = (0.09, 0.09);
+
+/// Son décalage vers la droite et vers le bas, depuis l'axe du regard.
+///
+/// **Assez bas pour que le quadrilatère sorte de l'image par le bas** : centré, il
+/// donne des mains qui flottent au milieu de l'écran et paraissent lointaines. Ce
+/// qui les met devant l'œil, c'est qu'on n'en voie pas le bas.
+const OFFSET: (f32, f32) = (0.032, -0.094);
+
+/// Le débattement du balancement, latéral puis vertical.
+const SWAY: (f32, f32) = (0.016, 0.010);
+
+/// La distance parcourue pour un pas complet, en unités de monde.
+const STRIDE: f32 = 1.7;
+
+/// Le rappel de l'inertie du lacet, par pas de temps.
+///
+/// Trop bas, l'arme colle au centre et ne réagit pas au regard ; trop haut, elle
+/// part et ne revient jamais.
+const RECOIL: f32 = 0.25;
+
+/// L'inclinaison que le pas donne à l'arme, en radians.
+///
+/// **Le roulis est ce qu'aucun déplacement du centre ne rend** : l'arme penche en
+/// marchant, et c'est cette inclinaison qui fait lire un poids dans la main plutôt
+/// qu'une image collée devant l'œil. Deux degrés suffisent — au-delà, elle
+/// tangue.
+const ROLL_STRIDE: f32 = 0.035;
+
+/// Celle que le virage y ajoute, par radian de retard du lacet.
+///
+/// Elle penche du côté vers lequel on tourne, et elle domine la précédente dès
+/// qu'on pivote : un virage se voit plus qu'un pas.
+const ROLL_DRAG: f32 = 0.8;
+
+// **L'arme tient derrière le corps**, et c'est ce qui empêche un mur de la
+// couper : il faudrait que l'œil approche la paroi de moins que cette distance,
+// ce que la demi-largeur du corps rend impossible. Relation entre constantes,
+// donc vérifiée ici et non dans une épreuve.
+const _: () = assert!(DISTANCE < HALF.x);
+
+/// L'arme que le joueur tient : sa planche, et où elle en est de son balancement.
+pub struct Weapon {
+    /// La planche, chargée une fois.
+    plate: Arc<Texture>,
+    /// La phase du pas, en tours — sa partie fractionnaire seule compte.
+    stride: f32,
+    /// Le retard du lacet sur la caméra, qui décale l'arme quand on tourne.
+    drag: f32,
+    /// Le lacet au pas précédent.
+    last_yaw: f32,
+}
+
+impl Weapon {
+    /// Charge la planche et pose l'arme au repos.
+    ///
+    /// # Erreurs
+    ///
+    /// Jamais pour une planche du dépôt : elle est intégrée au binaire et le
+    /// chargement n'échoue que sur un fichier illisible. L'erreur remonte quand
+    /// même, parce qu'un `expect` sur un chemin atteignable n'a pas sa place et
+    /// que l'appelant sait déjà en rendre compte.
+    pub fn new(yaw: f32) -> Result<Self, Error> {
+        Ok(Self {
+            plate: Arc::new(load_png_masked(PLATE)?),
+            stride: 0.0,
+            drag: 0.0,
+            last_yaw: yaw,
+        })
+    }
+
+    /// Avance le balancement de ce qui a été parcouru, et suit le lacet.
+    ///
+    /// **La distance arrive mesurée, elle ne se déduit pas des touches** : le
+    /// déplacement sera bientôt freiné par le décor, et c'est ce qui a vraiment
+    /// été parcouru qui fait marcher.
+    pub fn advance(&mut self, travel: f32, yaw: f32) {
+        if travel > 0.0 {
+            self.stride += travel / STRIDE;
+        }
+        self.drag += (yaw - self.last_yaw - self.drag) * RECOIL;
+        self.last_yaw = yaw;
+    }
+}
+
+/// Soumet l'arme, **après le décor**.
+///
+/// **Le seul ordre qui vaille** : elle est la plus proche de l'œil, donc le tampon
+/// de profondeur la laisserait gagner de toute façon, mais la soumettre en dernier
+/// évite qu'un décor très proche la rejette à égalité.
+///
+/// Comme la scène, cette fonction ne lit ni horloge, ni entrée, ni tampon de
+/// sortie : le chemin de rendu hors fenêtre de l'étape 8 l'appellera telle quelle.
+pub fn submit(
+    context: &mut Context,
+    weapon: &Weapon,
+    camera: &Camera,
+) -> Result<(), screengine_play::screengine::Error> {
+    let pose = Affine3::from_rotation_translation(camera.orientation, Vec3::ZERO);
+    let ahead = pose.transform_vector(Vec3::new(1.0, 0.0, 0.0));
+    // Le repère de la caméra neutre : elle regarde le +X, sa droite est le −Y.
+    let right = pose.transform_vector(Vec3::new(0.0, -1.0, 0.0));
+    let up = pose.transform_vector(Vec3::new(0.0, 0.0, 1.0));
+
+    // **La figure de Lissajous du pas, de rapport deux** : le latéral à la
+    // fréquence du pas, le vertical au double — un pas gauche et un pas droit
+    // descendent tous les deux. C'est ce rapport, et non l'amplitude, qui fait
+    // lire une marche plutôt qu'un flottement.
+    let phase = weapon.stride * core::f32::consts::TAU;
+    let swing = phase.sin() * SWAY.0 - weapon.drag * 0.5;
+    let bob = (phase * 2.0).cos() * SWAY.1;
+
+    let center =
+        camera.position + ahead * DISTANCE + right * (OFFSET.0 + swing) + up * (OFFSET.1 + bob);
+
+    // Le roulis porte l'inclinaison, et il a deux sources : le pas, qui fait
+    // pencher l'arme à chaque enjambée, et le virage, qui l'incline du côté vers
+    // lequel on tourne. Aucun déplacement du centre ne rend ni l'un ni l'autre.
+    let roll = Angle::from_radians(weapon.drag * ROLL_DRAG + phase.sin() * ROLL_STRIDE);
+
+    context.submit_sprites(
+        Affine3::IDENTITY,
+        &[Sprite {
+            center,
+            half_width: EXTENT.0,
+            half_height: EXTENT.1,
+            u0: 0.0,
+            v0: 0.0,
+            u1: SIDE,
+            v1: SIDE,
+            roll,
+            color: Color::new(0xFF, 0xFF, 0xFF, 0xFF),
+        }],
+        Some(&weapon.plate),
+        SpriteOrientation::Facing,
+    )
+}

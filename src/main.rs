@@ -13,6 +13,7 @@ mod game;
 mod maze;
 mod player;
 mod scene;
+mod weapon;
 
 use game::Game;
 use maze::export;
@@ -55,7 +56,7 @@ struct Session {
 /// Ouvre la fenêtre ; Échap ferme.
 fn main() -> Result<(), Error> {
     let scenery = Scenery::new(MAZE)?;
-    let game = Game::new(&scenery.maze, &scenery.map);
+    let game = Game::new(&scenery.maze, &scenery.map)?;
 
     // Le compte dans le titre, faute d'une police : c'est la seule sortie
     // textuelle du jeu avant l'étape 5. Ce total est celui de la **carte**, et
@@ -106,7 +107,13 @@ fn main() -> Result<(), Error> {
             // manquante vaut mieux qu'une boucle arrêtée. Ce que la traversée
             // rend — complète, tronquée, ou hors cellule — n'est pas encore
             // relevé : il faudra le faire quand un décor approchera ses bornes.
-            let _ = scene::submit(context, &session.scenery, &session.game.view());
+            let view = session.game.view();
+            let _ = scene::submit(context, &session.scenery, &view);
+            // **L'arme après le décor**, et c'est le seul ordre qui vaille : elle
+            // est la plus proche de l'œil, donc la profondeur la laisserait gagner
+            // de toute façon, mais la soumettre en dernier évite qu'un décor très
+            // proche la rejette à égalité.
+            let _ = weapon::submit(context, session.game.weapon(), &view.camera);
         },
         overview,
     )

@@ -72,6 +72,17 @@ moteur.
 au-dessus de ce qui est bas et le traverserait — géométriquement juste, et
 parfaitement faux.
 
+**L'arme en main se pose ici, et non à l'étape 5.** Deux cotes se décident l'une
+contre l'autre : la demi-largeur du corps doit dépasser la distance de l'arme,
+sinon un mur la coupe en longeant une paroi. Et son balancement est un instrument
+de mesure du déplacement — sa phase avance avec la distance **réellement
+parcourue**, donc des mains qui balancent alors qu'on est bloqué dénoncent un
+déplacement appliqué avant la collision.
+
+**Ce n'est pas de l'interface**, et c'est ce qui l'autorise : un sprite du monde
+orienté caméra, posé à quelques décimètres de l'œil, qui reçoit le brouillard et
+les lumières comme le reste. Un quadrilatère plein cadre reste interdit.
+
 ## 3 — Les monstres
 
 Les planches de vues de `assets/`, choisies selon l'angle sous lequel on regarde la
@@ -99,9 +110,12 @@ posé au point de contact. Les deux se compensent, donc ils se décident ensembl
 
 ## 5 — La vie, le score, l'interface
 
-Tout dans le tampon de sortie, par `run_with_output` : barre de vie, score, arme
-vue en main. **Rien ne passe par le moteur** — ni un quadrilatère plein cadre, ni
-le tracé de lignes, qui prend des coordonnées de monde.
+Tout dans le tampon de sortie, par `run_with_output` : barre de vie, score, texte.
+**Rien ne passe par le moteur** — ni un quadrilatère plein cadre, ni le tracé de
+lignes, qui prend des coordonnées de monde.
+
+L'arme en main n'en fait pas partie et s'est posée à l'étape 2 : elle est un objet
+du monde, pas de l'écran.
 
 Contact avec un monstre, perte de vie, mort du joueur.
 
