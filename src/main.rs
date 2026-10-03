@@ -106,6 +106,11 @@ const GAP: u32 = 10;
 /// **Les étages se dessinent tous** : un plan à un seul niveau rend un labyrinthe
 /// 3D illisible, parce qu'il montre côte à côte deux cases que des dizaines de
 /// passages séparent.
+///
+/// **Le plus haut à gauche**, donc les niveaux à rebours de leur rang. On lit le
+/// plan de la gauche vers la droite comme on lit une coupe de haut en bas, et le
+/// départ — au milieu de la grille, donc à l'étage supérieur quand il y en a deux
+/// — tombe alors du côté où l'œil arrive d'abord.
 fn overview(session: &mut Session, output: &mut Output<'_>) {
     let maze = &session.scenery.maze;
     let here = session.game.cell();
@@ -124,7 +129,7 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
     );
 
     for level in 0..levels {
-        let origin = INSET + level * (width * CELL + GAP);
+        let origin = INSET + (levels - 1 - level) * (width * CELL + GAP);
         for y in 0..height {
             for x in 0..width {
                 let cell = (x, y, level);
