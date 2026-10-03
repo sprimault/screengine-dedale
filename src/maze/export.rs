@@ -859,21 +859,16 @@ fn stair(grid: &Grid, flight: Stair, out: &mut Vec<u8>) {
 /// le fait par la seule aire que leur sol retire : une rampe en ôte plus que les
 /// marches qu'elle remplace, puisqu'elle passe sous leurs nez.
 fn closed(id: u32, faces: &[Face], gates: &[Vec<u32>], points: &[[f32; 3]], shape: Shape) {
-    let mut six = 0.0f64;
-    for indices in faces.iter().map(|face| face.indices.clone()).chain(
-        gates
-            .iter()
-            .map(|indices| indices.iter().rev().copied().collect()),
-    ) {
-        for k in 1..indices.len() - 1 {
-            let a = local(points[indices[0] as usize], points[0]);
-            let b = local(points[indices[k] as usize], points[0]);
-            let c = local(points[indices[k + 1] as usize], points[0]);
-            six += a[0] * (b[1] * c[2] - b[2] * c[1])
-                + a[1] * (b[2] * c[0] - b[0] * c[2])
-                + a[2] * (b[0] * c[1] - b[1] * c[0]);
-        }
-    }
+    let shell: Vec<Vec<u32>> = faces
+        .iter()
+        .map(|face| face.indices.clone())
+        .chain(
+            gates
+                .iter()
+                .map(|indices| indices.iter().rev().copied().collect()),
+        )
+        .collect();
+    let six = six_volume(&shell, points);
 
     // Le volume exact : la section verticale fois la largeur, la section étant
     // la cage pleine moins ce que son sol lui prend.
@@ -884,6 +879,28 @@ fn closed(id: u32, faces: &[Face], gates: &[Vec<u32>], points: &[[f32; 3]], shap
         "la cage {id} enferme {} au lieu de {expected}",
         six
     );
+}
+
+/// Six fois le volume signé d'une coque de polygones, par la divergence.
+///
+/// **Négatif pour une cellule bien écrite**, dont les surfaces regardent toutes
+/// vers l'intérieur. Un signe positif dit que la coque entière est retournée, et
+/// c'est une faute que ni le chargement ni l'image ne signalent : chaque face
+/// prise isolément reste correctement enroulée, et c'est le volume d'ensemble qui
+/// décide de la normale que la collision emploie.
+fn six_volume(polygons: &[Vec<u32>], points: &[[f32; 3]]) -> f64 {
+    let mut six = 0.0f64;
+    for indices in polygons {
+        for k in 1..indices.len() - 1 {
+            let a = local(points[indices[0] as usize], points[0]);
+            let b = local(points[indices[k] as usize], points[0]);
+            let c = local(points[indices[k + 1] as usize], points[0]);
+            six += a[0] * (b[1] * c[2] - b[2] * c[1])
+                + a[1] * (b[2] * c[0] - b[0] * c[2])
+                + a[2] * (b[0] * c[1] - b[1] * c[0]);
+        }
+    }
+    six
 }
 
 /// Un point ramené près de l'origine, en double précision.
@@ -932,6 +949,29 @@ fn prism(
 
     let walls: Vec<usize> = (0..4).filter(|i| !open[*i]).collect();
     let gates: Vec<usize> = (0..4).filter(|i| open[*i]).collect();
+
+    // **Le même contrôle de volume signé qu'une cage**, et il manquait ici. Un
+    // prisme n'a que six faces, mais l'inversion qu'il cache est la même : chaque
+    // face reste correctement enroulée prise à part, l'image est donc juste, et
+    // c'est la coque entière qui décide de la normale intérieure dont la
+    // collision se sert. Un signe faux rend la cellule traversable sans que rien
+    // ne le dise.
+    //
+    // Les quatre côtés comptent comme des murs, ouverts ou non : un portail prend
+    // l'enroulement inverse de la surface qu'il remplace, donc rentré il la
+    // retrouve — un volume se ferme de ses six faces, quelle que soit la nature
+    // de chacune.
+    let mut shell = vec![vec![0, 1, 2, 3], vec![7, 6, 5, 4]];
+    for i in 0..4u32 {
+        let j = (i + 1) % 4;
+        shell.push(vec![i, i + 4, j + 4, j]);
+    }
+    let six = six_volume(&shell, &points);
+    let expected = -3.0 * f64::from(twice_area(&footprint)) * f64::from(high - low);
+    assert!(
+        (six - expected).abs() <= expected.abs() * 1e-6,
+        "la cellule {id} enferme {six} au lieu de {expected}"
+    );
 
     let mut body = Vec::new();
     words(
