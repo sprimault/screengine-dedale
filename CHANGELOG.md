@@ -10,7 +10,7 @@ Chaque section est **bilingue, français d'abord, séparé par `***`**.
 aucun. La première est donc la `0.1.0`, à l'étape 1 : un labyrinthe qu'on parcourt,
 cela s'adresse à quelqu'un.
 
-## [Non publié]
+## [0.1.1] — 2026-10-03 — Des rampes dans les cages
 
 ### Ajouté
 - **Des rampes dans une partie des cages**, à côté des escaliers : on y monte
