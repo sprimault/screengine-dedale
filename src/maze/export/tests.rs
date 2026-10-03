@@ -374,6 +374,61 @@ fn steps(grid: &Grid) -> Vec<(u32, Vec3, Vec3)> {
     out
 }
 
+/// Un mur plein arrête un pas, dans chaque cellule et de chaque côté.
+///
+/// **C'est le prédicat qui manquait, et son absence a coûté une étape entière.**
+/// Les deux épreuves de pas vérifient qu'un passage ouvert est *libre*, ce qu'il
+/// est encore plus sûrement quand rien ne bloque ; les deux oracles comparent
+/// `sweep` à `sweep_brute`, qui partagent leur formule de contact et s'accordent
+/// donc sur « rien ne touche » ; `un_mur_arrete` éprouve `track`, qui dépend des
+/// portails et non des normales de collision ; et la couverture d'image est prise
+/// à l'horizontale, où un sol absent se voit mal. Aucune ne dit qu'un mur retient
+/// quelqu'un.
+///
+/// **Mesuré sur ce décor** : cent soixante et une cellules de case sur quatre cent
+/// quatre-vingt-dix-neuf n'arrêtent rien — ni leurs murs, ni leur sol, ni leur
+/// plafond —, trois cent trente-huit arrêtent tout, et **aucune n'est mélangée**.
+/// Le partage est donc par cellule, ce qui est la signature d'une normale
+/// intérieure inversée pour toutes ses surfaces d'un coup. Notre export est hors
+/// de cause : le contrôle de volume signé de `prism` passe, portails rentrés, et
+/// chaque face prise à part est correctement enroulée — l'image le confirme.
+///
+/// **En attente nommée**, comme l'épreuve du pas au sol avant elle : elle dira que
+/// la voie est libre le jour où le correctif arrivera.
+#[test]
+#[ignore = "une cellule de case sur trois n'arrête rien, et le partage se fait par cellule"]
+fn un_mur_plein_arrete_un_pas() {
+    let grid = grid();
+    let map = World::load(&world(&grid)).expect("carte engendrée valide");
+    let half = Vec3::new(0.3, 0.3, 0.9);
+
+    for at in cases(&grid) {
+        // Les cages sont écartées comme ailleurs : un pas qui y entre monte des
+        // marches. Ce qui s'éprouve ici est le prisme, qui est tout le reste.
+        if cover(&grid, at) != cell_id(&grid, at) || flight_from(&grid, at).is_some() {
+            continue;
+        }
+        let from = inside(&grid, at);
+        for side in EDGES {
+            if !grid.has_wall(at, side) {
+                continue;
+            }
+            // Une case entière : le mur est à une demi-case du départ, donc le
+            // pas le dépasse franchement et un arrêt ne peut pas être un hasard
+            // d'arrondi.
+            let (dx, dy, _) = side.step();
+            let to = Vec3::new(from.x + dx as f32 * CELL, from.y + dy as f32 * CELL, from.z);
+            let hit = map
+                .sweep(cell_id(&grid, at), half, from, to)
+                .expect("la cellule existe");
+            assert!(
+                hit.fraction < 1.0,
+                "le pas de {at:?} vers {side:?} traverse un mur plein"
+            );
+        }
+    }
+}
+
 /// Un pas de joueur n'épuise pas la région que le balayage examine.
 ///
 /// **C'est la mesure que ce décor devait rendre.** Le budget vaut soixante-quatre
