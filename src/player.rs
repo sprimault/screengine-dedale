@@ -8,10 +8,13 @@
 //! géométriquement juste et parfaitement faux —, et l'œil se déduit donc du
 //! corps par un décalage. Jamais l'inverse.
 //!
-//! Le déplacement n'est pas encore filtré par le balayage : le vol libre décide
-//! toujours de ce qui est parcouru, et ce module ne fait que porter la pose du
-//! bon côté de la frontière. Ce qui change avec le filtrage est **l'entrée** de
-//! [`Player::advance`], pas le reste.
+//! **Le décor arrête le déplacement, et le corps glisse le long de ce qui
+//! l'arrête.** Le moteur ne rend qu'un temps d'impact et une normale : la réponse
+//! est une politique du jeu, et c'est [`Player::slide`] qui la porte.
+//!
+//! Ce qui n'y est pas encore, et qui se voit en jouant : un départ dans le solide
+//! passe au lieu de se dégager, rien ne tombe, et une marche s'arrête au lieu de
+//! se franchir.
 
 use screengine_play::{Vec3, World};
 
@@ -51,6 +54,19 @@ pub const HALF: Vec3 = Vec3::new(0.3, 0.3, 0.9);
 /// s'impose à ce qui s'apparie au bit près et à ce qui entre dans un volume signé,
 /// pas à ce qui sert à regarder.
 pub const EYE_ABOVE: f32 = 0.6;
+
+/// Combien de plans une glissade consomme au plus dans un même pas.
+///
+/// **Trois sont consommés au pire, et c'est relevé** : un pas en diagonale
+/// descendante dans le coin d'une cellule y présente deux murs et le sol dans le
+/// même mouvement. `une_glissade_garde_sa_marge` le mesure sur toutes les cases et
+/// les vingt-six directions, et exige que le relevé reste **sous** cette borne —
+/// la quatrième passe est donc la marge, celle qui consomme ce qui reste quand les
+/// trois plans ont servi.
+///
+/// **Le dépasser écourte un pas, il ne franchit rien** : chaque passe balaie, donc
+/// la borne ne décide que du confort dans un coin, jamais de la solidité d'un mur.
+const SLIDES: usize = 4;
 
 // **Ce que le décor laisse de place, vérifié à la compilation.** Un corps plus
 // large qu'une cellule coincerait dans un couloir, un corps plus haut que le
@@ -138,7 +154,7 @@ impl Player {
     /// à l'hôte de le redemander.
     pub fn advance(&mut self, map: &World, moved: Vec3) -> f32 {
         let wanted = self.centre + moved;
-        let reached = self.stopped(map, wanted);
+        let (reached, _) = self.slide(map, wanted);
         let travel = reached - self.centre;
 
         self.centre = reached;
@@ -153,13 +169,28 @@ impl Player {
         travel.dot(travel).sqrt()
     }
 
-    /// Jusqu'où le corps peut aller sans entrer dans le décor.
+    /// Jusqu'où le corps va, en glissant le long de ce qui l'arrête.
     ///
-    /// **Il s'arrête net, et c'est volontaire pour l'instant** : la glissade le
-    /// long d'un mur est une politique du jeu à elle seule, et le moteur ne rend
-    /// qu'un temps d'impact et une normale. Un personnage arrêté contre un mur en
-    /// biais n'est donc pas un défaut du moteur — il lui manque trois lignes de
-    /// projection, qui viennent au lot suivant.
+    /// **Chaque passe avance jusqu'au contact, puis retire du reste sa composante
+    /// sur la normale** : ce qui restait d'un pas oblique continue le long du mur
+    /// au lieu de se perdre. C'est toute la politique, et le moteur n'en connaît
+    /// aucune — il rend un temps d'impact et une normale.
+    ///
+    /// **La normale ne tremble pas, et c'est ce qui rend la boucle écrivable.** Le
+    /// moteur classe les arêtes partagées au chargement, par comparaison exacte
+    /// des positions, et une arête rentrante ne porte aucun prisme : un angle
+    /// rentrant rend donc toujours la même face. Sans cela, deux images voisines
+    /// glisseraient le long de deux murs différents.
+    ///
+    /// **Rien ne garde contre un recul, et c'est une mesure, pas un oubli.** Après
+    /// une projection unique, le reste ne peut pas s'opposer au pas demandé —
+    /// l'inégalité de Cauchy-Schwarz le donne —, et seul un enchaînement de deux
+    /// projections le pourrait, ce qui demande un dièdre aigu. Ce décor n'en porte
+    /// aucun, ni par ses murs axiaux ni par une rampe à quarante-cinq degrés, et
+    /// `la_glissade_ne_fait_jamais_reculer` ne déclenche le cas sur aucune case dans
+    /// aucune des vingt-six directions. Un test de signe y serait de la défensive
+    /// autour de ce qui n'arrive pas, et projeter sur l'arête des deux normales n'a
+    /// pas plus de demandeur.
     ///
     /// **Trois cas avant toute politique, et aucun n'est un détail** :
     ///
@@ -173,14 +204,37 @@ impl Player {
     /// - **un départ dans le solide**, que le moteur signale sans dégager. Laissé
     ///   passer ici, et c'est provisoire : le bloquer sans dégager y enfermerait le
     ///   joueur, et le dégagement est le lot d'après.
-    fn stopped(&self, map: &World, wanted: Vec3) -> Vec3 {
+    ///
+    /// Rend le point atteint **et le nombre de plans consommés**, dont seule une
+    /// épreuve se sert : c'est ce qui mesure [`SLIDES`] au lieu de le supposer.
+    fn slide(&self, map: &World, wanted: Vec3) -> (Vec3, usize) {
         if self.cell == 0 {
-            return wanted;
+            return (wanted, 0);
         }
-        match map.sweep(self.cell, HALF, self.centre, wanted) {
-            Some(hit) if !hit.start_solid => self.centre + (wanted - self.centre) * hit.fraction,
-            _ => wanted,
+
+        let mut at = self.centre;
+        let mut rest = wanted - self.centre;
+
+        for plane in 0..SLIDES {
+            let Some(hit) = map.sweep(self.cell, HALF, at, at + rest) else {
+                return (at + rest, plane);
+            };
+            if hit.start_solid {
+                return (wanted, plane);
+            }
+
+            at = at + rest * hit.fraction;
+            // `fraction` et non `surface`, qui vaut zéro pour trois cas distincts
+            // dont deux arrêtent — un portail non apparié, et une troncature.
+            if hit.fraction >= 1.0 {
+                return (at, plane);
+            }
+
+            rest = rest * (1.0 - hit.fraction);
+            rest = rest - hit.normal * rest.dot(hit.normal);
         }
+
+        (at, SLIDES)
     }
 
     /// Où l'œil se trouve, pose de la caméra.

@@ -11,6 +11,7 @@
 
 use super::*;
 use crate::maze::grid::{Settings, Side};
+use screengine_play::sweep_skin;
 
 /// Un labyrinthe d'épreuve, par sa graine.
 ///
@@ -46,6 +47,59 @@ fn cases(grid: &Grid) -> Vec<(u32, u32, u32)> {
         for y in 0..height {
             for x in 0..width {
                 out.push((x, y, z));
+            }
+        }
+    }
+    out
+}
+
+/// La marge que le moteur laisse entre la boîte et ce qu'elle touche.
+///
+/// **Appelée et non recopiée** : le facteur porte sur la plus grande
+/// demi-étendue et non sur chacune, et un nombre repris à la main se tromperait
+/// sur exactement les boîtes où cette règle décide. C'est l'unité dans laquelle
+/// s'énoncent les écarts tolérés ci-dessous — ce qui reste sous elle n'a pas
+/// bougé.
+fn skin() -> f32 {
+    sweep_skin(HALF)
+}
+
+/// La direction unitaire d'un côté, en unités de monde.
+fn unit(side: Side) -> Vec3 {
+    let (dx, dy, dz) = side.step();
+    Vec3::new(dx as f32, dy as f32, dz as f32)
+}
+
+/// Les deux côtés horizontaux perpendiculaires à celui-ci.
+///
+/// Ce sont les tangentes d'un mur : les directions dans lesquelles une glissade
+/// peut emporter ce qui reste du pas.
+fn across(side: Side) -> Vec<Side> {
+    sides()
+        .into_iter()
+        .filter(|s| *s != side && *s != side.facing())
+        .collect()
+}
+
+/// Les vingt-six directions d'un pas d'épreuve : les axes, et toutes leurs
+/// combinaisons.
+///
+/// **Les diagonales comptent autant que les axes**, et plus encore : c'est un pas
+/// oblique qui distingue une glissade d'un arrêt, et c'est lui qui présente deux
+/// normales à la fois dans un coin.
+///
+/// **Le vertical en fait partie, et ce n'est pas une anticipation de la gravité** :
+/// les deux touches du vol d'inspection montent et descendent aujourd'hui, donc un
+/// pas qui rencontre un sol ou un plafond **en même temps** qu'un mur existe déjà.
+/// C'est là que trois plans se présentent dans le même pas.
+fn bearings() -> Vec<Vec3> {
+    let mut out = Vec::with_capacity(26);
+    for dx in [-1.0, 0.0, 1.0] {
+        for dy in [-1.0, 0.0, 1.0] {
+            for dz in [-1.0, 0.0, 1.0] {
+                if dx != 0.0 || dy != 0.0 || dz != 0.0 {
+                    out.push(Vec3::new(dx, dy, dz));
+                }
             }
         }
     }
@@ -246,4 +300,292 @@ fn un_passage_ouvert_laisse_passer_le_joueur() {
             );
         }
     }
+}
+
+/// Un pas oblique contre un mur avance le long de ce mur.
+///
+/// **C'est le prédicat du lot**, et c'est lui qui distingue une glissade d'un
+/// arrêt : sans projection, le pas s'arrêterait net au contact et la part
+/// tangentielle serait perdue — ici le tiers de ce qui était demandé, puisque le
+/// mur est à moins d'un tiers de case.
+///
+/// Le pas vise le mur d'une case entière, bien au-delà de ce qui sépare le corps
+/// de la paroi, et porte en travers un demi-mètre : assez court pour rester dans
+/// la cellule, donc rien d'autre que le mur ne peut l'arrêter, et c'est ce qui
+/// rend l'écart toléré aussi serré que la marge du moteur.
+#[test]
+fn un_pas_oblique_le_long_d_un_mur_glisse() {
+    /// Ce que le pas porte en travers du mur, en unités de monde.
+    const ALONG: f32 = 0.5;
+
+    let (grid, map) = maze(SEEDS[0]);
+    let mut seen = 0;
+
+    for at in cases(&grid) {
+        if !plain(&grid, at) {
+            continue;
+        }
+        for side in sides() {
+            if !grid.has_wall(at, side) {
+                continue;
+            }
+            for tangent in across(side) {
+                let mut player = Player::stand(&grid, &map, at);
+                let before = player.centre;
+                let aim = unit(side) * export::CELL + unit(tangent) * ALONG;
+
+                player.advance(&map, aim);
+                let kept = (player.centre - before).dot(unit(tangent));
+
+                assert!(
+                    kept >= ALONG - skin(),
+                    "contre le mur {side:?} de {at:?}, le pas vers {tangent:?} \
+                     n'a gardé que {kept} de {ALONG}"
+                );
+                seen += 1;
+            }
+        }
+    }
+    assert!(seen > 0, "aucun mur éprouvé : la graine n'en porte pas");
+}
+
+/// Un pas de face contre un mur avance jusqu'à lui, sans dériver sur le côté.
+///
+/// **L'autre moitié du prédicat** : un pas perpendiculaire n'a rien à glisser, et
+/// la glissade ne doit donc rien y changer — le reste du déplacement est
+/// entièrement dans la normale, et la projection le réduit à rien.
+///
+/// **C'est l'avancée qui rend l'épreuve falsifiable, pas l'absence de dérive.**
+/// Celle-ci ne peut pas arriver : le balayage refuse tout reste qui entre dans le
+/// mur, si bien qu'une normale faussée de quarante-cinq degrés passe l'épreuve —
+/// mesuré. Une politique de rebond, elle, ferait reculer au lieu d'avancer, et
+/// c'est ce que la première assertion attrape.
+#[test]
+fn un_pas_de_face_contre_un_mur_ne_derive_pas() {
+    let (grid, map) = maze(SEEDS[0]);
+
+    for at in cases(&grid) {
+        if !plain(&grid, at) {
+            continue;
+        }
+        for side in sides() {
+            if !grid.has_wall(at, side) {
+                continue;
+            }
+            let mut player = Player::stand(&grid, &map, at);
+            let before = player.centre;
+
+            player.advance(&map, unit(side) * export::CELL);
+            let gone = player.centre - before;
+
+            assert!(
+                gone.dot(unit(side)) > 0.0,
+                "le pas de face contre le mur {side:?} de {at:?} n'a pas atteint \
+                 la paroi : il a fait {}",
+                gone.dot(unit(side))
+            );
+            for tangent in across(side) {
+                let drift = gone.dot(unit(tangent));
+                assert!(
+                    drift.abs() <= skin(),
+                    "le pas de face contre le mur {side:?} de {at:?} a dérivé \
+                     de {drift} vers {tangent:?}"
+                );
+            }
+        }
+    }
+}
+
+/// Un coude se prend : poussé dans l'angle, le corps sort par l'ouverture.
+///
+/// **Le coude est un mur devant et un passage sur le côté**, et non deux murs :
+/// un angle fermé arrête au coin avec ou sans glissade — les deux parois étant à
+/// la même distance d'un corps centré, le balayage s'y arrête de lui-même, et une
+/// épreuve bâtie sur ce cas ne mesurerait que le balayage. C'est ce qui l'a fait
+/// réécrire : elle passait sur un code privé de sa projection.
+///
+/// **L'attendu est la progression dans l'ouverture** : le pas pousse d'une case
+/// vers le mur et d'une case vers le passage, et le mur l'arrête à moins d'un
+/// tiers de case. Seul ce qui reste du pas, reporté le long du mur, emmène le
+/// corps au-delà du portail — sans glissade il s'arrête au coin, bien en deçà de
+/// la demi-case exigée ici.
+///
+/// **Et non la cellule d'arrivée, qui serait fausse** : le mur du coude n'existe
+/// pas forcément dans la case suivante, si bien que le reste du pas y repart en
+/// diagonale et dépasse la voisine immédiate. C'est le pas demandé qui s'accomplit,
+/// et l'épreuve ne doit pas le prendre pour un défaut.
+#[test]
+fn un_coude_ne_bloque_pas() {
+    let (grid, map) = maze(SEEDS[0]);
+    let mut seen = 0;
+
+    for at in cases(&grid) {
+        if !plain(&grid, at) {
+            continue;
+        }
+        for side in sides() {
+            if !grid.has_wall(at, side) {
+                continue;
+            }
+            for tangent in across(side) {
+                if grid.has_wall(at, tangent) {
+                    continue;
+                }
+                let next = grid
+                    .neighbour(at, tangent)
+                    .expect("un passage a une voisine");
+                if !plain(&grid, next) {
+                    continue;
+                }
+
+                let mut player = Player::stand(&grid, &map, at);
+                let before = player.centre;
+                let aim = (unit(side) + unit(tangent)) * export::CELL;
+
+                player.advance(&map, aim);
+                let taken = (player.centre - before).dot(unit(tangent));
+
+                assert!(
+                    taken >= export::CELL / 2.0,
+                    "poussé dans le coude {side:?}/{tangent:?} de {at:?}, le corps \
+                     n'a pris que {taken} vers {next:?}"
+                );
+                seen += 1;
+            }
+        }
+    }
+    assert!(seen > 0, "aucun coude éprouvé : la graine n'en porte pas");
+}
+
+/// Aucune glissade ne fait reculer, où qu'on pousse.
+///
+/// **C'est la garde de la boucle**, et elle vaut d'être éprouvée partout : deux
+/// projections successives peuvent renverser ce qui reste du pas, et un joueur
+/// qui part en arrière alors qu'il pousse vers l'avant est ce qui se voit le plus
+/// vite à l'écran. Un déplacement de composante négative sur le pas demandé est
+/// donc un défaut, quelle que soit la géométrie rencontrée.
+#[test]
+fn la_glissade_ne_fait_jamais_reculer() {
+    let (grid, map) = maze(SEEDS[0]);
+
+    for at in cases(&grid) {
+        if !plain(&grid, at) {
+            continue;
+        }
+        for bearing in bearings() {
+            let aim = bearing * export::CELL;
+            let mut player = Player::stand(&grid, &map, at);
+            let before = player.centre;
+
+            player.advance(&map, aim);
+            let gone = player.centre - before;
+
+            assert!(
+                gone.dot(aim) >= 0.0,
+                "en {at:?}, un pas vers {aim:?} a reculé de {gone:?}"
+            );
+        }
+    }
+}
+
+/// Longer un mur pas à pas avance sans accrocher.
+///
+/// **Les autres épreuves partent toutes du centre d'une case**, donc d'un corps
+/// loin de toute paroi, et aucune ne voit ce qui arrive après la première image :
+/// en jouant, on longe un mur **collé** à lui, et chaque pas repart d'un contact.
+/// C'est l'angle mort qui a laissé passer un blocage visible à l'écran.
+///
+/// Le pas vaut ce qu'une image parcourt, et non une case : c'est le régime réel,
+/// et c'est lui qui enchaîne les contacts.
+///
+/// **Elle attend un correctif du moteur, et elle est née rouge.** Un corps posé à
+/// la distance de contact que le balayage rend lui-même est arrêté par l'**arête
+/// terminale** du panneau qu'il longe, à la jointure de deux cellules : fraction
+/// `1,67e-6` au lieu de 1, normale `(0, 1, 0)` perpendiculaire à celle du mur
+/// `(1, 0, 0)`, et la même surface nommée pour les deux. Un demi-millième d'unité
+/// d'écart — la moitié d'une peau — suffit à libérer le pas, et rien n'obstrue :
+/// la case d'en face n'a pas de mur de ce côté.
+#[test]
+#[ignore = "attend un correctif du moteur : l'arête terminale d'un panneau arrête \
+            la boîte qui le longe à la distance de contact"]
+fn longer_un_mur_pas_a_pas_avance() {
+    /// Ce qu'une image parcourt, en unités de monde.
+    const STEP: f32 = 0.05;
+    /// Combien d'images la sonde enchaîne.
+    const FRAMES: usize = 120;
+
+    let (grid, map) = maze(SEEDS[0]);
+    let mut seen = 0;
+
+    for at in cases(&grid) {
+        if !plain(&grid, at) {
+            continue;
+        }
+        for side in sides() {
+            if !grid.has_wall(at, side) {
+                continue;
+            }
+            for tangent in across(side) {
+                if grid.has_wall(at, tangent) {
+                    continue;
+                }
+
+                let mut player = Player::stand(&grid, &map, at);
+                let before = player.centre;
+                let push = (unit(side) + unit(tangent)) * STEP;
+                for _ in 0..FRAMES {
+                    player.advance(&map, push);
+                }
+                let taken = (player.centre - before).dot(unit(tangent));
+
+                // La moitié de ce qui a été demandé en travers : large, parce que
+                // la case voisine peut fermer plus loin. Ce qui est cherché est un
+                // blocage, pas une mesure fine.
+                let asked = STEP * FRAMES as f32;
+                assert!(
+                    taken >= asked / 2.0,
+                    "le long du mur {side:?} de {at:?} vers {tangent:?}, \
+                     {FRAMES} pas n'ont avancé que de {taken} sur {asked}"
+                );
+                seen += 1;
+            }
+        }
+    }
+    assert!(seen > 0, "aucun mur longeable éprouvé");
+}
+
+/// La glissade garde de la marge sur le nombre de plans qu'elle peut consommer.
+///
+/// **C'est ce qui fait de [`SLIDES`] une mesure et non un ordre de grandeur.** Le
+/// raisonnement disait trois plans au pire — deux murs et un sol, ou une rampe et
+/// deux murs ; cette épreuve relève ce qui est réellement employé sur toutes les
+/// cases et les huit directions, et exige qu'il reste **sous** la borne. Si elle
+/// échoue, c'est le raisonnement qu'il faut reprendre, pas la constante qu'il faut
+/// relever.
+#[test]
+fn une_glissade_garde_sa_marge() {
+    let (grid, map) = maze(SEEDS[0]);
+    let mut worst = 0;
+    let mut whence = None;
+
+    for at in cases(&grid) {
+        if !plain(&grid, at) {
+            continue;
+        }
+        for bearing in bearings() {
+            let player = Player::stand(&grid, &map, at);
+            let wanted = player.centre + bearing * export::CELL;
+            let (_, planes) = player.slide(&map, wanted);
+
+            if planes > worst {
+                worst = planes;
+                whence = Some((at, bearing));
+            }
+        }
+    }
+
+    assert!(
+        worst < SLIDES,
+        "une glissade a consommé les {SLIDES} plans de la borne, en {whence:?}"
+    );
 }
