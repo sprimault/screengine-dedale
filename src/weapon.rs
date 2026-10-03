@@ -38,8 +38,19 @@ mod tests;
 /// **Chargée masquée et non pas simplement lue** : sans le format à masque
 /// l'alpha est ignoré, le quadrilatère entier se dessine, et les texels que le
 /// détourage avait vidés reparaissent avec leur couleur — le fond du canon en
-/// tête. La pose de tir attend l'étape 4, qui aura de quoi la déclencher.
-const PLATE: &[u8] = include_bytes!("../assets/sprites/mains-revolver-repos.png");
+/// tête.
+const REST: &[u8] = include_bytes!("../assets/sprites/mains-revolver-repos.png");
+
+/// Celle du coup de feu, montrée le temps d'un éclair.
+const FIRE: &[u8] = include_bytes!("../assets/sprites/mains-revolver-tir.png");
+
+/// Combien de temps la pose de tir reste à l'écran, en secondes.
+///
+/// **Deux ou trois images, pas plus** : un éclair de bouche est bref, et le tenir
+/// plus longtemps donne une arme qui reste figée en avant au lieu de claquer. La
+/// durée se compte en secondes et non en images, pour ne pas dépendre de la
+/// cadence.
+const FLASH: f32 = 0.05;
 
 /// Le côté de la planche, en texels.
 const SIDE: f32 = 512.0;
@@ -97,10 +108,14 @@ const ROLL_DRAG: f32 = 0.8;
 // donc vérifiée ici et non dans une épreuve.
 const _: () = assert!(DISTANCE < HALF.x);
 
-/// L'arme que le joueur tient : sa planche, et où elle en est de son balancement.
+/// L'arme que le joueur tient : ses planches, et où elle en est de son balancement.
 pub struct Weapon {
-    /// La planche, chargée une fois.
-    plate: Arc<Texture>,
+    /// La planche de repos, chargée une fois.
+    rest: Arc<Texture>,
+    /// Celle du coup de feu.
+    fire: Arc<Texture>,
+    /// Ce qui reste de l'éclair, en secondes, ou zéro au repos.
+    flash: f32,
     /// La phase du pas, en tours — sa partie fractionnaire seule compte.
     stride: f32,
     /// Le retard du lacet sur la caméra, qui décale l'arme quand on tourne.
@@ -120,11 +135,27 @@ impl Weapon {
     /// que l'appelant sait déjà en rendre compte.
     pub fn new(yaw: f32) -> Result<Self, Error> {
         Ok(Self {
-            plate: Arc::new(load_png_masked(PLATE)?),
+            rest: Arc::new(load_png_masked(REST)?),
+            fire: Arc::new(load_png_masked(FIRE)?),
+            flash: 0.0,
             stride: 0.0,
             drag: 0.0,
             last_yaw: yaw,
         })
+    }
+
+    /// Montre la pose de tir, le temps d'un éclair.
+    ///
+    /// **Elle ne fait que cela**, et c'est le périmètre : pas de rayon, pas de
+    /// point d'impact, pas de test contre une créature. Le tir se résout en deux
+    /// temps à l'étape 4 — le rayon contre le décor est l'affaire du moteur, le
+    /// test contre un monstre celle du jeu —, et le geste sera déjà là pour y
+    /// accrocher ses conséquences.
+    ///
+    /// Un appui pendant l'éclair le relance depuis sa durée pleine, plutôt que de
+    /// s'ajouter : une arme ne tire pas deux fois en deux images.
+    pub fn shoot(&mut self) {
+        self.flash = FLASH;
     }
 
     /// Avance le balancement de ce qui a été parcouru, et suit le lacet.
@@ -132,12 +163,16 @@ impl Weapon {
     /// **La distance arrive mesurée, elle ne se déduit pas des touches** : le
     /// déplacement sera bientôt freiné par le décor, et c'est ce qui a vraiment
     /// été parcouru qui fait marcher.
-    pub fn advance(&mut self, travel: f32, yaw: f32) {
+    pub fn advance(&mut self, travel: f32, yaw: f32, dt: f32) {
         if travel > 0.0 {
             self.stride += travel / STRIDE;
         }
         self.drag += (yaw - self.last_yaw - self.drag) * RECOIL;
         self.last_yaw = yaw;
+
+        // L'éclair s'éteint au temps et non à la distance : il ne dépend pas de la
+        // marche, et il ne se prolonge pas quand on s'arrête.
+        self.flash = (self.flash - dt).max(0.0);
     }
 }
 
@@ -189,7 +224,11 @@ pub fn submit(
             roll,
             color: Color::new(0xFF, 0xFF, 0xFF, 0xFF),
         }],
-        Some(&weapon.plate),
+        Some(if weapon.flash > 0.0 {
+            &weapon.fire
+        } else {
+            &weapon.rest
+        }),
         SpriteOrientation::Facing,
     )
 }

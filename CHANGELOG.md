@@ -13,7 +13,8 @@ cela s'adresse à quelqu'un.
 ## [Non publié]
 
 ### Ajouté
-- **L'arme en main**, qui balance au rythme des pas et penche dans les virages.
+- **L'arme en main**, qui balance au rythme des pas et penche dans les virages. Le
+  clic droit la fait tirer — la pose seule, pour l'instant.
 
 ### Modifié
 - **Les étages sont plus hauts** d'un demi-mètre : un couloir large de trois mètres
@@ -23,7 +24,8 @@ cela s'adresse à quelqu'un.
 ***
 
 ### Added
-- **The weapon in hand**, swaying with your stride and leaning into turns.
+- **The weapon in hand**, swaying with your stride and leaning into turns. Right
+  click fires it — the pose alone, for now.
 
 ### Changed
 - **Floors are half a metre taller**: a corridor three metres wide under two and a
