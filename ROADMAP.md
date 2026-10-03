@@ -108,6 +108,10 @@ une règle de jeu.
 ressemblent : un recul de deux ou trois images, décidé par le jeu, et un impact
 posé au point de contact. Les deux se compensent, donc ils se décident ensemble.
 
+**Le geste existe déjà**, posé à l'étape 2 avec l'arme : le clic droit montre la
+pose de tir le temps d'un éclair, sans aucun effet. Il ne reste donc ici qu'à y
+accrocher ses conséquences — le rayon, la marque, le test de volume.
+
 ## 5 — La vie, le score, l'interface
 
 Tout dans le tampon de sortie, par `run_with_output` : barre de vie, score, texte.

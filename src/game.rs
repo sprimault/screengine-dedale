@@ -68,6 +68,11 @@ impl Game {
         if tick.input().button_pressed(MouseButton::Middle) {
             tick.capture_cursor(false);
         }
+        // Le clic droit tire, et pour l'instant cela ne fait que montrer la pose :
+        // le rayon contre le décor et le test contre une créature sont l'étape 4.
+        if tick.input().button_pressed(MouseButton::Right) {
+            self.weapon.shoot();
+        }
 
         // **Ce que la caméra demande, mesuré plutôt que déduit des touches.**
         // Elle sera bientôt freinée par le décor, et c'est le corps qui portera
@@ -87,7 +92,7 @@ impl Game {
         // déduit des touches : le jour où le décor freinera le déplacement, l'arme
         // s'arrêtera d'elle-même sans qu'une ligne change ici.
         self.weapon
-            .advance(moved.dot(moved).sqrt(), self.camera.yaw);
+            .advance(moved.dot(moved).sqrt(), self.camera.yaw, tick.dt());
     }
 
     /// Élève ou abaisse la caméra, à vitesse constante.

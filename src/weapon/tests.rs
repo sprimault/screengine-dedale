@@ -23,13 +23,13 @@ fn la_phase_suit_la_distance() {
     let mut weapon = Weapon::new(0.0).expect("planche du dépôt valide");
     assert_eq!(weapon.stride, 0.0);
 
-    weapon.advance(0.0, 0.0);
+    weapon.advance(0.0, 0.0, 0.0);
     assert_eq!(weapon.stride, 0.0, "à l'arrêt, le pas ne défile pas");
 
-    weapon.advance(STRIDE, 0.0);
+    weapon.advance(STRIDE, 0.0, 0.0);
     assert_eq!(weapon.stride, 1.0, "un pas complet vaut un tour");
 
-    weapon.advance(STRIDE / 2.0, 0.0);
+    weapon.advance(STRIDE / 2.0, 0.0, 0.0);
     assert_eq!(weapon.stride, 1.5);
 }
 
@@ -43,19 +43,57 @@ fn l_inertie_du_lacet_s_amortit() {
     let mut weapon = Weapon::new(0.0).expect("planche du dépôt valide");
 
     // Un quart de tour d'un coup : le retard naît.
-    weapon.advance(0.0, 1.0);
+    weapon.advance(0.0, 1.0, 0.0);
     let born = weapon.drag;
     assert!(born > 0.0, "tourner doit décaler l'arme, et non la laisser");
 
     // Puis plus rien ne tourne : il doit décroître, et vers zéro.
     for _ in 0..64 {
-        weapon.advance(0.0, 1.0);
+        weapon.advance(0.0, 1.0, 0.0);
     }
     assert!(
         weapon.drag.abs() < born / 1000.0,
         "le retard vaut encore {} après soixante-quatre pas",
         weapon.drag
     );
+}
+
+/// La pose de tir se montre au coup, et revient au repos d'elle-même.
+///
+/// **L'éclair se compte en secondes, pas en images** : à une cadence deux fois plus
+/// haute il doit durer autant de temps et non deux fois moins. L'épreuve le vérifie
+/// en deux pas inégaux, ce qu'aucune cadence fixe ne dirait.
+#[test]
+fn la_pose_de_tir_s_eteint_d_elle_meme() {
+    let mut weapon = Weapon::new(0.0).expect("planche du dépôt valide");
+    assert_eq!(weapon.flash, 0.0, "l'arme naît au repos");
+
+    weapon.shoot();
+    assert_eq!(weapon.flash, FLASH);
+
+    // Deux pas qui, ensemble, n'épuisent pas l'éclair.
+    weapon.advance(0.0, 0.0, FLASH / 4.0);
+    weapon.advance(0.0, 0.0, FLASH / 4.0);
+    assert!(weapon.flash > 0.0, "l'éclair s'éteint trop tôt");
+
+    // Et un pas long, qui le dépasse : il s'arrête à zéro, jamais en deçà.
+    weapon.advance(0.0, 0.0, FLASH);
+    assert_eq!(weapon.flash, 0.0);
+}
+
+/// Tirer pendant l'éclair le relance, il ne s'accumule pas.
+///
+/// **Une arme ne tire pas deux fois en deux images**, et l'addition donnerait une
+/// pose qui reste figée en avant sous un appui répété — ce qui se verrait comme un
+/// défaut d'animation là où c'est une addition de trop.
+#[test]
+fn tirer_pendant_l_eclair_le_relance() {
+    let mut weapon = Weapon::new(0.0).expect("planche du dépôt valide");
+
+    weapon.shoot();
+    weapon.advance(0.0, 0.0, FLASH / 2.0);
+    weapon.shoot();
+    assert_eq!(weapon.flash, FLASH);
 }
 
 /// Le lacet de départ ne produit aucun décalage.
@@ -67,6 +105,6 @@ fn l_inertie_du_lacet_s_amortit() {
 #[test]
 fn l_arme_nait_dans_l_axe() {
     let mut weapon = Weapon::new(2.5).expect("planche du dépôt valide");
-    weapon.advance(0.0, 2.5);
+    weapon.advance(0.0, 2.5, 0.0);
     assert_eq!(weapon.drag, 0.0);
 }
