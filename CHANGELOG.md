@@ -21,8 +21,8 @@ cela s'adresse à quelqu'un.
   d'une embrasure disparaissait le temps d'une ou deux images.
 
 ### Modifié
-- **Le décor arrête** : murs, sol et plafond retiennent. On ne glisse pas encore le
-  long d'une paroi en biais, on s'y arrête net.
+- **Le décor arrête, et on glisse le long de ce qui arrête** : un pas de biais longe
+  le mur au lieu de s'y coller. Longer une paroi accroche encore de place en place.
 - **Les étages sont plus hauts** d'un demi-mètre : un couloir large de trois mètres
   sous deux et demi paraissait écrasé. Les escaliers et les rampes y sont un peu
   plus raides.
@@ -38,8 +38,8 @@ cela s'adresse à quelqu'un.
   scenery beyond it vanished for a frame or two.
 
 ### Changed
-- **The map stops you**: walls, floor and ceiling hold. You do not yet slide along a
-  slanted wall, you stop dead against it.
+- **The map stops you, and you slide along what stops you**: an angled step follows
+  the wall instead of sticking to it. Hugging a wall still snags here and there.
 - **Floors are half a metre taller**: a corridor three metres wide under two and a
   half looked squashed. Stairs and ramps are a little steeper for it.
 
