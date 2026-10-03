@@ -410,18 +410,19 @@ fn steps(grid: &Grid) -> Vec<(u32, Vec3, Vec3)> {
 /// à l'horizontale, où un sol absent se voit mal. Aucune ne dit qu'un mur retient
 /// quelqu'un.
 ///
-/// **Mesuré sur ce décor** : cent soixante et une cellules de case sur quatre cent
-/// quatre-vingt-dix-neuf n'arrêtent rien — ni leurs murs, ni leur sol, ni leur
-/// plafond —, trois cent trente-huit arrêtent tout, et **aucune n'est mélangée**.
-/// Le partage est donc par cellule, ce qui est la signature d'une normale
-/// intérieure inversée pour toutes ses surfaces d'un coup. Notre export est hors
-/// de cause : le contrôle de volume signé de `prism` passe, portails rentrés, et
-/// chaque face prise à part est correctement enroulée — l'image le confirme.
+/// **Ce qu'elle a trouvé en naissant** : cent soixante et une cellules de case sur
+/// quatre cent quatre-vingt-dix-neuf n'arrêtaient rien — ni leurs murs, ni leur
+/// sol, ni leur plafond —, trois cent trente-huit arrêtaient tout, et **aucune
+/// n'était mélangée**. Ce partage par cellule, et jamais par surface, est ce qui a
+/// désigné le signe du volume d'une cellule : il basculait avec sa position dans le
+/// monde et retournait toutes ses normales d'un coup.
 ///
-/// **En attente nommée**, comme l'épreuve du pas au sol avant elle : elle dira que
-/// la voie est libre le jour où le correctif arrivera.
+/// **Soixante-quatre unités de côté sont ce qu'il fallait pour le voir** : le
+/// résidu de la somme croissait avec la distance à l'origine, et le décor de
+/// conformance du moteur est posé dessus. C'est la troisième fois que ce dépôt
+/// trouve un défaut qu'un oracle ne pouvait pas voir, et la troisième fois qu'un
+/// prédicat le trouve.
 #[test]
-#[ignore = "une cellule de case sur trois n'arrête rien, et le partage se fait par cellule"]
 fn un_mur_plein_arrete_un_pas() {
     let grid = grid();
     let map = World::load(&world(&grid)).expect("carte engendrée valide");
