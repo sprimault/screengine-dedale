@@ -40,12 +40,11 @@ const SEEDS: [u64; 6] = [0x5EED_1A8E, 1, 2, 3, 0xD1CE, 0xFACE];
 /// y dépasse le palier et surplombe des marches, ou repose sur une rampe à
 /// quarante-cinq degrés. Posé à la seule cote du sol, le corps les pénètre.
 ///
-/// **En attente nommée** : une cellule de case sur trois n'arrête rien, donc le
-/// balayage qui pose le corps n'y rencontre pas son sol et le laisse en dessous.
-/// Le défaut est du moteur — `un_mur_plein_arrete_un_pas` le mesure —, et cette
-/// épreuve deviendra verte avec son correctif, sans que ce module change.
+/// **Elle a attendu un correctif du moteur, et c'est elle qui l'a rendu visible
+/// chez nous** : une cellule de case sur trois n'arrêtait rien, donc le balayage
+/// qui pose le corps n'y rencontrait pas son sol et le laissait en dessous.
+/// `un_mur_plein_arrete_un_pas` porte la mesure qui a désigné la cause.
 #[test]
-#[ignore = "le balayage ne voit pas le sol d'une cellule sur trois, donc la pose tombe dedans"]
 fn le_joueur_nait_hors_du_solide() {
     for seed in SEEDS {
         let (grid, map) = maze(seed);
@@ -84,9 +83,8 @@ fn le_joueur_nait_hors_du_solide() {
 /// rester sous la dilatation de la boîte : un millième de sa plus grande
 /// demi-étendue.
 ///
-/// **En attente nommée**, pour la même raison que l'épreuve précédente.
+/// Elle a attendu le même correctif que l'épreuve précédente, pour la même raison.
 #[test]
-#[ignore = "le balayage ne voit pas le sol d'une cellule sur trois, donc rien ne le porte"]
 fn le_joueur_nait_pose_sur_son_sol() {
     /// La course de la sonde, en unités de monde.
     const PROBE: f32 = 1.0;
