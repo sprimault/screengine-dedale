@@ -173,6 +173,52 @@ fn divergence(left: &[u8], right: &[u8]) -> (usize, usize) {
     (differing, WIDTH as usize * HEIGHT as usize)
 }
 
+/// Les deux chemins rendent la même image à chacune des poses, et la rendent
+/// complète.
+///
+/// **C'est le corps commun des oracles de rendu**, extrait à sa troisième
+/// occurrence : la traversée d'un côté, le décor entier de l'autre, et le même
+/// décompte. Ce qui distingue un oracle du suivant est le choix des poses, et lui
+/// seul — c'est ce qu'il fallait rendre évident, puisque l'angle mort d'un oracle
+/// est toujours là.
+///
+/// **Le budget vaut huit fois le décor** : le chemin brut soumet la carte entière,
+/// visible ou non, et le défaut du moteur serait de le laisser refuser pour une
+/// raison qui n'a rien à voir avec ce qu'on mesure.
+fn accord(scenery: &Scenery, poses: &[Camera]) {
+    let budget = scenery.map.triangle_count() * 8;
+
+    for (rank, &pose) in poses.iter().enumerate() {
+        let cell = scenery.map.locate(pose.position);
+        assert_ne!(cell, 0, "la pose {rank} est hors de la carte");
+
+        let mut walked = context(budget);
+        let seen = submit(&mut walked, scenery, &View { camera: pose, cell })
+            .expect("scène soumise par la traversée");
+        assert_eq!(
+            seen,
+            Visibility::Complete,
+            "la traversée tronque à la pose {rank} : les budgets du moteur ne suffisent pas à ce décor"
+        );
+
+        let mut whole = context(budget);
+        whole.set_camera(pose).expect("caméra posée");
+        whole
+            .submit_world(Affine3::IDENTITY, &scenery.map, |rank| {
+                scenery.materials.get(rank as usize)
+            })
+            .expect("décor entier soumis");
+
+        let (differing, total) = divergence(&frame(&mut walked), &frame(&mut whole));
+        assert_eq!(
+            differing, 0,
+            "la traversée diverge du décor entier sur {differing} pixels sur {total} \
+             à la pose {rank}, œil ({:.2} {:.2} {:.2})",
+            pose.position.x, pose.position.y, pose.position.z
+        );
+    }
+}
+
 /// La scène se construit hors de toute fenêtre.
 ///
 /// C'est la contrainte que `ROADMAP.md` annonce pour l'étape 8 : l'image animée
@@ -225,36 +271,7 @@ fn la_scene_se_rend_hors_fenetre() {
 #[test]
 fn la_traversee_rend_la_meme_image_que_le_decor_entier() {
     let scenery = Scenery::new(settings()).expect("labyrinthe et planches valides");
-    let budget = scenery.map.triangle_count() * 8;
-
-    for (rank, pose) in poses(&scenery).into_iter().enumerate() {
-        let cell = scenery.map.locate(pose.position);
-        assert_ne!(cell, 0, "la pose {rank} est hors de la carte");
-
-        let mut walked = context(budget);
-        let seen = submit(&mut walked, &scenery, &View { camera: pose, cell })
-            .expect("scène soumise par la traversée");
-        assert_eq!(
-            seen,
-            Visibility::Complete,
-            "la traversée tronque à la pose {rank} : les budgets du moteur ne suffisent pas à ce décor"
-        );
-
-        let mut whole = context(budget);
-        whole.set_camera(pose).expect("caméra posée");
-        whole
-            .submit_world(Affine3::IDENTITY, &scenery.map, |rank| {
-                scenery.materials.get(rank as usize)
-            })
-            .expect("décor entier soumis");
-
-        let (differing, total) = divergence(&frame(&mut walked), &frame(&mut whole));
-        assert_eq!(
-            differing, 0,
-            "la traversée diverge du décor entier sur {differing} pixels sur {total} \
-             à la pose {rank}"
-        );
-    }
+    accord(&scenery, &poses(&scenery));
 }
 
 /// Le même oracle, **contre le plan d'un portail**.
@@ -273,38 +290,91 @@ fn la_traversee_rend_la_meme_image_que_le_decor_entier() {
 #[ignore = "un portail que le plan proche croise n'est pas déplié, et la traversée l'annonce complète"]
 fn la_traversee_rend_la_meme_image_contre_un_portail() {
     let scenery = Scenery::new(settings()).expect("labyrinthe et planches valides");
-    let budget = scenery.map.triangle_count() * 8;
-
     let poses = poses_contre_un_portail(&scenery);
     assert!(!poses.is_empty(), "aucune case plate n'ouvre vers l'est");
+    accord(&scenery, &poses);
+}
 
-    for (rank, pose) in poses.into_iter().enumerate() {
-        let cell = scenery.map.locate(pose.position);
-        assert_ne!(cell, 0, "la pose {rank} est hors de la carte");
+/// Les poses d'une marche où l'image s'est amputée, en abscisse, ordonnée, cote
+/// et lacet en degrés.
+///
+/// **Relevées, non construites**, et c'est leur seule raison d'être ici : les
+/// trente épisodes d'un parcours du 2026-10-03, sur la carte que [`settings`]
+/// engendre — ce sont aussi les réglages du jeu, donc rien n'est à transposer.
+///
+/// **Le tangage est absent parce qu'il était nul partout**, aux trente épisodes.
+/// C'est une mesure et non une simplification : le vol du diagnostic garde
+/// l'horizon, et ce qui vide l'image n'a donc rien à lui devoir.
+///
+/// **La cote est la même partout, et c'est ce qu'elles apportent** : cinq, donc
+/// l'étage du haut, là où [`poses_contre_un_portail`] travaille à l'étage du bas.
+/// C'était la dernière différence entre une marche qui se trouait et une épreuve
+/// qui ne voyait rien.
+const WALKED: [(f32, f32, f32, f32); 30] = [
+    (32.58, 34.36, 5.00, 166.16),
+    (31.59, 34.34, 5.00, 190.99),
+    (29.89, 35.42, 5.00, 110.77),
+    (29.72, 36.46, 5.00, 91.67),
+    (29.63, 39.46, 5.00, 91.67),
+    (29.60, 40.46, 5.00, 91.67),
+    (28.58, 41.17, 5.00, 169.98),
+    (27.59, 41.29, 5.00, 179.53),
+    (24.59, 41.32, 5.00, 179.53),
+    (23.59, 41.32, 5.00, 179.53),
+    (20.59, 41.35, 5.00, 179.53),
+    (19.59, 41.36, 5.00, 179.53),
+    (16.59, 41.38, 5.00, 179.53),
+    (15.59, 41.39, 5.00, 179.53),
+    (12.59, 41.42, 5.00, 177.62),
+    (11.59, 41.75, 5.00, 147.06),
+    (10.30, 43.42, 5.00, 91.67),
+    (10.45, 44.39, 5.00, 28.65),
+    (11.40, 45.00, 5.00, 43.93),
+    (12.40, 45.97, 5.00, 36.29),
+    (13.68, 47.42, 5.00, 74.48),
+    (13.69, 48.41, 5.00, 103.13),
+    (12.57, 49.75, 5.00, 154.70),
+    (11.60, 49.92, 5.00, 181.44),
+    (10.17, 51.42, 5.00, 85.94),
+    (10.54, 52.41, 5.00, 55.39),
+    (11.40, 53.13, 5.00, 32.47),
+    (12.40, 54.08, 5.00, 61.12),
+    (13.07, 55.39, 5.00, 63.03),
+    (13.36, 56.40, 5.00, 85.94),
+];
 
-        let mut walked = context(budget);
-        let seen = submit(&mut walked, &scenery, &View { camera: pose, cell })
-            .expect("scène soumise par la traversée");
-        assert_eq!(
-            seen,
-            Visibility::Complete,
-            "la traversée tronque à la pose {rank}"
-        );
+/// Le même oracle, **aux poses d'une marche**.
+///
+/// **Elle est la seule à ne rien choisir**, et c'est pour cela qu'elle vaut : ses
+/// poses viennent du jeu, relevées là où l'image s'est amputée, donc elle ne peut
+/// pas avoir l'angle mort d'un échantillonnage décidé à l'avance. Les deux autres
+/// oracles l'ont eu chacun à leur tour.
+///
+/// **Les poses se reconstruisent par `FreeCamera`**, comme le jeu les construit, et
+/// non par un quaternion écrit ici : c'est ce qui garantit qu'on repose la même
+/// orientation sans redeviner l'ordre de composition du lacet et du tangage.
+///
+/// **Et elle a mesuré le partage** : quatorze de ces trente poses sont tombées à
+/// zéro divergence d'une version du moteur à la suivante, et ce sont celles dont le
+/// lacet est à moins de deux degrés de l'axe du portail. Les seize autres n'ont pas
+/// bougé d'un pixel, dont deux qui perdent l'écran entier à quatre et dix degrés de
+/// l'axe — ce qui est la configuration qui reste à corriger.
+#[test]
+#[ignore = "un portail que le plan proche croise n'est pas déplié, et la traversée l'annonce complète"]
+fn la_traversee_rend_la_meme_image_aux_poses_relevees() {
+    let scenery = Scenery::new(settings()).expect("labyrinthe et planches valides");
+    let poses: Vec<Camera> = WALKED
+        .iter()
+        .map(|&(x, y, z, yaw)| {
+            let at = Vec3::new(x, y, z);
+            FreeCamera {
+                yaw: yaw.to_radians(),
+                pitch: 0.0,
+                ..FreeCamera::new(at)
+            }
+            .camera()
+        })
+        .collect();
 
-        let mut whole = context(budget);
-        whole.set_camera(pose).expect("caméra posée");
-        whole
-            .submit_world(Affine3::IDENTITY, &scenery.map, |rank| {
-                scenery.materials.get(rank as usize)
-            })
-            .expect("décor entier soumis");
-
-        let (differing, total) = divergence(&frame(&mut walked), &frame(&mut whole));
-        assert_eq!(
-            differing, 0,
-            "la traversée diverge du décor entier sur {differing} pixels sur {total} \
-             à la pose {rank}, dont l'œil est en x = {}",
-            pose.position.x
-        );
-    }
+    accord(&scenery, &poses);
 }
