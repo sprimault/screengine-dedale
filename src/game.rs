@@ -11,11 +11,12 @@
 //! La partie **lit** le monde, en revanche, et c'est normal : suivre sa cellule
 //! demande d'interroger la carte.
 
-use screengine_play::{FreeCamera, KeyCode, MouseButton, Tick, World};
+use screengine_play::{Error, FreeCamera, KeyCode, MouseButton, Tick, World};
 
 use crate::maze::grid::Grid;
 use crate::player::Player;
 use crate::scene::View;
+use crate::weapon::Weapon;
 
 /// Ce que la partie garde entre deux images.
 pub struct Game {
@@ -30,16 +31,26 @@ pub struct Game {
     /// garde son altitude, donc le jeu y ajoute deux touches, sans quoi un décor à
     /// étages ne s'inspecte pas.
     camera: FreeCamera,
+    /// L'arme qu'il tient, et où elle en est de son balancement.
+    weapon: Weapon,
 }
 
 impl Game {
     /// Une partie qui commence à l'entrée du labyrinthe, le joueur debout.
-    pub fn new(grid: &Grid, map: &World) -> Self {
+    ///
+    /// # Erreurs
+    ///
+    /// Si la planche de l'arme ne se décode pas — elle est intégrée au binaire,
+    /// donc jamais en pratique, mais un `expect` sur un chemin atteignable n'a pas
+    /// sa place et l'appelant sait déjà rendre compte d'une erreur.
+    pub fn new(grid: &Grid, map: &World) -> Result<Self, Error> {
         let player = Player::spawn(grid, map);
-        Self {
-            camera: FreeCamera::new(player.eye()),
+        let camera = FreeCamera::new(player.eye());
+        Ok(Self {
+            weapon: Weapon::new(camera.yaw)?,
+            camera,
             player,
-        }
+        })
     }
 
     /// Avance d'un pas : la caméra bouge, et sa cellule la suit.
@@ -71,6 +82,12 @@ impl Game {
         // Le corps porte la pose, donc la caméra se recale sur son œil : une
         // seule position fait foi, et ce n'est pas celle-ci.
         self.camera.position = self.player.eye();
+
+        // **Le balancement suit ce qui a été parcouru**, mesuré après coup et non
+        // déduit des touches : le jour où le décor freinera le déplacement, l'arme
+        // s'arrêtera d'elle-même sans qu'une ligne change ici.
+        self.weapon
+            .advance(moved.dot(moved).sqrt(), self.camera.yaw);
     }
 
     /// Élève ou abaisse la caméra, à vitesse constante.
@@ -106,5 +123,10 @@ impl Game {
     /// La cellule courante, que le plan de contrôle marque.
     pub fn cell(&self) -> u32 {
         self.player.cell()
+    }
+
+    /// L'arme en main, que le rendu soumet après le décor.
+    pub fn weapon(&self) -> &Weapon {
+        &self.weapon
     }
 }
