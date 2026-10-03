@@ -17,6 +17,8 @@ cela s'adresse à quelqu'un.
   clic droit la fait tirer — la pose seule, pour l'instant.
 
 ### Modifié
+- **Le décor arrête** : murs, sol et plafond retiennent. On ne glisse pas encore le
+  long d'une paroi en biais, on s'y arrête net.
 - **Les étages sont plus hauts** d'un demi-mètre : un couloir large de trois mètres
   sous deux et demi paraissait écrasé. Les escaliers et les rampes y sont un peu
   plus raides.
@@ -28,6 +30,8 @@ cela s'adresse à quelqu'un.
   click fires it — the pose alone, for now.
 
 ### Changed
+- **The map stops you**: walls, floor and ceiling hold. You do not yet slide along a
+  slanted wall, you stop dead against it.
 - **Floors are half a metre taller**: a corridor three metres wide under two and a
   half looked squashed. Stairs and ramps are a little steeper for it.
 

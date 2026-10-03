@@ -69,6 +69,7 @@ Left click grabs the cursor, middle click releases it, `Esc` quits.
 | mouse | aim the view, once the cursor is grabbed |
 | `Space` `C` | rise, descend |
 
-**The view flies, it does not walk yet**: nothing stops the camera and altitude only
-changes with `Space` and `C`, so a staircase is climbed by hand. Walking and gravity
-come with the next step.
+**The map stops you, but you do not walk yet**: walls, floor and ceiling hold, and
+altitude only changes with `Space` and `C`, so a staircase is climbed by rising while
+moving forward. Walking, gravity and sliding along a wall come next — for now you stop
+dead against a slanted wall.

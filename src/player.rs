@@ -92,7 +92,16 @@ impl Player {
     /// moteur, le balayage n'y rencontre rien, et le corps resterait là où le
     /// calcul l'a mis — c'est-à-dire là où on voulait précisément ne pas décider.
     pub fn spawn(grid: &Grid, map: &World) -> Self {
-        let at = grid.start();
+        Self::stand(grid, map, grid.start())
+    }
+
+    /// Pose le joueur debout sur une case donnée.
+    ///
+    /// **Le départ n'est qu'un cas particulier**, et c'est ce qui rend la pose
+    /// éprouvable ailleurs qu'à l'entrée : un prédicat de déplacement a besoin de
+    /// se placer où il veut, et recopier ce calcul dans les épreuves le ferait
+    /// diverger de celui du jeu.
+    pub fn stand(grid: &Grid, map: &World, at: (u32, u32, u32)) -> Self {
         let cell = export::cover(grid, at);
         let spot = export::ground(grid, at);
 
@@ -117,17 +126,22 @@ impl Player {
         }
     }
 
-    /// Déplace le corps de ce qui a été parcouru, et suit sa cellule.
+    /// Déplace le corps de ce qu'il peut parcourir, et suit sa cellule.
     ///
-    /// **Le déplacement arrive filtré ou non, et ce module n'en sait rien** :
-    /// c'est ce qui permettra au balayage de s'interposer sans toucher à la suite.
+    /// **Le décor arrête désormais le déplacement**, et ce qui est rendu est la
+    /// distance réellement franchie : l'appelant s'en sert pour ce qui dépend de
+    /// la marche, et elle vaut zéro contre un mur.
     ///
     /// Le suivi porte sur le **centre du corps** et non sur l'œil, parce que c'est
     /// lui qui a un volume et que c'est son volume qu'on balaie. Le moteur ne se
-    /// relocalise jamais de lui-même : zéro veut dire « sorti du décor », et tant
-    /// que le vol libre traverse les murs il faut le lui redemander.
-    pub fn advance(&mut self, map: &World, moved: Vec3) {
-        self.centre = self.centre + moved;
+    /// relocalise jamais de lui-même : zéro veut dire « sorti du décor », et c'est
+    /// à l'hôte de le redemander.
+    pub fn advance(&mut self, map: &World, moved: Vec3) -> f32 {
+        let wanted = self.centre + moved;
+        let reached = self.stopped(map, wanted);
+        let travel = reached - self.centre;
+
+        self.centre = reached;
         let found = map.track(self.cell, self.previous, self.centre);
         self.cell = if found == 0 {
             map.locate(self.centre)
@@ -135,6 +149,38 @@ impl Player {
             found
         };
         self.previous = self.centre;
+
+        travel.dot(travel).sqrt()
+    }
+
+    /// Jusqu'où le corps peut aller sans entrer dans le décor.
+    ///
+    /// **Il s'arrête net, et c'est volontaire pour l'instant** : la glissade le
+    /// long d'un mur est une politique du jeu à elle seule, et le moteur ne rend
+    /// qu'un temps d'impact et une normale. Un personnage arrêté contre un mur en
+    /// biais n'est donc pas un défaut du moteur — il lui manque trois lignes de
+    /// projection, qui viennent au lot suivant.
+    ///
+    /// **Trois cas avant toute politique, et aucun n'est un détail** :
+    ///
+    /// - **hors du décor**, la cellule valant zéro : rien à balayer, et refuser le
+    ///   déplacement enfermerait dehors. Le zéro se teste ici parce que l'API ne
+    ///   le distingue pas d'un identifiant inconnu — les deux rendent `None`, là
+    ///   où la frontière C les sépare ;
+    /// - **une cellule que la carte ne connaît pas**, qui ne devrait pas arriver
+    ///   puisqu'elle vient du suivi : le déplacement passe plutôt que de bloquer
+    ///   sur une erreur de comptabilité ;
+    /// - **un départ dans le solide**, que le moteur signale sans dégager. Laissé
+    ///   passer ici, et c'est provisoire : le bloquer sans dégager y enfermerait le
+    ///   joueur, et le dégagement est le lot d'après.
+    fn stopped(&self, map: &World, wanted: Vec3) -> Vec3 {
+        if self.cell == 0 {
+            return wanted;
+        }
+        match map.sweep(self.cell, HALF, self.centre, wanted) {
+            Some(hit) if !hit.start_solid => self.centre + (wanted - self.centre) * hit.fraction,
+            _ => wanted,
+        }
     }
 
     /// Où l'œil se trouve, pose de la caméra.

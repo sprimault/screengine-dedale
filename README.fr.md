@@ -72,6 +72,7 @@ Clic gauche prend le curseur, clic du milieu le rend, `Échap` quitte.
 | souris | orienter la vue, le curseur pris |
 | `Espace` `C` | monter, descendre |
 
-**La vue vole, elle ne marche pas encore** : rien n'arrête la caméra et l'altitude ne
-change qu'avec `Espace` et `C`, si bien qu'un escalier se gravit à la main. La marche
-et la gravité viennent à l'étape suivante.
+**Le décor arrête, mais on ne marche pas encore** : les murs, le sol et le plafond
+retiennent, et l'altitude ne change qu'avec `Espace` et `C`, si bien qu'un escalier se
+gravit en montant tout en avançant. La marche, la gravité et la glissade le long d'un
+mur viennent ensuite — pour l'instant on s'arrête net contre une paroi en biais.
