@@ -184,7 +184,15 @@ fn mark(
     if cell == maze.exit() {
         ring(output, left + 1, top + 1, inner, EXIT);
     }
-    if export::cell_id(maze, cell) == here {
+    // **La cellule qui couvre la case, et non l'identifiant de la case.** Une cage
+    // tient deux cases superposées et sort au rang de son pied : celle du haut
+    // porte un identifiant qu'aucune cellule du fichier ne nomme, et se comparer
+    // à lui ne marquait jamais l'étage où l'on se trouve vraiment.
+    //
+    // Les deux cases d'une cage s'allument donc ensemble, ce qui est exact — on
+    // est dans une cellule qui les occupe toutes les deux — et commode : la cage
+    // se repère du même coup sur les deux plans.
+    if export::cover(maze, cell) == here {
         block(output, left + 2, top + 2, inner - 2, inner - 2, HERE);
         return;
     }
