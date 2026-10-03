@@ -15,14 +15,74 @@
 //! **Hors dépôt**, dans `.tmp/`, que l'antivirus ne surveille pas et que git
 //! ignore — c'est le répertoire où tout ce que ce projet écrit doit aller.
 
+use std::fmt;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::Path;
 
-use screengine_play::{Output, Vec3, Visibility, World};
+use screengine_play::{FreeCamera, Output, Vec3, Visibility, World};
+
+#[cfg(test)]
+mod tests;
 
 /// Où le relevé s'écrit.
 const LOG: &str = ".tmp/visibilite.log";
+
+/// La pose que le relevé situe, et de quoi la rejouer.
+///
+/// **Sans l'orientation, un épisode n'est pas reproductible** : on sait qu'une
+/// image s'est vidée et où, jamais en regardant quoi. Dix-huit épisodes relevés
+/// en marchant n'ont servi à rien pour cette raison — aucune épreuve ne pouvait
+/// reposer la caméra là où elle était.
+///
+/// **Le lacet et le tangage, et non le quaternion rendu** : ce sont eux que
+/// `FreeCamera` tient pour état réel et dont elle recompose son orientation à
+/// chaque image. Reposés tels quels dans une `FreeCamera`, ils rendent la pose
+/// au bit près, sans convention d'ordre de composition à redeviner.
+#[derive(Clone, Copy)]
+pub struct Aim {
+    /// Où l'œil est, en coordonnées de monde.
+    pub eye: Vec3,
+    /// Le lacet, en radians, comme la caméra libre le porte.
+    pub yaw: f32,
+    /// Le tangage, en radians, de même.
+    pub pitch: f32,
+    /// La cellule donnée à la traversée, qui n'est pas forcément celle de l'œil.
+    pub cell: u32,
+}
+
+impl Aim {
+    /// Ce que le jeu regarde, pris de sa caméra libre.
+    pub fn new(camera: &FreeCamera, cell: u32) -> Self {
+        Self {
+            eye: camera.position,
+            yaw: camera.yaw,
+            pitch: camera.pitch,
+            cell,
+        }
+    }
+}
+
+impl fmt::Display for Aim {
+    /// La queue commune des trois sortes de lignes.
+    ///
+    /// **Les angles en degrés** : on les relit à l'œil pour se situer dans un
+    /// couloir, et un quart de tour en radians ne se reconnaît pas. La précision
+    /// au centième suffit à reposer la pose — le défaut qu'on traque tient à des
+    /// centièmes d'unité, pas à des millièmes de degré.
+    fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            out,
+            "œil ({:.2} {:.2} {:.2}), lacet {:.2}°, tangage {:.2}°, cellule {}",
+            self.eye.x,
+            self.eye.y,
+            self.eye.z,
+            self.yaw.to_degrees(),
+            self.pitch.to_degrees(),
+            self.cell
+        )
+    }
+}
 
 /// Ce qu'une soumission de scène a donné.
 ///
@@ -116,7 +176,7 @@ impl Probe {
     /// n'a pas de raison d'être noire partout sauf en ces points-là. Le plan de
     /// contrôle n'est pas encore dessiné quand on mesure, donc il ne compte pas
     /// comme un pixel peint.
-    pub fn look(&mut self, output: &mut Output<'_>, map: &World, eye: Vec3, cell: u32) {
+    pub fn look(&mut self, output: &mut Output<'_>, map: &World, aim: &Aim) {
         /// Les sondes par axe.
         const GRID: u32 = 16;
 
@@ -165,17 +225,18 @@ impl Probe {
         // Ce qu'elle dit est décisif — si elle diffère de la cellule donnée au
         // rendu, la traversée est partie d'un endroit où la caméra n'est pas, et
         // c'est au jeu de le corriger.
-        let found = map.locate(eye);
+        let found = map.locate(aim.eye);
         let _ = writeln!(
             file,
             "image {} : image {} à {painted} % — taille {width}×{height}, \
-             œil ({:.2} {:.2} {:.2}), cellule {cell}, œil dans {found}{}",
+             {aim}, œil dans {found}{}",
             self.frame,
             if dark { "amputée" } else { "revenue" },
-            eye.x,
-            eye.y,
-            eye.z,
-            if found == cell { "" } else { " — DIVERGENCE" }
+            if found == aim.cell {
+                ""
+            } else {
+                " — DIVERGENCE"
+            }
         );
     }
 
@@ -186,7 +247,7 @@ impl Probe {
     /// la scène ait été soumise : le tampon ne porte alors que le fond et ce que la
     /// sortie y dessine, ce qui est exactement un scintillement noir où le plan de
     /// contrôle reste visible.
-    pub fn present(&mut self, eye: Vec3, cell: u32) {
+    pub fn present(&mut self, aim: &Aim) {
         self.shown += 1;
         if self.shown <= self.frame {
             return;
@@ -198,9 +259,8 @@ impl Probe {
         };
         let _ = writeln!(
             file,
-            "sortie {} : {missed} image(s) présentée(s) sans rendu — \
-             œil ({:.2} {:.2} {:.2}), cellule {cell}",
-            self.shown, eye.x, eye.y, eye.z
+            "sortie {} : {missed} image(s) présentée(s) sans rendu — {aim}",
+            self.shown
         );
     }
 
@@ -217,7 +277,7 @@ impl Probe {
     /// des deux bornes a été atteinte, donc c'est la position qui le dira : à la
     /// borne de profondeur le trou est au loin, à celle des visites il peut être
     /// dans la cellule voisine.
-    pub fn note(&mut self, seen: State, eye: Vec3, cell: u32) {
+    pub fn note(&mut self, seen: State, aim: &Aim) {
         self.frame += 1;
         if seen == self.last {
             self.runs += 1;
@@ -235,12 +295,9 @@ impl Probe {
         // n'a rien à en faire : ce qui compte est qu'il continue de tourner.
         let _ = writeln!(
             file,
-            "image {} : {} après {since} image(s) — œil ({:.2} {:.2} {:.2}), cellule {cell}",
+            "image {} : {} après {since} image(s) — {aim}",
             self.frame,
-            seen.label(),
-            eye.x,
-            eye.y,
-            eye.z
+            seen.label()
         );
     }
 

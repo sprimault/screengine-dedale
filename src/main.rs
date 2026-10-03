@@ -136,9 +136,7 @@ fn main() -> Result<(), Error> {
                 Ok(seen) => probe::State::Shown(seen),
                 Err(_) => probe::State::Refused,
             };
-            session
-                .probe
-                .note(shown, view.camera.position, session.game.cell());
+            session.probe.note(shown, &session.game.aim());
             // **L'arme après le décor**, et c'est le seul ordre qui vaille : elle
             // est la plus proche de l'œil, donc la profondeur la laisserait gagner
             // de toute façon, mais la soumettre en dernier évite qu'un décor très
@@ -182,10 +180,9 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
     //
     // Il compte aussi les images présentées, pour les comparer aux rendues : un
     // écart dirait qu'un tampon a été montré sans que la scène y soit.
-    let eye = session.game.view().camera.position;
-    let here = session.game.cell();
-    session.probe.look(output, &session.scenery.map, eye, here);
-    session.probe.present(eye, here);
+    let aim = session.game.aim();
+    session.probe.look(output, &session.scenery.map, &aim);
+    session.probe.present(&aim);
 
     let maze = &session.scenery.maze;
     let (width, height, levels) = maze.extent();
@@ -224,7 +221,7 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
                     block(output, left + CELL, top, 1, CELL + 1, WALL);
                 }
 
-                mark(output, session, cell, here, left, top);
+                mark(output, session, cell, aim.cell, left, top);
             }
         }
     }
