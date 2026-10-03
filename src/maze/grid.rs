@@ -141,6 +141,19 @@ pub struct Settings {
     /// demandent des boucles.
     pub stairs: u32,
 
+    /// Combien de ces volées montent par une rampe plutôt que par des marches.
+    ///
+    /// **Ni zéro ni toutes dans le jeu** : un escalier est une cellule concave,
+    /// une rampe est une surface oblique, et le décor doit porter les deux. Les
+    /// deux extrêmes restent acceptés parce que les épreuves en ont besoin —
+    /// chaque forme doit passer seule sous test.
+    ///
+    /// Un compte et non une proportion, comme `stairs` : un rapport sur cinq
+    /// volées donnerait un arrondi qu'on ne contrôle pas. Ce qui dépasse le
+    /// nombre de volées réellement posées est ignoré, la génération en posant
+    /// parfois moins que demandé.
+    pub ramps: u32,
+
     /// Le nombre de passages horizontaux en plus de ceux de l'arbre.
     ///
     /// À zéro et avec le minimum de volées, le labyrinthe est **parfait** : une
@@ -149,6 +162,20 @@ pub struct Settings {
     /// règle par construction — le nombre cyclomatique vaut `passages − cases +
     /// 1`, qu'on obtient en perçant autant de murs après l'arbre.
     pub loops: u32,
+}
+
+/// Ce qu'on gravit dans une cage : des marches, ou une rampe.
+///
+/// Les deux montent d'un étage dans l'emprise d'une seule case, et c'est leur
+/// seul point commun. Les marches laissent le volume ouvert au-dessus d'elles,
+/// ce qui fait d'une cage une cellule concave ; la rampe est une surface
+/// **oblique** que rien ne surplombe, et c'est la seule du décor.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Shape {
+    /// Douze marches, et un palier au pied.
+    Steps,
+    /// Un plan incliné d'un bord à l'autre.
+    Ramp,
 }
 
 /// Une case qui porte une volée d'escalier.
@@ -168,6 +195,12 @@ pub struct Stair {
     pub foot: (u32, u32, u32),
     /// Le côté vers lequel on monte.
     pub climb: Side,
+    /// Ce qu'on gravit pour y arriver.
+    ///
+    /// **Elle ne change rien à la réservation** : une rampe aveugle les mêmes
+    /// faces et occupe les mêmes deux cases qu'une volée de marches, donc la
+    /// forme se tire après le placement sans rien lui demander.
+    pub shape: Shape,
 }
 
 impl Stair {
@@ -246,6 +279,7 @@ impl Grid {
 
         let mut rng = Rng::new(settings.seed);
         grid.reserve(&mut rng, settings.stairs);
+        grid.shapes(&mut rng, settings.ramps);
 
         // Le centre plutôt qu'un coin : le creusement y a ses six voisins, et la
         // chasse n'a donc rien à faire avant plusieurs dizaines de coups.
@@ -445,6 +479,7 @@ impl Grid {
             let stair = Stair {
                 foot: (rng.below(width), rng.below(height), level),
                 climb: Side::ALL[rng.below(4) as usize],
+                shape: Shape::Steps,
             };
             let busy = self.stairs.iter().any(|other| {
                 let taken = [other.foot, other.head()];
@@ -460,6 +495,31 @@ impl Grid {
             // dise.
             self.stairs.push(stair);
             return;
+        }
+    }
+
+    /// Donne une rampe à autant de volées qu'on en demande, tirées sans remise.
+    ///
+    /// **Après la réservation et avant le creusement.** La réservation rejoue
+    /// ses positions en entier tant que le labyrinthe n'est pas d'un seul tenant,
+    /// donc une forme posée pendant serait jetée avec elles ; et le creusement
+    /// consomme le générateur, donc tirer après lui changerait le labyrinthe que
+    /// la même graine rend.
+    ///
+    /// La sélection séquentielle plutôt qu'un mélange : elle laisse les volées
+    /// dans leur ordre de pose, et chaque sous-ensemble de la taille demandée
+    /// reste aussi probable que les autres.
+    fn shapes(&mut self, rng: &mut Rng, count: u32) {
+        let total = self.stairs.len();
+        let mut left = (count as usize).min(total);
+        for slot in 0..total {
+            if left == 0 {
+                break;
+            }
+            if rng.below((total - slot) as u32) < left as u32 {
+                self.stairs[slot].shape = Shape::Ramp;
+                left -= 1;
+            }
         }
     }
 

@@ -19,11 +19,16 @@ use screengine_play::{SWEEP_CELLS, Surfaces, Vec3, World};
 
 /// Une grille d'épreuve : deux étages, assez de cases pour que les deux sortes
 /// de côté — mur et passage — se rencontrent partout.
+///
+/// **Les deux formes de cage y sont**, et c'est ce qui fait passer toutes les
+/// épreuves de ce fichier sur les deux : une grille d'une seule forme laisserait
+/// l'autre sans chargement, sans appariement et sans traversée.
 fn grid() -> Grid {
     Grid::generate(Settings {
         extent: (16, 16, 2),
         seed: 0x5EED_1A8E,
         stairs: 6,
+        ramps: 2,
         loops: 8,
     })
 }
@@ -574,6 +579,104 @@ fn un_pas_au_sol_franchit_un_passage() {
     }
 }
 
+/// Le décor d'épreuve porte les deux formes de cage.
+///
+/// **Sans elle, tout ce fichier pourrait n'éprouver qu'une forme** et rester
+/// vert : la forme est tirée avec la graine, et une grille sans rampe passerait
+/// le chargement, l'appariement et les deux oracles sans en charger une seule.
+#[test]
+fn les_deux_formes_de_cage_sont_dans_la_carte() {
+    let grid = grid();
+    let ramps = shape_count(&grid, Shape::Ramp);
+    let steps = shape_count(&grid, Shape::Steps);
+    assert!(
+        ramps > 0 && steps > 0,
+        "le décor d'épreuve porte {ramps} rampes et {steps} volées de marches"
+    );
+}
+
+/// Le nombre de volées d'une forme donnée.
+fn shape_count(grid: &Grid, shape: Shape) -> usize {
+    grid.stairs()
+        .iter()
+        .filter(|stair| stair.shape == shape)
+        .count()
+}
+
+/// Une boîte qui descend sur une rampe est arrêtée, où qu'elle tombe en travers.
+///
+/// **C'est un prédicat et non un oracle, et c'est tout son objet.** `sweep` et
+/// `sweep_brute` partagent leur formule de contact : une formule fausse rend les
+/// deux chemins faux de la même façon, et leur égalité reste verte. Un trou de
+/// contact le long de l'arête amont d'une face oblique est exactement de cette
+/// famille, et aucune comparaison de chemins ne peut le voir.
+///
+/// La surface touchée est vérifiée en plus de la fraction : arrêté par un flanc
+/// n'est pas arrêté par la rampe, et seul le second prouve quelque chose.
+#[test]
+fn une_boite_qui_descend_sur_une_rampe_est_arretee() {
+    let grid = grid();
+    let map = World::load(&world(&grid)).expect("carte engendrée valide");
+    let half = Vec3::new(0.3, 0.3, 0.9);
+    let (width, height, levels) = grid.extent();
+    let cells = width * height * levels;
+
+    let mut tried = 0;
+    for stair in grid.stairs().iter().filter(|s| s.shape == Shape::Ramp) {
+        let frame = Flight::new(stair.foot, stair.climb);
+        let cell = cell_id(&grid, stair.foot);
+        // La rampe est le premier segment du profil, donc la première surface
+        // que la cage écrit.
+        let ramp = cells * 3 * PRISM_SURFACES + (cell - 1) * STAIR_SURFACES + 1;
+
+        for along in 1..=8u32 {
+            let run = frame.entry + frame.direction() * INNER * along as f32 / 9.0;
+            let surface = frame.base + LEVEL * (run - frame.entry).abs() / INNER;
+            for across in 0..8u32 {
+                // En travers, de 0,45 à 2,55 du premier flanc : la boîte garde
+                // ses trois dixièmes de demi-largeur **et** la bande de peau du
+                // moteur, sans quoi elle partirait légitimement dans le solide.
+                let fraction = 0.15 + 0.1 * across as f32;
+                let side = frame.sides.0 + (frame.sides.1 - frame.sides.0) * fraction;
+
+                // Un dixième au-dessus de ce que la pente exige : à 45°, le coin
+                // aval du bas monte d'autant que la boîte est profonde, donc le
+                // centre doit être à `half.z + half.x` de la surface pour n'y pas
+                // toucher au départ.
+                let clear = surface + half.z + half.x + 0.1;
+                let start = frame.point(run, side, clear);
+                let end = frame.point(run, side, clear - 2.0);
+                let hit = map
+                    .sweep(
+                        cell,
+                        half,
+                        Vec3::new(start[0], start[1], start[2]),
+                        Vec3::new(end[0], end[1], end[2]),
+                    )
+                    .expect("la cellule existe");
+
+                assert!(
+                    !hit.start_solid,
+                    "la boîte part dans le solide au-dessus de la rampe {cell}, \
+                     contre la surface {}",
+                    hit.surface
+                );
+                assert!(
+                    hit.fraction < 1.0,
+                    "la boîte traverse la rampe {cell} à {run} en travers de {side}"
+                );
+                assert_eq!(
+                    hit.surface, ramp,
+                    "la boîte s'arrête sur la surface {} et non sur la rampe {ramp}",
+                    hit.surface
+                );
+                tried += 1;
+            }
+        }
+    }
+    assert!(tried > 0, "aucune rampe dans le décor d'épreuve");
+}
+
 /// Deux exports de la même grille portent les mêmes octets.
 ///
 /// C'est ce qui rend l'empreinte du cache de lightmaps réutilisable d'une
@@ -593,16 +696,31 @@ fn la_longueur_annoncee_est_la_bonne() {
     assert_eq!(announced as usize, bytes.len());
 }
 
-/// Les axes employés ont tous un carré en puissance de deux, sans quoi le
-/// chargement refuserait le fichier entier sans nommer la surface en cause.
+/// Tous les axes de repère sont unitaires, l'axe de pente d'une rampe compris.
+///
+/// **C'est la densité de luxels qui est en jeu** : deux faces jointives dont les
+/// axes n'ont pas la même longueur portent deux pas d'éclairage différents, et la
+/// jointure se lit comme une marche. Un axe qui serait l'arête plutôt que sa
+/// direction remettrait la taille des cases dans la boucle, et une pente l'y
+/// remettrait deux fois.
 #[test]
-fn les_axes_sont_des_puissances_de_deux() {
-    for axis in ALONG {
-        assert!(power_of_two(square(scaled(axis, LUXELS))));
+fn les_axes_sont_unitaires() {
+    /// Deux ulp autour de l'unité, ce que la racine inverse d'une pente laisse.
+    const TOLERANCE: f32 = 2.4e-7;
+
+    /// Le carré de la longueur d'un axe.
+    fn square(axis: [f32; 3]) -> f32 {
+        axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]
     }
-    assert!(power_of_two(square(scaled(UPWARD, LUXELS))));
-    assert!(power_of_two(square(scaled(FLAT.0, LUXELS))));
-    assert!(power_of_two(square(scaled(FLAT.1, LUXELS))));
+
+    let slope = Flight::new((1, 1, 0), Side::East).slope(INNER, LEVEL);
+    for axis in ALONG.into_iter().chain([UPWARD, FLAT.0, FLAT.1, slope]) {
+        assert!(
+            (square(axis) - 1.0).abs() <= TOLERANCE,
+            "l'axe {axis:?} n'est pas unitaire : son carré vaut {}",
+            square(axis)
+        );
+    }
 }
 
 /// L'empreinte d'une case tourne dans le bon sens.

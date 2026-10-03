@@ -20,6 +20,7 @@ fn settings() -> Settings {
         extent: (12, 10, 3),
         seed: 0x5EED,
         stairs: 5,
+        ramps: 2,
         loops: 7,
     }
 }
@@ -159,6 +160,41 @@ fn le_compte_des_boucles_est_exact() {
         settings().loops + extra,
         "boucles demandées contre boucles percées"
     );
+}
+
+/// Le compte de rampes demandé est celui qu'on obtient, et il se plafonne aux
+/// volées posées.
+///
+/// **Le plafond n'est pas de la prudence** : la génération pose parfois moins de
+/// volées qu'on en demande — celle qui couperait le labyrinthe est écartée —,
+/// donc un compte de rampes supérieur ne peut pas être une erreur de réglage.
+#[test]
+fn le_compte_de_rampes_est_celui_qu_on_demande() {
+    for asked in [0, 2] {
+        let grid = Grid::generate(Settings {
+            ramps: asked,
+            ..settings()
+        });
+        assert_eq!(ramps(&grid) as u32, asked, "{asked} rampes demandées");
+    }
+
+    let grid = Grid::generate(Settings {
+        ramps: u32::MAX,
+        ..settings()
+    });
+    assert_eq!(
+        ramps(&grid),
+        grid.stairs().len(),
+        "toutes les volées devraient être des rampes"
+    );
+}
+
+/// Le nombre de volées qui montent par une rampe.
+fn ramps(grid: &Grid) -> usize {
+    grid.stairs()
+        .iter()
+        .filter(|stair| stair.shape == Shape::Ramp)
+        .count()
 }
 
 /// Sans boucle ni volée surnuméraire, le labyrinthe est parfait : une route et
