@@ -16,6 +16,10 @@ cela s'adresse à quelqu'un.
 - **L'arme en main**, qui balance au rythme des pas et penche dans les virages. Le
   clic droit la fait tirer — la pose seule, pour l'instant.
 
+### Corrigé
+- **L'image ne se vide plus en franchissant une porte.** De près, le décor au-delà
+  d'une embrasure disparaissait le temps d'une ou deux images.
+
 ### Modifié
 - **Le décor arrête** : murs, sol et plafond retiennent. On ne glisse pas encore le
   long d'une paroi en biais, on s'y arrête net.
@@ -28,6 +32,10 @@ cela s'adresse à quelqu'un.
 ### Added
 - **The weapon in hand**, swaying with your stride and leaning into turns. Right
   click fires it — the pose alone, for now.
+
+### Fixed
+- **The view no longer empties as you step through a doorway.** Up close, the
+  scenery beyond it vanished for a frame or two.
 
 ### Changed
 - **The map stops you**: walls, floor and ceiling hold. You do not yet slide along a
