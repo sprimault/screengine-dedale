@@ -26,8 +26,8 @@ police en CC0, dont [`THIRD-PARTY-NOTICES`](THIRD-PARTY-NOTICES) rend compte.
 ## État
 
 **Étape 1 : le labyrinthe.** Un labyrinthe engendré qu'on parcourt à la première
-personne, des étages reliés par des cages d'escalier. Pas encore un jeu : ni
-monstres, ni tir, ni ramassages.
+personne, des étages reliés par des cages — à marches, ou en rampe. Pas encore un
+jeu : ni monstres, ni tir, ni ramassages.
 
 - [`ROADMAP.md`](ROADMAP.md) — les étapes et ce qui est hors périmètre
 - [`CHANGELOG.md`](CHANGELOG.md) — ce que chaque version a apporté, daté

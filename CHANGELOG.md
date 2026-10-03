@@ -10,6 +10,18 @@ Chaque section est **bilingue, français d'abord, séparé par `***`**.
 aucun. La première est donc la `0.1.0`, à l'étape 1 : un labyrinthe qu'on parcourt,
 cela s'adresse à quelqu'un.
 
+## [Non publié]
+
+### Ajouté
+- **Des rampes dans une partie des cages**, à côté des escaliers : on y monte
+  d'une seule pente, et elles se tirent avec la graine comme le reste du décor.
+
+***
+
+### Added
+- **Ramps in some of the shafts**, alongside the stairs: a single slope to walk
+  up, drawn from the seed like the rest of the map.
+
 ## [0.1.0] — 2026-10-02 — Un labyrinthe qu'on parcourt
 
 ### Ajouté

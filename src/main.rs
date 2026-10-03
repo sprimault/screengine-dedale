@@ -29,10 +29,14 @@ use screengine_play::{Error, KeyCode, Output, Play};
 ///
 /// Six **demandées** : une cage aveugle trois faces de chacune de ses deux cases,
 /// et celle qui couperait le labyrinthe est écartée. Ces six-là tiennent.
+///
+/// Deux des six montent par une rampe : de quoi croiser les deux formes en se
+/// promenant, sans que les marches cessent d'être ce qu'on rencontre le plus.
 const MAZE: Settings = Settings {
     extent: (16, 16, 2),
     seed: 0x5EED_1A8E,
     stairs: 6,
+    ramps: 2,
     loops: 8,
 };
 

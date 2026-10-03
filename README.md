@@ -25,7 +25,7 @@ font, recorded in [`THIRD-PARTY-NOTICES`](THIRD-PARTY-NOTICES).
 ## Status
 
 **Step 1: the maze.** A generated maze walked in first person, floors linked by
-stairwells. Not a game yet: no monsters, no shooting, no pickups.
+shafts — stepped, or ramped. Not a game yet: no monsters, no shooting, no pickups.
 
 - [`ROADMAP.md`](ROADMAP.md) — the steps and what is out of scope (French)
 - [`CHANGELOG.md`](CHANGELOG.md) — what each version brought, dated

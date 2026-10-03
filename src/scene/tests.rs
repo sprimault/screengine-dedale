@@ -13,6 +13,7 @@ fn settings() -> Settings {
         extent: (16, 16, 2),
         seed: 0x5EED_1A8E,
         stairs: 6,
+        ramps: 2,
         loops: 8,
     }
 }

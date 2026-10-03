@@ -19,7 +19,7 @@
 //! et deux cellules superposées sans lien sont un cas que le moteur éprouve déjà.
 //! La cellule-escalier les reliera.
 
-use super::grid::{Grid, Side, Stair};
+use super::grid::{Grid, Shape, Side, Stair};
 
 #[cfg(test)]
 mod tests;
@@ -146,7 +146,17 @@ const GLOW: [u8; 4] = [0xFF, 0xF4, 0xE0, 0x00];
 
 /// Les surfaces qu'une cage réserve : deux par marche, plus le palier, le
 /// plafond, les deux flancs et le linteau de son entrée.
+///
+/// **Réservées par les deux formes de cage**, et une cage en rampe n'en emploie
+/// que cinq. C'est la même clause que pour un prisme dont un côté s'ouvre :
+/// l'identifiant d'une surface reste fonction de la seule position, donc stable
+/// quand la graine change la forme tirée — et l'empreinte du cache de lightmaps
+/// les hache.
 const STAIR_SURFACES: u32 = 2 * STEPS + 5;
+
+/// Celles qu'une cage en rampe écrit : la rampe, le plafond, les deux flancs et
+/// le linteau.
+const RAMP_SURFACES: u32 = 5;
 
 /// Ses portails : l'entrée et la sortie, et jamais plus. Les deux autres faces
 /// de l'axe de montée n'ont pas de volume derrière elles.
@@ -319,11 +329,23 @@ pub fn cover(grid: &Grid, at: (u32, u32, u32)) -> u32 {
 /// tombe dans le solide. Ce point-ci se place au milieu du palier pour la case du
 /// bas, et sur la dernière marche pour celle du haut — les deux seuls endroits de
 /// la cage dont la cote du sol est celle d'un étage.
+///
+/// **Une cage en rampe n'a aucun endroit plat**, donc aucune des deux cases n'y a
+/// la cote de son étage : le point est alors le milieu de la rampe, à mi-hauteur,
+/// et il est le même pour le pied et pour la tête puisque la cellule l'est.
+///
+/// Ce qu'il rend est le **sol**, et l'appelant y ajoute ce qu'il lui faut de
+/// dégagement vertical — une hauteur d'œil, un mètre. Il ne prend donc pas de
+/// demi-étendue : relever une boîte au-dessus d'une pente dépend de sa taille,
+/// et c'est au seul qui en pose une de le calculer.
 pub fn ground(grid: &Grid, at: (u32, u32, u32)) -> [f32; 3] {
     let centre = [(at.0 as f32 + 0.5) * CELL, (at.1 as f32 + 0.5) * CELL];
     let Some(stair) = flight_of(grid, at) else {
         return [centre[0], centre[1], floor_of(at.2)];
     };
+    if stair.shape == Shape::Ramp {
+        return [centre[0], centre[1], floor_of(stair.foot.2) + LEVEL / 2.0];
+    }
 
     // Le milieu du palier, et la dernière marche est à la même distance du bord
     // opposé : un seul décalage sert les deux cases.
@@ -615,6 +637,63 @@ impl Flight {
     fn across(&self) -> [f32; 3] {
         self.point(0.0, (self.sides.1 - self.sides.0).signum(), 0.0)
     }
+
+    /// La direction **unitaire** d'un segment du profil, axe de pente d'une rampe.
+    ///
+    /// Unitaire et non le segment lui-même, comme [`ALONG`] : son carré vaut un,
+    /// donc le carré de l'axe à l'échelle reste celui des faces droites quelle
+    /// que soit la pente, et la densité de luxels le long de la rampe est celle
+    /// du reste du décor. Prendre le segment donnerait une marche d'éclairage à
+    /// chaque jointure.
+    fn slope(&self, run: f32, rise: f32) -> [f32; 3] {
+        let length = run.hypot(rise);
+        self.point(run / length, 0.0, rise / length)
+    }
+
+    /// Le profil du sol dans le plan de la montée, de l'entrée vers la sortie.
+    ///
+    /// **Deux sommets consécutifs bornent toujours une surface** — horizontale
+    /// quand ils partagent leur cote, verticale quand ils partagent leur avancée,
+    /// oblique sinon —, et c'est ce qui range le sol d'une cage en une seule
+    /// boucle, sans distinguer sa forme.
+    ///
+    /// La sortie vient de `inner_high` ou `inner_low` et non du cumul des
+    /// marches : c'est elle que le portail du haut doit porter au bit près.
+    fn profile(&self, shape: Shape) -> Vec<(f32, f32)> {
+        let mut profile = Vec::with_capacity(2 * STEPS as usize + 2);
+        profile.push((self.entry, self.base));
+        if shape == Shape::Steps {
+            for i in 0..STEPS {
+                let run = self.entry + self.direction() * (LANDING + i as f32 * TREAD);
+                profile.push((run, self.base + i as f32 * RISE));
+                profile.push((run, self.base + (i + 1) as f32 * RISE));
+            }
+        }
+        profile.push((self.exit, self.base + LEVEL));
+        profile
+    }
+
+    /// Les deux axes du segment qui joint ces deux sommets du profil.
+    fn facet(&self, from: (f32, f32), to: (f32, f32)) -> ([f32; 3], [f32; 3]) {
+        if from.1 == to.1 {
+            FLAT
+        } else if from.0 == to.0 {
+            (self.across(), UPWARD)
+        } else {
+            (self.across(), self.slope(to.0 - from.0, to.1 - from.1))
+        }
+    }
+
+    /// L'aire que le sol retire à la section verticale de la cage.
+    ///
+    /// Sous les marches, la somme des rectangles, dont les hauteurs se cumulent
+    /// en `STEPS(STEPS + 1) / 2` ; sous une rampe, le triangle de la case entière.
+    fn carved(shape: Shape) -> f64 {
+        match shape {
+            Shape::Steps => f64::from(RISE) * f64::from(TREAD) * f64::from(STEPS * (STEPS + 1) / 2),
+            Shape::Ramp => f64::from(INNER) * f64::from(LEVEL) / 2.0,
+        }
+    }
 }
 
 /// Une surface de cage, avant son écriture.
@@ -643,22 +722,7 @@ fn stair(grid: &Grid, flight: Stair, out: &mut Vec<u8>) {
     let frame = Flight::new(flight.foot, flight.climb);
     let top = frame.base + LEVEL + CEILING;
 
-    // Le profil du sol dans le plan de la montée, de l'entrée vers la sortie :
-    // le palier, puis deux sommets par marche. **Deux sommets consécutifs
-    // bornent toujours une surface** — horizontale quand ils partagent leur
-    // cote, verticale sinon —, et c'est ce qui range les vingt-cinq surfaces du
-    // sol en une seule boucle.
-    let mut profile = Vec::with_capacity(2 * STEPS as usize + 2);
-    profile.push((frame.entry, frame.base));
-    for i in 0..STEPS {
-        let run = frame.entry + frame.direction() * (LANDING + i as f32 * TREAD);
-        profile.push((run, frame.base + i as f32 * RISE));
-        profile.push((run, frame.base + (i + 1) as f32 * RISE));
-    }
-    // La sortie vient de `inner_high` ou `inner_low` et non du cumul des
-    // marches : c'est elle que le portail du haut doit porter au bit près, et
-    // `LANDING + STEPS × TREAD` la retrouve sans qu'on ait à s'y fier.
-    profile.push((frame.exit, frame.base + LEVEL));
+    let profile = frame.profile(flight.shape);
 
     let mut points = Vec::with_capacity(2 * profile.len() + 6);
     for &(run, z) in &profile {
@@ -679,20 +743,22 @@ fn stair(grid: &Grid, flight: Stair, out: &mut Vec<u8>) {
     let departure = ceiling + 2;
     let lintel = ceiling + 4;
 
-    // Le même ordre d'indices pour les deux natures de segment, et ce n'est pas
+    // Le même ordre d'indices pour les trois natures de segment, et ce n'est pas
     // une coïncidence : pris de l'entrée vers la sortie puis d'un bord à
-    // l'autre, il donne une normale vers le haut sur une marche et vers
-    // l'entrée sur une contremarche — l'intérieur du volume dans les deux cas.
-    // L'inclinaison décide du repère et non du matériau : un escalier est d'une
-    // seule matière, celle qu'on foule, et c'est la contremarche qu'on voit de
-    // face en montant.
-    let mut faces = Vec::with_capacity(STAIR_SURFACES as usize);
+    // l'autre, il donne une normale vers le haut sur une marche ou sur une
+    // rampe, et vers l'entrée sur une contremarche — l'intérieur du volume dans
+    // les trois cas. L'inclinaison décide du repère et non du matériau : une
+    // cage est d'une seule matière, celle qu'on foule, et c'est la contremarche
+    // qu'on voit de face en montant.
+    let mut faces = Vec::with_capacity(match flight.shape {
+        Shape::Steps => STAIR_SURFACES,
+        Shape::Ramp => RAMP_SURFACES,
+    } as usize);
     for k in 0..profile.len() as u32 - 1 {
-        let flat = profile[k as usize].1 == profile[k as usize + 1].1;
         faces.push(Face {
             indices: vec![2 * k, 2 * k + 2, 2 * k + 3, 2 * k + 1],
             material: FLOOR,
-            frame: if flat { FLAT } else { (frame.across(), UPWARD) },
+            frame: frame.facet(profile[k as usize], profile[k as usize + 1]),
         });
     }
 
@@ -702,9 +768,10 @@ fn stair(grid: &Grid, flight: Stair, out: &mut Vec<u8>) {
         frame: FLAT,
     });
 
-    // Les flancs suivent le profil en dents de scie : vingt-huit sommets, là où
-    // le format en accepte soixante-quatre par polygone. Celui du premier bord
-    // se parcourt à rebours pour que sa normale regarde l'autre.
+    // Les flancs suivent le profil : vingt-huit sommets en dents de scie sous
+    // des marches, quatre sous une rampe, là où le format en accepte
+    // soixante-quatre par polygone. Celui du premier bord se parcourt à rebours
+    // pour que sa normale regarde l'autre.
     let mut near = vec![ceiling, departure];
     let mut far = Vec::with_capacity(profile.len() + 2);
     for k in 0..profile.len() as u32 {
@@ -736,7 +803,7 @@ fn stair(grid: &Grid, flight: Stair, out: &mut Vec<u8>) {
         vec![0, lintel, lintel + 1, 1],
         vec![arrival + 1, departure + 1, departure, arrival],
     ];
-    closed(rank + 1, &faces, &gates, &points);
+    closed(rank + 1, &faces, &gates, &points, flight.shape);
 
     let mut body = Vec::new();
     words(
@@ -787,7 +854,11 @@ fn stair(grid: &Grid, flight: Stair, out: &mut Vec<u8>) {
 /// l'envers, qui change le signe de sa part, et une face oubliée, qui laisse le
 /// volume ouvert. Ni l'une ni l'autre ne lève d'erreur au chargement : l'écran
 /// montre du fond, et rien ne dit où.
-fn closed(id: u32, faces: &[Face], gates: &[Vec<u32>], points: &[[f32; 3]]) {
+///
+/// **C'est aussi le seul contrôle qui distingue les deux formes de cage**, et il
+/// le fait par la seule aire que leur sol retire : une rampe en ôte plus que les
+/// marches qu'elle remplace, puisqu'elle passe sous leurs nez.
+fn closed(id: u32, faces: &[Face], gates: &[Vec<u32>], points: &[[f32; 3]], shape: Shape) {
     let mut six = 0.0f64;
     for indices in faces.iter().map(|face| face.indices.clone()).chain(
         gates
@@ -804,11 +875,9 @@ fn closed(id: u32, faces: &[Face], gates: &[Vec<u32>], points: &[[f32; 3]]) {
         }
     }
 
-    // Le volume exact : la section verticale fois la largeur. La section est la
-    // cage pleine moins ce que les marches lui prennent, et les hauteurs de
-    // marche se somment en `STEPS(STEPS + 1) / 2`.
-    let stacked = f64::from(RISE) * f64::from(TREAD) * f64::from(STEPS * (STEPS + 1) / 2);
-    let section = f64::from(INNER) * f64::from(LEVEL + CEILING) - stacked;
+    // Le volume exact : la section verticale fois la largeur, la section étant
+    // la cage pleine moins ce que son sol lui prend.
+    let section = f64::from(INNER) * f64::from(LEVEL + CEILING) - Flight::carved(shape);
     let expected = -6.0 * section * f64::from(INNER);
     assert!(
         (six - expected).abs() <= expected.abs() * 1e-6,
@@ -1021,11 +1090,13 @@ fn planar(id: u32, indices: &[u32], points: &[[f32; 3]], along: [f32; 3], across
 /// L'origine est le zéro du monde, toujours. Le chargement exige qu'elle tombe
 /// sur un nœud de sa propre grille de luxels, et le zéro y est par construction
 /// — c'est le geste qui dispense de tout rabattement.
+///
+/// **Le carré des axes n'est pas contrôlé** : un axe **unitaire oblique** ne peut
+/// pas tomber sur une puissance de deux — à 45°, le sien passe à quelques ulp de
+/// seize à l'échelle des luxels, jamais dessus —, et le chargement ne le demande
+/// pas. Ce qu'un tel contrôle attraperait d'un repère faux, `planar` et `span` le
+/// voient déjà.
 fn mapping(u: [f32; 3], v: [f32; 3], out: &mut Vec<u8>) {
-    assert!(
-        power_of_two(square(v)) && power_of_two(square(u)),
-        "un axe de repère n'a pas un carré en puissance de deux : {u:?} {v:?}"
-    );
     floats(&[0.0, 0.0, 0.0], out);
     floats(&u, out);
     floats(&v, out);
@@ -1093,19 +1164,6 @@ fn twice_area(footprint: &[[f32; 2]]) -> f32 {
 /// Un axe à l'échelle d'une densité.
 fn scaled(axis: [f32; 3], density: f32) -> [f32; 3] {
     [axis[0] * density, axis[1] * density, axis[2] * density]
-}
-
-/// Le carré de la longueur d'un axe.
-fn square(axis: [f32; 3]) -> f32 {
-    axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]
-}
-
-/// Vrai pour une puissance de deux, mantisse nulle et valeur utilisable.
-///
-/// L'exposant n'a pas à être pair : un axe oblique a un carré de la forme `2p²`,
-/// et l'exiger interdirait tout mur en biais.
-fn power_of_two(value: f32) -> bool {
-    value > 0.0 && value.is_finite() && value.to_bits() & 0x007f_ffff == 0
 }
 
 /// Ajoute des flottants, octet de poids faible en tête.

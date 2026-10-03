@@ -78,6 +78,10 @@ d'être exercé, parce que c'est ce que ce moteur a de particulier :
   décors d'intérieur : un jeu qui se passe dans un immeuble n'a pas le choix. Une
   cage est une cellule **concave** — le volume reste ouvert au-dessus des marches
   —, et son portail ne coupe qu'une tranche de son mur en hauteur ;
+- **des rampes dans une partie de ces cages**, qui apportent les seules **surfaces
+  obliques** du décor, donc les seuls repères de lightmap obliques. Les deux
+  coexistent parce qu'elles ne montrent pas la même chose : échanger l'une contre
+  l'autre retirerait une épreuve pour en gagner une ;
 - **des tubes lumineux au plafond, qui scintillent**, dans un décor tamisé qui ne
   montre pas tout — c'est le sujet d'éclairage le plus intéressant du jeu ;
 - **le brouillard par la distance**, qui ferme la vue au bout de quelques cellules :
