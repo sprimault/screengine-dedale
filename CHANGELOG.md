@@ -29,6 +29,8 @@ cela s'adresse à quelqu'un.
 - **On marche au lieu de voler** : la pesanteur remplace les deux touches qui
   faisaient monter et descendre, les marches se montent sans sauter et les rampes
   se gravissent sans redescendre.
+- **On avance à la vitesse de quelqu'un qui marche**, et non plus à celle d'une
+  caméra d'inspection. Un pas de côté s'ajoute sur `A` et `E`, le pivot ne bouge pas.
 
 ***
 
@@ -48,6 +50,8 @@ cela s'adresse à quelqu'un.
 - **You walk instead of flying**: gravity replaces the two keys that made you rise
   and descend, steps are climbed without jumping, and ramps are walked up without
   sliding back.
+- **You move at walking pace**, no longer at an inspection camera's. Strafing is
+  added on `Q` and `E`, and turning stays where it was.
 
 ## [0.1.1] — 2026-10-03 — Des rampes dans les cages
 
