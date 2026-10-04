@@ -26,8 +26,9 @@ cela s'adresse à quelqu'un.
 - **Les étages sont plus hauts** d'un demi-mètre : un couloir large de trois mètres
   sous deux et demi paraissait écrasé. Les escaliers et les rampes y sont un peu
   plus raides.
-- **La pesanteur remplace le vol** : on tombe, le sol retient, et les deux touches
-  qui faisaient monter et descendre s'en vont. Les étages attendent la marche.
+- **On marche au lieu de voler** : la pesanteur remplace les deux touches qui
+  faisaient monter et descendre, les marches se montent sans sauter et les rampes
+  se gravissent sans redescendre.
 
 ***
 
@@ -44,8 +45,9 @@ cela s'adresse à quelqu'un.
   the wall instead of sticking to it, and a wall can be hugged end to end.
 - **Floors are half a metre taller**: a corridor three metres wide under two and a
   half looked squashed. Stairs and ramps are a little steeper for it.
-- **Gravity replaces flying**: you fall, the floor holds you, and the two keys that
-  made you rise and descend are gone. Upper floors wait for walking.
+- **You walk instead of flying**: gravity replaces the two keys that made you rise
+  and descend, steps are climbed without jumping, and ramps are walked up without
+  sliding back.
 
 ## [0.1.1] — 2026-10-03 — Des rampes dans les cages
 

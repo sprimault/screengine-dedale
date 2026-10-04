@@ -71,5 +71,6 @@ Left click grabs the cursor, middle click releases it, `Esc` quits.
 **You walk, you hug walls and you fall**: walls, floor and ceiling hold, an angled step
 follows the wall instead of sticking to it, and gravity brings you back down.
 
-**Upper floors are out of reach for now**: a flight of steps stops you and a ramp slides
-you back down, because the step threshold is missing. It comes next.
+**Upper floors are yours to walk**: a step is climbed without jumping, a ramp is walked
+up without sliding back, and a wall stays a wall. Strafing is still missing — the side
+keys turn you instead.

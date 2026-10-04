@@ -21,13 +21,17 @@
 //! [`Player::grounded`] porte, et une chute glisse le long de ce qu'elle rencontre
 //! comme un pas.
 //!
-//! Ce qui n'y est pas encore, et qui se voit en jouant : une marche arrête au lieu
-//! de se franchir, et une pente continue se redescend faute d'un critère de surface
-//! marchable.
+//! **Et les étages se parcourent** : une surface se marche ou ne se marche pas, selon
+//! un seuil que [`walkable`] dérive de la pente du décor, et ce qui ne se marche pas
+//! se franchit quand une marche suffit — [`Player::climb`] l'essaie en balayant,
+//! jamais en devinant la hauteur d'un obstacle.
+//!
+//! Ce qui n'y est pas encore, et qui se juge à l'œil : le pas de côté, et les
+//! réglages de la marche.
 
 use screengine_play::{Vec3, World, sweep_skin};
 
-use crate::maze::export::{self, SLOPE};
+use crate::maze::export::{self, RISE, SLOPE};
 use crate::maze::grid::Grid;
 
 #[cfg(test)]
@@ -108,6 +112,26 @@ const GRAVITY: f32 = 20.0;
 /// aucune constante du moteur et ne se dérègle pas si la marge change.
 const PROBE: f32 = 0.02;
 
+/// Vrai si l'on tient debout sur une surface de cette normale.
+///
+/// **Le seuil se dérive de la pente du décor, et c'est ce qui le rend juste** :
+/// `SLOPE` est la plus raide que l'export produise, donc `1/√(1+SLOPE²)` — trois
+/// cinquièmes ici — est la normale la plus couchée qu'un sol légitime puisse
+/// présenter. Ce que le décor porte est marchable **par construction**, là où un
+/// nombre choisi à la main serait juste pour ce décor et faux au suivant.
+///
+/// **Écrit en carrés plutôt qu'en racine**, et pas seulement pour éviter un calcul :
+/// une racine n'est pas évaluable en constante, donc le seuil serait devenu une
+/// valeur d'exécution qu'on aurait fini par recopier. L'inégalité est la même pour
+/// une normale qui regarde le haut.
+///
+/// Une rampe monte l'étage sur le côté d'une case, donc `7/6`, et sa normale a
+/// `6/√85 ≈ 0,651` : marchable avec de la marge. Un mur et une contremarche ont
+/// zéro, et c'est ce qui fait qu'une marche se franchit au lieu de se gravir.
+fn walkable(normal: Vec3) -> bool {
+    normal.z > 0.0 && normal.z * normal.z * (1.0 + SLOPE * SLOPE) >= 1.0
+}
+
 // **Ce que le décor laisse de place, vérifié à la compilation.** Un corps plus
 // large qu'une cellule coincerait dans un couloir, un corps plus haut que le
 // plafond ne passerait nulle part, et l'œil sous le plafond est ce qui empêche de
@@ -117,6 +141,41 @@ const _: () = assert!(2.0 * HALF.x < export::INNER);
 const _: () = assert!(2.0 * HALF.y < export::INNER);
 const _: () = assert!(2.0 * HALF.z < export::CEILING);
 const _: () = assert!(HALF.z + EYE_ABOVE < export::CEILING);
+
+/// Ce qu'une glissade a donné.
+///
+/// **Trois champs dont deux ne servent qu'une fois**, et c'est pourquoi ils ne sont
+/// pas un tuple : un `(Vec3, usize, bool)` se relirait mal au troisième appelant, et
+/// les noms disent ce que l'ordre ne dit pas.
+struct Slid {
+    /// Le point atteint.
+    at: Vec3,
+    /// Combien de plans la glissade a consommés.
+    ///
+    /// **Seule une épreuve s'en sert**, et c'est elle qui mesure [`SLIDES`] au lieu
+    /// de le supposer — d'où l'exception au compte des champs morts, qui vaut pour la
+    /// construction du jeu et non pour celle des épreuves. Le retirer rendrait la
+    /// borne supposée.
+    #[cfg_attr(not(test), allow(dead_code))]
+    planes: usize,
+    /// Vrai si une surface que [`walkable`] refuse a arrêté le pas avant son terme.
+    ///
+    /// C'est le signal du franchissement, et il est volontairement grossier : un mur
+    /// et une contremarche le lèvent tous deux, et c'est le relèvement qui les
+    /// sépare — par la géométrie, pas par une hauteur devinée.
+    stopped: bool,
+}
+
+impl Slid {
+    /// Le pas entier, sans rien avoir rencontré.
+    fn free(at: Vec3) -> Self {
+        Self {
+            at,
+            planes: 0,
+            stopped: false,
+        }
+    }
+}
 
 /// Le joueur : un volume, une pose, et la cellule où il se trouve.
 pub struct Player {
@@ -194,9 +253,10 @@ impl Player {
     ///
     /// **Trois conditions, et aucune ne suffit seule.** Un départ dans le solide dit
     /// qu'on est dedans, pas qu'on est posé — c'est le piège de ce critère, et il
-    /// disqualifie donc. Une fraction nulle sans normale verticale est un mur qu'on
-    /// touche de côté. Et une normale verticale rencontrée plus loin est un sol vers
-    /// lequel on tombe, pas un sol sur lequel on est.
+    /// disqualifie donc. Un contact immédiat sur une surface que [`walkable`] refuse
+    /// est un mur qu'on touche de côté, ou la contremarche qu'on va franchir. Et une
+    /// surface marchable rencontrée au bout de la sonde est un sol vers lequel on
+    /// tombe, pas un sol sur lequel on est.
     ///
     /// **Ce qui rend ce critère possible est le flottement** : le balayage pose un
     /// corps à sa marge du sol, donc la sonde rencontre ce sol aussitôt — à quatre
@@ -211,7 +271,7 @@ impl Player {
         let below = Vec3::new(self.centre.x, self.centre.y, self.centre.z - PROBE);
 
         map.sweep(self.cell, HALF, self.centre, below)
-            .is_some_and(|hit| !hit.start_solid && hit.fraction < 1.0 && hit.normal.z > 0.5)
+            .is_some_and(|hit| !hit.start_solid && hit.fraction < 1.0 && walkable(hit.normal))
     }
 
     /// Déplace le corps de ce qu'il peut parcourir, et suit sa cellule.
@@ -225,13 +285,40 @@ impl Player {
     /// relocalise jamais de lui-même : zéro veut dire « sorti du décor », et c'est
     /// à l'hôte de le redemander.
     pub fn advance(&mut self, map: &World, moved: Vec3, dt: f32) -> f32 {
-        // **La pesanteur s'intègre avant le pas, et la chute en fait partie** : un
-        // seul balayage par image porte les deux, donc ce qui tombe glisse le long
-        // de ce qu'il rencontre au lieu de s'y arrêter net.
-        self.fall -= GRAVITY * dt;
+        // **La pesanteur ne s'applique qu'en l'air, et c'est ce qui tient sur une
+        // pente.** Intégrée aussi quand le corps repose, elle vaut toujours un pas
+        // vers le bas au moment du balayage : sur un plan horizontal la projection
+        // l'annule, mais sur une rampe elle en garde la composante le long de la
+        // pente, et le corps redescend un peu à chaque image.
+        let was_grounded = self.grounded(map);
+        if was_grounded {
+            self.fall = 0.0;
+        } else {
+            self.fall -= GRAVITY * dt;
+        }
         let wanted = self.centre + moved + Vec3::new(0.0, 0.0, self.fall * dt);
 
-        let (reached, _) = self.slide(map, wanted);
+        let slid = self.slide(map, self.centre, wanted);
+        let reached = if slid.stopped {
+            // Buté sur ce qui ne se marche pas : c'est peut-être une marche, et
+            // c'est le relèvement qui le dit — il balaie, là où une hauteur
+            // calculée supposerait la forme de l'obstacle.
+            let step = Vec3::new(moved.x, moved.y, 0.0);
+            self.climb(map, step, slid.at).unwrap_or(slid.at)
+        } else {
+            slid.at
+        };
+        // **Et le pendant du franchissement : on descend d'une marche comme on en
+        // monte une.** Un pas qui quitte le contact sans qu'il y ait de vide dessous
+        // laisserait la pesanteur reprendre, donc descendre un escalier ou une rampe
+        // serait une chute et non une marche — mesuré à l'écran, et c'est l'écart
+        // entre un pas de 0,05 et ce que le sol perd dans le même pas : 0,058 sur une
+        // rampe, 0,25 au bord d'un giron, l'un comme l'autre au-delà de la tolérance
+        // de contact.
+        let reached = match was_grounded {
+            true => self.settle(map, reached).unwrap_or(reached),
+            false => reached,
+        };
         let travel = reached - self.centre;
 
         self.centre = reached;
@@ -242,13 +329,6 @@ impl Player {
             found
         };
         self.previous = self.centre;
-
-        // **Posé, la vitesse de chute repart de zéro.** Sans cela elle croîtrait
-        // pendant toute la marche, et le premier bord franchi donnerait une chute de
-        // plusieurs mètres en une image — un corps téléporté vers le bas.
-        if self.grounded(map) {
-            self.fall = 0.0;
-        }
 
         travel.dot(travel).sqrt()
     }
@@ -291,40 +371,145 @@ impl Player {
     ///   moteur a adoptée, donc celle que ses épreuves exercent — en prendre une
     ///   autre priverait de ce qu'elles couvrent.
     ///
-    /// Rend le point atteint **et le nombre de plans consommés**, dont seule une
-    /// épreuve se sert : c'est ce qui mesure [`SLIDES`] au lieu de le supposer.
-    fn slide(&self, map: &World, wanted: Vec3) -> (Vec3, usize) {
+    /// **Le départ est un paramètre et non la pose du corps**, ce qui sert au
+    /// franchissement : [`Player::climb`] rejoue le même pas depuis une position
+    /// relevée, et il n'y a qu'une politique de glissade à tenir.
+    fn slide(&self, map: &World, from: Vec3, wanted: Vec3) -> Slid {
         if self.cell == 0 {
-            return (wanted, 0);
+            return Slid::free(wanted);
         }
 
-        let mut at = self.centre;
-        let mut rest = wanted - self.centre;
+        let mut at = from;
+        let mut rest = wanted - from;
+        let mut stopped = false;
 
         for plane in 0..SLIDES {
             let Some(hit) = map.sweep(self.cell, HALF, at, at + rest) else {
-                return (at + rest, plane);
+                return Slid {
+                    at: at + rest,
+                    planes: plane,
+                    stopped,
+                };
             };
             if hit.start_solid {
                 // **Sortir passe avant avancer**, donc le pas demandé ne s'applique
                 // pas : le rendre libre enfoncerait davantage, l'image suivante
                 // repartirait solide, et un seul départ fautif rendrait la collision
                 // inopérante pour de bon — mesuré, le corps traversait les murs.
-                return (at + hit.normal * (sweep_skin(HALF) * ESCAPE), plane);
+                let out = at + hit.normal * (sweep_skin(HALF) * ESCAPE);
+                return Slid {
+                    at: out,
+                    planes: plane,
+                    stopped: false,
+                };
             }
 
             at = at + rest * hit.fraction;
             // `fraction` et non `surface`, qui vaut zéro pour trois cas distincts
             // dont deux arrêtent — un portail non apparié, et une troncature.
             if hit.fraction >= 1.0 {
-                return (at, plane);
+                return Slid {
+                    at,
+                    planes: plane,
+                    stopped,
+                };
             }
+
+            // Ce qui ne se marche pas peut être une marche : c'est le seul signal
+            // dont le franchissement a besoin, et il ne dit pas de quoi il s'agit.
+            stopped |= !walkable(hit.normal);
+
+            // **On repart hors de la bande de contact, d'une demi-marge le long de la
+            // normale.** Posé pile à la distance que le balayage rend, un mouvement
+            // **tangent** à une face oblique est refusé : la projection y laisse un
+            // résidu d'arrondi de l'ordre de 3e-5, dont le signe décide, et la passe
+            // suivante repart alors sur une fraction nulle — les quatre passes brûlent
+            // sans avancer d'un millième. Mesuré en montant une rampe de biais : à
+            // l'écart près, le même pas passe en entier.
+            //
+            // Une face axiale n'en avait pas besoin, et c'est ce qui l'a caché : sa
+            // normale annule la composante exactement, sans résidu.
+            at = at + hit.normal * (sweep_skin(HALF) * 0.5);
 
             rest = rest * (1.0 - hit.fraction);
             rest = rest - hit.normal * rest.dot(hit.normal);
         }
 
-        (at, SLIDES)
+        Slid {
+            at,
+            planes: SLIDES,
+            stopped,
+        }
+    }
+
+    /// Repose le corps sur ce qui est à moins d'une marche sous lui.
+    ///
+    /// **Le pendant du franchissement, et la même constante** : on monte d'une
+    /// marche, donc on descend d'une marche. Sans cela un pas qui quitte le contact
+    /// rend la main à la pesanteur, et une descente d'escalier ou de rampe devient
+    /// une chute accélérée au lieu d'une marche — c'est ce qui s'est vu à l'écran.
+    ///
+    /// **Ce qu'il ne fait pas, et c'est ce qui garde la chute** : au-delà d'une
+    /// marche il n'y a plus de sol sous les pieds mais du vide, et tomber est alors
+    /// la réponse juste. Le balayage tranche, et une surface que [`walkable`] refuse
+    /// ne retient pas davantage.
+    ///
+    /// **Il ne s'appelle que si le corps était posé avant le pas** : un corps déjà en
+    /// l'air est en train de tomber, et le coller au premier sol à portée
+    /// interromprait sa chute d'une marche avant la fin.
+    ///
+    /// **Rend `None` quand il n'y a rien à moins d'une marche**, et c'est ce dont le
+    /// franchissement se sert pour se refuser : relever un corps qui redescend un
+    /// escalier le laissait en l'air d'une marche entière, hors de portée de ce
+    /// collage — un franchissement qui ne repose pas n'en est pas un.
+    fn settle(&self, map: &World, from: Vec3) -> Option<Vec3> {
+        // **Une marche et deux marges** : une pour le contact que le balayage laisse,
+        // une pour l'écart que la glissade ajoute en repartant du plan. Avec une
+        // seule, la sonde s'arrêtait un demi-millième au-dessus du giron inférieur et
+        // le corps quittait le sol au bord de la première marche — mesuré.
+        let down = Vec3::new(from.x, from.y, from.z - (RISE + 2.0 * sweep_skin(HALF)));
+
+        match map.sweep(self.cell, HALF, from, down) {
+            Some(hit) if !hit.start_solid && hit.fraction < 1.0 && walkable(hit.normal) => {
+                Some(from + (down - from) * hit.fraction)
+            }
+            _ => None,
+        }
+    }
+
+    /// Tente de franchir ce qui vient d'arrêter le pas, en montant d'une marche.
+    ///
+    /// **Trois balayages, et c'est la forme qui décide** : on monte de [`RISE`], on
+    /// rejoue le pas horizontal depuis là, puis on redescend d'autant. Rien n'y
+    /// suppose la forme de l'obstacle — ni sa hauteur, ni qu'il soit une marche —, et
+    /// la descente finale repose le corps sur le giron au lieu de le laisser flotter,
+    /// ce qui ferait monter un escalier en sautillant.
+    ///
+    /// **Le pas rejoué est horizontal**, la chute de cette image ayant déjà servi :
+    /// la rejouer ferait descendre ce qu'on vient de relever.
+    ///
+    /// **Et le gain se mesure plutôt que de se supposer** : le relèvement n'est
+    /// adopté que s'il avance davantage, le long du pas demandé, que l'arrêt qu'il
+    /// remplace. C'est ce qui fait qu'un mur reste un mur — on y monte, on n'y
+    /// avance pas, et l'arrêt est gardé.
+    ///
+    /// **Le prix est trois balayages par image le long d'un mur**, et c'est assumé :
+    /// l'alternative serait de n'essayer qu'au-delà d'une fraction de pas perdue,
+    /// c'est-à-dire un seuil choisi à la main pour décider ce qu'une marche est.
+    fn climb(&self, map: &World, step: Vec3, instead: Vec3) -> Option<Vec3> {
+        // **Une marche et la marge du balayage, pas une marche tout juste** : relevé
+        // de `RISE` exactement, le bas du corps arrive au niveau du giron, que le
+        // contact arrête aussitôt — mesuré, l'escalier ne montait pas d'un pouce. Ce
+        // que cela tolère de plus est la marge elle-même, soit un millième de la
+        // demi-étendue, donc rien qu'on puisse franchir d'autre.
+        let lift = Vec3::new(0.0, 0.0, RISE + sweep_skin(HALF));
+        let up = self.slide(map, self.centre, self.centre + lift);
+        let over = self.slide(map, up.at, up.at + step);
+        let down = self.slide(map, over.at, over.at - lift);
+
+        let gained = (down.at - self.centre).dot(step);
+
+        (gained > (instead - self.centre).dot(step)).then_some(down.at)
     }
 
     /// Où l'œil se trouve, pose de la caméra.

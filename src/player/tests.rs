@@ -10,7 +10,7 @@
 //! Chacune a été vérifiée en la faisant échouer une fois, sur un code falsifié.
 
 use super::*;
-use crate::maze::grid::{Settings, Side};
+use crate::maze::grid::{Settings, Shape, Side};
 use screengine_play::{sweep_reach, sweep_skin};
 
 /// Un labyrinthe d'épreuve, par sa graine.
@@ -472,6 +472,11 @@ fn un_coude_ne_bloque_pas() {
 /// qui part en arrière alors qu'il pousse vers l'avant est ce qui se voit le plus
 /// vite à l'écran. Un déplacement de composante négative sur le pas demandé est
 /// donc un défaut, quelle que soit la géométrie rencontrée.
+///
+/// **À une demi-marge près, et c'est la marge elle-même** : la glissade repart hors
+/// de la bande de contact, donc un pas qui ne rencontre que le sol s'en écarte
+/// d'autant — relevé à `4,4e-4` sur un pas vertical, soit exactement cet écart. Ce
+/// que l'épreuve refuse est un recul, pas la marge qui rend le pas suivant possible.
 #[test]
 fn la_glissade_ne_fait_jamais_reculer() {
     let (grid, map) = maze(SEEDS[0]);
@@ -489,7 +494,7 @@ fn la_glissade_ne_fait_jamais_reculer() {
             let gone = player.centre - before;
 
             assert!(
-                gone.dot(aim) >= 0.0,
+                gone.dot(aim) >= -skin() * aim.dot(aim).sqrt(),
                 "en {at:?}, un pas vers {aim:?} a reculé de {gone:?}"
             );
         }
@@ -589,7 +594,7 @@ fn une_glissade_garde_sa_marge() {
         for bearing in bearings() {
             let player = Player::stand(&grid, &map, at);
             let wanted = player.centre + bearing * export::CELL;
-            let (_, planes) = player.slide(&map, wanted);
+            let planes = player.slide(&map, player.centre, wanted).planes;
 
             if planes > worst {
                 worst = planes;
@@ -838,6 +843,321 @@ fn une_station_au_sol_ne_charge_pas_la_chute() {
              chute descend de {dropped} contre {reference} pour un corps frais"
         );
     }
+}
+
+/// Une cage se gravit de bout en bout, qu'elle soit en marches ou en rampe.
+///
+/// **C'est le prédicat du lot, et il ne distingue pas les deux formes** : une volée
+/// se monte par le seuil de franchissement, une rampe par le critère de surface
+/// marchable, et l'épreuve n'a pas à savoir laquelle elle a tirée — ce qui est exigé
+/// est d'arriver à l'étage du dessus. Les deux formes sont présentes dans le même
+/// labyrinthe, donc les deux chemins sont exercés.
+///
+/// **On pousse vers le côté de la montée, pas vers une cote.** Marcher contre la
+/// pente est exactement ce que fait un joueur ; viser une altitude serait écrire le
+/// résultat dans l'épreuve.
+///
+/// **Le départ est la case d'accès et non celle de la cage**, et c'est une mesure :
+/// `ground` rend la cote du sol **au centre** d'une case, donc une rampe y est déjà
+/// à mi-hauteur et une volée au milieu de ses marches. Partir de là tronquerait la
+/// montée de la moitié — relevé à 1,41 sur une rampe avant correction.
+#[test]
+fn une_cage_se_gravit_de_bout_en_bout() {
+    /// Ce qu'une image parcourt, en unités de monde.
+    const STEP: f32 = 0.05;
+    /// Combien d'images la montée a pour se faire.
+    ///
+    /// Trois cents, soit cinq secondes : une volée fait quatorze marches et la
+    /// largeur d'une case, donc le compte est large — ce qui est cherché est un
+    /// blocage, pas une cadence.
+    const FRAMES: usize = 300;
+
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+
+        let mut seen = 0;
+
+        for stair in grid.stairs() {
+            // La case d'où l'on entre dans la cage : en amont de la montée, plate, et
+            // ouverte de ce côté.
+            let Some(access) = grid.neighbour(stair.foot, stair.climb.facing()) else {
+                continue;
+            };
+            if !plain(&grid, access) || grid.has_wall(access, stair.climb) {
+                continue;
+            }
+            seen += 1;
+
+            // En ligne, puis **en biais vers chacune des deux tangentes** : c'est le
+            // régime réel, personne ne garde un cap parfait dans une cage, et c'est
+            // le cas de biais qui a trouvé une rampe bloquée alors que la montée en
+            // ligne passait.
+            for aim in [None, Some(0), Some(1)] {
+                let mut player = Player::stand(&grid, &map, access);
+                let from = player.centre;
+                let line = unit(stair.climb) * STEP;
+                let push = match aim.map(|which| across(stair.climb)[which]) {
+                    // Normalisé, pour qu'un pas de biais parcoure la même distance
+                    // qu'un pas en ligne : sinon il avance de moitié en plus et
+                    // l'épreuve mesurerait la cadence au lieu du chemin.
+                    Some(tangent) => {
+                        (unit(stair.climb) + unit(tangent))
+                            * (STEP * std::f32::consts::FRAC_1_SQRT_2)
+                    }
+                    None => line,
+                };
+
+                // On entre toujours droit : viser de biais dès le palier éloigne de
+                // l'entrée au lieu de l'emprunter.
+                for _ in 0..FRAMES / 5 {
+                    player.advance(&map, line, DT);
+                }
+                for _ in 0..FRAMES {
+                    player.advance(&map, push, DT);
+                }
+
+                // Une marche de tolérance sur la hauteur d'étage : ce qui est cherché
+                // est d'avoir gravi la volée, pas de s'être arrêté pile au palier.
+                let climbed = player.centre.z - from.z;
+                assert!(
+                    climbed >= export::LEVEL - export::RISE,
+                    "graine {seed:#x} : la cage {:?} de {:?} prise {} n'a monté que \
+                     de {climbed}, partie de {from:?} et arrivée en {:?}",
+                    stair.shape,
+                    stair.foot,
+                    match aim {
+                        Some(which) => format!("de biais vers {:?}", across(stair.climb)[which]),
+                        None => "en ligne".to_owned(),
+                    },
+                    player.centre
+                );
+            }
+        }
+
+        assert!(
+            seen > 0,
+            "graine {seed:#x} : aucune cage accessible éprouvée"
+        );
+    }
+}
+
+/// Un mur reste infranchissable, et le relèvement n'y change rien.
+///
+/// **C'est la non-régression du franchissement**, et elle est indispensable : la
+/// politique monte d'une marche puis rejoue le pas, donc un relèvement adopté sans
+/// mesure du gain ferait escalader les murs d'un quart de mètre à chaque image. Ce
+/// qui est exigé est l'arrêt — la cote ne monte pas et le corps ne passe pas.
+#[test]
+fn un_mur_ne_s_escalade_pas() {
+    /// Ce qu'une image parcourt, en unités de monde.
+    const STEP: f32 = 0.05;
+    /// Combien d'images on pousse contre le mur.
+    const FRAMES: usize = 120;
+
+    let (grid, map) = maze(SEEDS[0]);
+    let mut seen = 0;
+
+    for at in cases(&grid) {
+        if !plain(&grid, at) {
+            continue;
+        }
+        for side in sides() {
+            if !grid.has_wall(at, side) {
+                continue;
+            }
+
+            let mut player = Player::stand(&grid, &map, at);
+            let from = player.centre;
+            let push = unit(side) * STEP;
+            for _ in 0..FRAMES {
+                player.advance(&map, push, DT);
+            }
+            seen += 1;
+
+            assert!(
+                player.centre.z - from.z <= skin(),
+                "contre le mur {side:?} de {at:?}, le corps a monté de {}",
+                player.centre.z - from.z
+            );
+            assert!(
+                (player.centre - from).dot(unit(side)) <= export::INNER / 2.0,
+                "contre le mur {side:?} de {at:?}, le corps a avancé de {} \
+                 et se trouve en {:?}",
+                (player.centre - from).dot(unit(side)),
+                player.centre
+            );
+        }
+    }
+
+    assert!(seen > 0, "aucun mur éprouvé");
+}
+
+/// Une cage se descend sans jamais quitter le sol.
+///
+/// **C'est l'épreuve du collage au sol, et elle mesure le régime et non l'arrivée** :
+/// descendre finit toujours par arriver en bas, en marchant comme en tombant. Ce qui
+/// sépare les deux est le **contact à chaque image** — un corps qui descend en chute
+/// libre est en l'air la plupart du temps, et c'est ce qui se voyait à l'écran.
+///
+/// Le chiffre qui l'explique : un pas de cinq centièmes fait perdre au sol cinquante-
+/// huit millièmes sur une rampe, et un quart de mètre au bord d'un giron. Les deux
+/// dépassent la tolérance de contact, donc sans collage la pesanteur reprend à chaque
+/// pas.
+#[test]
+fn une_cage_se_descend_sans_quitter_le_sol() {
+    /// Ce qu'une image parcourt, en unités de monde.
+    const STEP: f32 = 0.05;
+    /// Combien d'images la descente a pour se faire.
+    const FRAMES: usize = 300;
+
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+        let mut seen = 0;
+
+        for stair in grid.stairs() {
+            // Le palier d'en haut : la case où la montée débouche, au-delà de la tête
+            // de la cage.
+            let Some(top) = grid.neighbour(stair.head(), stair.climb) else {
+                continue;
+            };
+            if !plain(&grid, top) || grid.has_wall(top, stair.climb.facing()) {
+                continue;
+            }
+            seen += 1;
+
+            let mut player = Player::stand(&grid, &map, top);
+            let from = player.centre;
+            let push = unit(stair.climb.facing()) * STEP;
+
+            for frame in 0..FRAMES {
+                player.advance(&map, push, DT);
+                assert!(
+                    player.grounded(&map),
+                    "graine {seed:#x} : en descendant la cage {:?} de {:?}, le corps \
+                     a quitté le sol à l'image {frame}, en {:?}",
+                    stair.shape,
+                    stair.foot,
+                    player.centre
+                );
+            }
+
+            let descended = from.z - player.centre.z;
+            assert!(
+                descended >= export::LEVEL - export::RISE,
+                "graine {seed:#x} : la cage {:?} de {:?} n'a descendu que de \
+                 {descended} en {FRAMES} images",
+                stair.shape,
+                stair.foot
+            );
+        }
+
+        assert!(
+            seen > 0,
+            "graine {seed:#x} : aucune cage descendable éprouvée"
+        );
+    }
+}
+
+/// Un corps posé sur une pente n'y glisse pas tout seul.
+///
+/// **C'est l'épreuve qui paie le critère de surface marchable**, et elle a été
+/// écrite parce que rien ne le payait : durci jusqu'à refuser une rampe, le critère
+/// laissait toutes les autres épreuves vertes, **y compris la montée** — le
+/// franchissement gravit une pente par relèvements successifs, comme une suite de
+/// marches, donc il masque entièrement le critère.
+///
+/// Ce que le critère décide n'est donc pas la montée mais le **repos** : refusée, la
+/// pente n'est plus un sol, la pesanteur s'applique en permanence et la glissade
+/// convertit chaque image en descente le long du plan. On monterait pour redescendre
+/// dès qu'on s'arrête.
+#[test]
+fn un_corps_sur_une_pente_ne_glisse_pas() {
+    /// Combien d'images le corps reste sans qu'on lui demande rien.
+    const FRAMES: usize = 300;
+
+    let still = Vec3::new(0.0, 0.0, 0.0);
+
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+        let mut seen = 0;
+
+        for stair in grid.stairs() {
+            if stair.shape != Shape::Ramp {
+                continue;
+            }
+            seen += 1;
+
+            let mut player = Player::stand(&grid, &map, stair.foot);
+            let start = player.centre.z;
+            for _ in 0..FRAMES {
+                player.advance(&map, still, DT);
+            }
+
+            assert!(
+                player.centre.z >= start - skin(),
+                "graine {seed:#x} : posé sur la rampe de {:?} à {start}, le corps a \
+                 glissé jusqu'à {} en {FRAMES} images",
+                stair.foot,
+                player.centre.z
+            );
+        }
+
+        assert!(seen > 0, "graine {seed:#x} : aucune rampe éprouvée");
+    }
+}
+
+/// Le relèvement refuse un mur plein, et c'est lui qui le dit.
+///
+/// **Elle existe parce que rien d'autre ne paie la mesure du gain.** Adopter le
+/// chemin relevé sans le comparer laisse toutes les autres épreuves vertes : contre
+/// un mur, la descente finale ramène le corps au sol, donc le relèvement **égale**
+/// l'arrêt au lieu de l'empirer. Ce que la comparaison refuse ne se voit donc qu'ici,
+/// à l'appel.
+///
+/// **Et ce qu'elle garde n'est pas une précaution de style** : rien ne prouve qu'un
+/// chemin relevé avance autant qu'un chemin au sol — une saillie à hauteur de marche
+/// suffirait à le raccourcir —, là où le garde contre un recul de glissade avait pu
+/// être retiré sur preuve. Ici il n'y a pas de preuve, seulement un décor qui ne
+/// produit pas le cas.
+#[test]
+fn le_relevement_refuse_un_mur_plein() {
+    /// Ce qu'une image parcourt, en unités de monde.
+    const STEP: f32 = 0.05;
+
+    let (grid, map) = maze(SEEDS[0]);
+    let mut seen = 0;
+
+    for at in cases(&grid) {
+        if !plain(&grid, at) {
+            continue;
+        }
+        for side in sides() {
+            if !grid.has_wall(at, side) {
+                continue;
+            }
+
+            // Collé au mur : c'est l'état d'où le franchissement est tenté.
+            let mut player = Player::stand(&grid, &map, at);
+            let push = unit(side) * STEP;
+            for _ in 0..40 {
+                player.advance(&map, push, DT);
+            }
+
+            let stopped = player.slide(&map, player.centre, player.centre + push);
+            assert!(
+                stopped.stopped,
+                "contre le mur {side:?} de {at:?}, le pas n'est pas arrêté par du \
+                 non-marchable"
+            );
+            assert!(
+                player.climb(&map, push, stopped.at).is_none(),
+                "contre le mur {side:?} de {at:?}, le relèvement a été adopté"
+            );
+            seen += 1;
+        }
+    }
+
+    assert!(seen > 0, "aucun mur éprouvé");
 }
 
 /// Le décor joué tient là où la boîte du joueur garde son jeu de collision.
