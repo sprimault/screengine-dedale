@@ -144,7 +144,12 @@ fn main() -> Result<(), Error> {
             // est la plus proche de l'œil, donc la profondeur la laisserait gagner
             // de toute façon, mais la soumettre en dernier évite qu'un décor très
             // proche la rejette à égalité.
-            let _ = weapon::submit(context, session.game.weapon(), &view.camera);
+            //
+            // Son refus se relève comme celui du décor : il vient de la même
+            // capacité, et une arme qui disparaît de la main est un symptôme qu'on
+            // chercherait longtemps sans la ligne qui le dit.
+            let hand = weapon::submit(context, session.game.weapon(), &view.camera);
+            session.probe.weapon(hand.is_err(), &session.game.aim());
         },
         overview,
     )
@@ -165,13 +170,13 @@ const GAP: u32 = 10;
 /// si l'image est noire ; les pixels du plan compteraient sinon comme des pixels
 /// peints par la soumission.
 fn overview(session: &mut Session, output: &mut Output<'_>) {
-    // Un échantillon du tampon dit si l'image est noire, ce qu'aucune valeur
-    // rendue par la soumission ne dit. Le relevé compte aussi les images
-    // présentées, pour les comparer aux rendues : un écart dirait qu'un tampon a
-    // été montré sans que la scène y soit.
+    // Un échantillon du tampon dit si l'image est amputée, ce qu'aucune valeur
+    // rendue par la soumission ne dit. La couleur du fond vient de la scène, qui
+    // seule sait ce qu'un pixel non peint porte.
     let aim = session.game.aim();
-    session.probe.look(output, &session.scenery.map, &aim);
-    session.probe.present(&aim);
+    session
+        .probe
+        .look(output, &session.scenery.map, &aim, scene::BACKGROUND);
 
     plot(output, &session.scenery.maze, aim.cell);
 }
