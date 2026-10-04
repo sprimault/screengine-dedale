@@ -66,11 +66,11 @@ Left click grabs the cursor, middle click releases it, `Esc` quits.
 |---|---|
 | `W` `S`, or up and down arrows | move forward, back |
 | `A` `D`, or left and right arrows | turn in place |
-| mouse | aim the view, once the cursor is grabbed |
+| `Q` `E` | strafe |
+| mouse | aim the view, once the cursor is grabbed — never required |
 
 **You walk, you hug walls and you fall**: walls, floor and ceiling hold, an angled step
 follows the wall instead of sticking to it, and gravity brings you back down.
 
 **Upper floors are yours to walk**: a step is climbed without jumping, a ramp is walked
-up without sliding back, and a wall stays a wall. Strafing is still missing — the side
-keys turn you instead.
+up without sliding back, and a wall stays a wall.

@@ -69,11 +69,11 @@ Clic gauche prend le curseur, clic du milieu le rend, `Échap` quitte.
 |---|---|
 | `Z` `S`, ou flèches haut et bas | avancer, reculer |
 | `Q` `D`, ou flèches gauche et droite | pivoter sur place |
-| souris | orienter la vue, le curseur pris |
+| `A` `E` | pas de côté |
+| souris | orienter la vue, le curseur pris — jamais nécessaire |
 
 **On marche, on longe et on tombe** : les murs, le sol et le plafond retiennent, un pas
 de biais suit la paroi au lieu de s'y coller, et la pesanteur ramène au sol.
 
 **Les étages se parcourent** : une marche se monte sans sauter, une rampe se gravit
-sans se redescendre, et un mur reste un mur. Il manque encore le pas de côté — les
-touches latérales font pivoter.
+sans se redescendre, et un mur reste un mur.
