@@ -158,13 +158,11 @@ impl Weapon {
 
     /// Avance le balancement de ce qui a été parcouru, et suit le lacet.
     ///
-    /// **La distance arrive mesurée, elle ne se déduit pas des touches** : le
-    /// déplacement sera bientôt freiné par le décor, et c'est ce qui a vraiment
-    /// été parcouru qui fait marcher.
+    /// **La distance arrive mesurée, elle ne se déduit pas des touches** : le décor
+    /// freine le déplacement, et c'est ce qui a vraiment été parcouru qui fait
+    /// marcher.
     pub fn advance(&mut self, travel: f32, yaw: f32, dt: f32) {
-        if travel > 0.0 {
-            self.stride += travel / STRIDE;
-        }
+        self.stride += travel / STRIDE;
         self.drag += (yaw - self.last_yaw - self.drag) * RECOIL;
         self.last_yaw = yaw;
 

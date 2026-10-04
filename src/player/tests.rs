@@ -760,6 +760,88 @@ fn une_chute_s_arrete_sur_le_sol() {
     }
 }
 
+/// Une chute courte tombe, elle ne colle pas au sol.
+///
+/// **C'est la garde du collage qui est en jeu** : le corps n'est reposé sur son sol
+/// qu'au terme d'un pas **parti du contact**. Sans elle, le collage s'appliquerait
+/// aussi en l'air, et un corps lâché à moins d'une marche du sol y serait porté d'un
+/// coup — une chute courte cesserait d'être une chute.
+///
+/// Le lâcher se choisit entre les deux cotes qui décident : plus haut que la sonde de
+/// contact, pour que le corps parte bien en l'air, et plus bas que la portée du
+/// collage, sans quoi rien ne pourrait l'attirer et l'épreuve passerait à vide.
+#[test]
+fn une_chute_courte_n_est_pas_un_collage() {
+    /// Le lâcher, en unités de monde.
+    const LIFT: f32 = RISE * 0.8;
+
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+        let mut seen = 0;
+
+        for at in cases(&grid) {
+            if !plain(&grid, at) {
+                continue;
+            }
+            let mut player = aloft(&grid, at, LIFT);
+            if player.grounded(&map) {
+                continue;
+            }
+            seen += 1;
+
+            let from = player.centre;
+            player.advance(&map, Vec3::new(0.0, 0.0, 0.0), DT);
+
+            assert!(
+                !player.grounded(&map),
+                "graine {seed:#x} : lâché en {from:?} au-dessus de {at:?}, le corps \
+                 repose déjà en {:?} après une seule image",
+                player.centre
+            );
+            assert!(
+                player.centre.z < from.z,
+                "graine {seed:#x} : lâché en {from:?}, le corps n'est pas tombé"
+            );
+        }
+
+        assert!(seen > 0, "graine {seed:#x} : aucun lâcher éprouvé");
+    }
+}
+
+/// Le critère de sol suit la plus forte pente du décor.
+///
+/// **Ce qu'il garde est l'accord entre deux endroits**, et c'est tout son objet : le
+/// seuil se dérive de `SLOPE`, que l'export publie comme la plus raide qu'il
+/// produise. Une pente qui s'ajouterait au décor sans que le critère suive se verrait
+/// ici, et nulle part ailleurs — aucune carte engendrée ne porte par construction de
+/// surface qui le dépasse, donc aucune épreuve de déplacement ne peut l'atteindre.
+///
+/// **Le seuil s'encadre plutôt qu'il ne s'égale** : à la pente exacte, le produit
+/// vaut un aux arrondis près, et une épreuve posée sur cette égalité dirait le hasard
+/// de l'arrondi plutôt que le critère.
+#[test]
+fn le_critere_de_sol_suit_la_pente_du_decor() {
+    /// La normale, dirigée vers le haut, d'un plan montant de `slope` par unité.
+    fn facing(slope: f32) -> Vec3 {
+        let length = (1.0 + slope * slope).sqrt();
+        Vec3::new(-slope / length, 0.0, 1.0 / length)
+    }
+
+    assert!(walkable(facing(0.0)), "un sol plat se marche");
+    assert!(
+        walkable(facing(SLOPE * 0.99)),
+        "la plus forte pente du décor se marche"
+    );
+    assert!(
+        !walkable(facing(SLOPE * 1.01)),
+        "une pente plus raide que le décor ne se marche pas"
+    );
+    assert!(
+        !walkable(Vec3::new(0.0, 0.0, -1.0)),
+        "une dalle vue par dessous ne se marche pas"
+    );
+}
+
 /// Un corps posé reste posé, et sa cote ne dérive pas.
 ///
 /// **C'est le prédicat que la pesanteur met en danger**, et il manquerait à
