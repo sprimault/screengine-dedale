@@ -11,7 +11,7 @@
 
 use super::*;
 use crate::maze::grid::{Settings, Side};
-use screengine_play::sweep_skin;
+use screengine_play::{sweep_reach, sweep_skin};
 
 /// Un labyrinthe d'épreuve, par sa graine.
 ///
@@ -593,5 +593,36 @@ fn une_glissade_garde_sa_marge() {
     assert!(
         worst < SLIDES,
         "une glissade a consommé les {SLIDES} plans de la borne, en {whence:?}"
+    );
+}
+
+/// Le décor joué tient là où la boîte du joueur garde son jeu de collision.
+///
+/// **Une épreuve de dimensionnement, et elle est verte d'avance** : le balayage
+/// laisse à la boîte un jeu qui se perd avec l'éloignement de l'origine, et une
+/// grille de seize cases est à deux ordres de grandeur en dessous. Ce qu'elle garde
+/// est donc l'avenir — une grille plus large, ou une boîte plus petite qu'on
+/// balaierait —, et c'est pourquoi elle part du réglage **joué** et non de celui des
+/// épreuves : c'est lui qu'on agrandit.
+///
+/// **La distance s'appelle et ne se recopie pas**, comme la marge : elle dérive
+/// d'une constante qui ne fait pas partie du contrat, et un seuil recopié se
+/// tromperait sur exactement les boîtes où il décide.
+#[test]
+fn le_decor_joue_garde_le_jeu_de_la_boite() {
+    let (width, height, levels) = crate::MAZE.extent;
+
+    // L'export pose la grille depuis l'origine, donc la plus grande coordonnée du
+    // décor est celle du coin opposé — en hauteur, le plafond du dernier étage.
+    let far = (width as f32 * export::CELL)
+        .max(height as f32 * export::CELL)
+        .max((levels - 1) as f32 * export::LEVEL + export::CEILING);
+
+    // Strictement : à cette distance le jeu est déjà perdu, c'est le seuil et non
+    // la dernière cote sûre.
+    assert!(
+        far < sweep_reach(HALF),
+        "le décor va jusqu'à {far}, et la boîte du joueur perd son jeu à {}",
+        sweep_reach(HALF)
     );
 }
