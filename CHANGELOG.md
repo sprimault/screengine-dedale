@@ -1,7 +1,9 @@
 # Journal des versions
 
 La section en cours s'écrit `## [Non publié]`, sans date ni titre, et chaque lot y
-ajoute ce qu'il change. **Elle prend son numéro et sa date au moment du tag.**
+ajoute ce qu'il change. **Elle prend son numéro et sa date au moment du tag**, et une
+nouvelle section vide s'ouvre aussitôt au-dessus : le lot suivant trouve où écrire
+sans avoir à y penser.
 
 Chaque section est **bilingue, français d'abord, séparé par `***`**.
 
@@ -12,46 +14,37 @@ cela s'adresse à quelqu'un.
 
 ## [Non publié]
 
+## [0.2.0] — 2026-10-04 — On marche dans le labyrinthe
+
 ### Ajouté
+- **On marche** : le décor arrête, on longe les murs, on monte les marches et les
+  rampes, et la pesanteur ramène au sol. Un pas de côté sur `A` et `E`.
 - **L'arme en main**, qui balance au rythme des pas et penche dans les virages. Le
   clic droit la fait tirer — la pose seule, pour l'instant.
+
+### Modifié
+- **Les étages sont plus hauts** d'un demi-mètre : un couloir large de trois mètres
+  sous deux et demi paraissait écrasé.
 
 ### Corrigé
 - **L'image ne se vide plus en franchissant une porte.** De près, le décor au-delà
   d'une embrasure disparaissait le temps d'une ou deux images.
 
-### Modifié
-- **Le décor arrête, et on glisse le long de ce qui arrête** : un pas de biais longe
-  le mur au lieu de s'y coller, et une paroi se longe d'un bout à l'autre.
-- **Les étages sont plus hauts** d'un demi-mètre : un couloir large de trois mètres
-  sous deux et demi paraissait écrasé. Les escaliers et les rampes y sont un peu
-  plus raides.
-- **On marche au lieu de voler** : la pesanteur remplace les deux touches qui
-  faisaient monter et descendre, les marches se montent sans sauter et les rampes
-  se gravissent sans redescendre.
-- **On avance à la vitesse de quelqu'un qui marche**, et non plus à celle d'une
-  caméra d'inspection. Un pas de côté s'ajoute sur `A` et `E`, le pivot ne bouge pas.
-
 ***
 
 ### Added
+- **You walk**: the map stops you, you hug walls, you climb steps and ramps, and
+  gravity brings you back down. Strafing on `Q` and `E`.
 - **The weapon in hand**, swaying with your stride and leaning into turns. Right
   click fires it — the pose alone, for now.
+
+### Changed
+- **Floors are half a metre taller**: a corridor three metres wide under two and a
+  half looked squashed.
 
 ### Fixed
 - **The view no longer empties as you step through a doorway.** Up close, the
   scenery beyond it vanished for a frame or two.
-
-### Changed
-- **The map stops you, and you slide along what stops you**: an angled step follows
-  the wall instead of sticking to it, and a wall can be hugged end to end.
-- **Floors are half a metre taller**: a corridor three metres wide under two and a
-  half looked squashed. Stairs and ramps are a little steeper for it.
-- **You walk instead of flying**: gravity replaces the two keys that made you rise
-  and descend, steps are climbed without jumping, and ramps are walked up without
-  sliding back.
-- **You move at walking pace**, no longer at an inspection camera's. Strafing is
-  added on `Q` and `E`, and turning stays where it was.
 
 ## [0.1.1] — 2026-10-03 — Des rampes dans les cages
 
