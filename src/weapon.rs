@@ -3,12 +3,12 @@
 
 //! L'arme en main : un sprite du monde posé devant l'œil.
 //!
-//! **Ni un quadrilatère plein cadre, ni un dessin sur le tampon fini** — voir
-//! `DECISIONS.md`, `D2`. C'est un objet du monde, orienté caméra, soumis comme un
-//! autre : il reçoit donc le brouillard, les lumières et la courbe de sortie
-//! comme le reste du décor, là où des mains composées sur l'image finie
-//! resteraient à pleine lumière dans un couloir sombre. Le moteur n'y gagne
-//! aucune notion de jeu : il voit un quadrilatère.
+//! **Ni un quadrilatère plein cadre, ni un dessin sur le tampon fini.** C'est un
+//! objet du monde, orienté caméra, soumis comme un autre : il reçoit donc le
+//! brouillard, les lumières et la courbe de sortie comme le reste du décor, là où
+//! des mains composées sur l'image finie resteraient à pleine lumière dans un
+//! couloir sombre. Le moteur n'y gagne aucune notion de jeu : il voit un
+//! quadrilatère.
 //!
 //! **Elle est un état de partie**, jetée au rechargement de la carte. Sa phase de
 //! balancement avance avec la distance **réellement parcourue**, pas avec le

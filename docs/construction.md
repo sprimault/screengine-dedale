@@ -104,8 +104,8 @@ d'être de ce dépôt — et rien de ce qui vit à côté ne doit pouvoir le fai
 `sprites/`, `textures/`, `skies/`, `sounds/`, `music/`, `fonts/`. Elles sont
 versionnées : le jeu ne tourne pas sans elles.
 
-La chaîne qui les produit vit dans `fabrique/`, **hors dépôt** : des modèles, du
-rendu hors écran et de l'outillage, dont le dépôt n'a besoin que des sorties.
+La chaîne qui les produit vit **hors du dépôt** : des modèles, du rendu hors écran et
+de l'outillage, dont le dépôt n'a besoin que des sorties.
 
 `.gitattributes` déclare les formats binaires plutôt que de s'en remettre à
 l'heuristique de `text=auto` : une planche convertie en fins de ligne ne se voit
