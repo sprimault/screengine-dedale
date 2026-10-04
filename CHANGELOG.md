@@ -14,6 +14,26 @@ cela s'adresse à quelqu'un.
 
 ## [Non publié]
 
+## [0.2.1] — 2026-10-05 — Le plan juste et les planches signées
+
+### Modifié
+- **Chaque planche porte son auteur et sa licence**, relus dans le fichier
+  d'image lui-même.
+
+### Corrigé
+- **Le repère d'une rampe pointait du mauvais côté** sur le plan affiché au coin
+  de l'écran : il montrait le pied de la pente au lieu de sa montée.
+
+***
+
+### Changed
+- **Every sheet carries its author and licence**, read back from the image file
+  itself.
+
+### Fixed
+- **A ramp's marker pointed the wrong way** on the map in the corner of the
+  screen: it showed the foot of the slope instead of the way up.
+
 ## [0.2.0] — 2026-10-04 — On marche dans le labyrinthe
 
 ### Ajouté
