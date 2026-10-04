@@ -39,6 +39,18 @@ const WALL: &[u8] = include_bytes!("../assets/textures/mur-42.png");
 /// justifiera à l'étape 8, quand il y aura une image à lui donner.
 const FLOOR: &[u8] = include_bytes!("../assets/textures/sol-pave.png");
 
+/// Ce qu'un pixel porte quand aucun triangle ne l'a peint.
+///
+/// **Ce n'est pas un réglage mais une conséquence**, et le contrat du moteur la
+/// nomme : un pixel qu'aucun triangle n'a peint est infiniment lointain, donc il
+/// prend la couleur du brouillard de lui-même. Aucun n'étant réglé, le fond est
+/// noir — et il cessera de l'être à l'étape 8, qui en règlera un.
+///
+/// **Publiée pour le relevé**, qui compte les points peints d'une image et a besoin
+/// de savoir à quoi ressemble le vide. Un relevé qui supposerait le noir deviendrait
+/// muet le jour où un brouillard arrive, sans rien dire.
+pub const BACKGROUND: [u8; 3] = [0x00, 0x00, 0x00];
+
 /// L'état du monde : la carte chargée, et ce qu'il faut pour la dessiner.
 ///
 /// **Rien de la partie n'entre ici** — ni vie, ni score, ni pose de caméra. Le

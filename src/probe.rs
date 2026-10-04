@@ -28,6 +28,45 @@ mod tests;
 /// Où le relevé s'écrit.
 const LOG: &str = ".tmp/visibilite.log";
 
+/// La proportion de points d'une image qui diffèrent du fond, en pourcentage.
+///
+/// **Ce qui diffère du fond a été peint, et le fond n'est pas forcément noir** : le
+/// contrat du moteur dit qu'un pixel qu'aucun triangle n'a peint est infiniment
+/// lointain, donc qu'il prend la couleur du brouillard de lui-même. Comparer au noir
+/// rendrait ce relevé muet dès qu'un brouillard serait réglé — et muet sans rien
+/// dire, ce qui est le pire état d'un instrument.
+///
+/// **Une grille de points, pas tous les pixels** : un rendu logiciel coûte déjà
+/// cher, et deux cent cinquante-six sondes suffisent — une image de décor n'a pas de
+/// raison de tomber sur le fond partout sauf en ces points-là.
+///
+/// **La proportion, et non le tout ou rien** : une image coupée en deux par une
+/// verticale est aussi anormale qu'une image vide, et bien plus probable — un sprite
+/// dessiné au-delà de la coupure suffit à ce qu'un seuil « entièrement noir » ne la
+/// voie jamais.
+///
+/// Séparée du relevé pour être éprouvée : celui-ci ouvre un fichier et localise une
+/// cellule, là où ce compte n'est qu'une fonction du tampon.
+fn painted(output: &mut Output<'_>, background: [u8; 3]) -> u32 {
+    /// Les sondes par axe.
+    const GRID: u32 = 16;
+
+    let (width, height) = (output.width(), output.height());
+    let mut lit = 0;
+    for row in 0..GRID {
+        for column in 0..GRID {
+            let x = column * width / GRID;
+            let y = row * height / GRID;
+            if let Some(pixel) = output.pixel(x, y) {
+                if pixel[..3] != background {
+                    lit += 1;
+                }
+            }
+        }
+    }
+    lit * 100 / (GRID * GRID)
+}
+
 /// La pose que le relevé situe, et de quoi la rejouer.
 ///
 /// **Sans l'orientation, un épisode n'est pas reproductible** : on sait qu'une
@@ -128,13 +167,8 @@ pub struct Probe {
     frame: u64,
     /// Vrai si la dernière image échantillonnée était noire.
     dark: bool,
-    /// Combien de fois le rappel de sortie a été appelé.
-    ///
-    /// **Comparé au compte des rendus, il dit si une image a été présentée sans
-    /// avoir été dessinée** : les deux rappels se suivent par construction, donc
-    /// un écart est la signature d'un tampon montré tel quel — noir, avec le seul
-    /// plan de contrôle par-dessus.
-    shown: u64,
+    /// Vrai si la dernière soumission de l'arme a été refusée.
+    handless: bool,
 }
 
 impl Probe {
@@ -160,7 +194,7 @@ impl Probe {
             runs: 0,
             frame: 0,
             dark: false,
-            shown: 0,
+            handless: false,
         }
     }
 
@@ -176,14 +210,11 @@ impl Probe {
     /// n'a pas de raison d'être noire partout sauf en ces points-là. Le plan de
     /// contrôle n'est pas encore dessiné quand on mesure, donc il ne compte pas
     /// comme un pixel peint.
-    pub fn look(&mut self, output: &mut Output<'_>, map: &World, aim: &Aim) {
-        /// Les sondes par axe.
-        const GRID: u32 = 16;
-
+    pub fn look(&mut self, output: &mut Output<'_>, map: &World, aim: &Aim, background: [u8; 3]) {
         /// En deçà de ce pourcentage de points peints, l'image est amputée.
         ///
         /// **Quatre-vingt-dix et non cent** : une image de couloir laisse
-        /// légitimement quelques sondes sur du noir — un angle sombre, une
+        /// légitimement quelques sondes sur le fond — un angle sombre, une
         /// embrasure. Une coupure franche, elle, en emporte des dizaines.
         const THRESHOLD: u32 = 90;
 
@@ -192,25 +223,7 @@ impl Probe {
             return;
         }
 
-        let mut lit = 0;
-        for row in 0..GRID {
-            for column in 0..GRID {
-                let x = column * width / GRID;
-                let y = row * height / GRID;
-                if let Some(pixel) = output.pixel(x, y) {
-                    // Le fond est noir ; tout ce qui ne l'est pas a été peint.
-                    if pixel[0] | pixel[1] | pixel[2] != 0 {
-                        lit += 1;
-                    }
-                }
-            }
-        }
-
-        // **La proportion, et non le tout ou rien** : une image coupée en deux par
-        // une verticale est aussi anormale qu'une image noire, et bien plus
-        // probable — un sprite dessiné au-delà de la coupure suffit à ce qu'un
-        // seuil « entièrement noir » ne la voie jamais.
-        let painted = lit * 100 / (GRID * GRID);
+        let painted = painted(output, background);
         let dark = painted < THRESHOLD;
         if dark == self.dark {
             return;
@@ -240,27 +253,32 @@ impl Probe {
         );
     }
 
-    /// Note qu'une image vient d'être présentée, et signale un rendu manquant.
+    /// Note si la soumission de l'arme a été refusée, ou qu'elle ne l'est plus.
     ///
-    /// **Les deux rappels se suivent**, donc le compte des sorties doit rester égal
-    /// à celui des rendus. Un écart veut dire qu'une image a été montrée sans que
-    /// la scène ait été soumise : le tampon ne porte alors que le fond et ce que la
-    /// sortie y dessine, ce qui est exactement un scintillement noir où le plan de
-    /// contrôle reste visible.
-    pub fn present(&mut self, aim: &Aim) {
-        self.shown += 1;
-        if self.shown <= self.frame {
+    /// **Le refus du décor se relève, celui de l'arme se perdait.** Les deux
+    /// soumissions peuvent échouer pour la même raison — la capacité de triangles
+    /// —, et l'arme disparaîtrait alors de la main sans qu'aucune ligne ne le dise.
+    ///
+    /// Relevé au changement comme le reste : une capacité dépassée l'est pendant des
+    /// dizaines d'images, et une ligne par image noierait le relevé.
+    pub fn weapon(&mut self, refused: bool, aim: &Aim) {
+        if refused == self.handless {
             return;
         }
+        self.handless = refused;
 
-        let missed = self.shown - self.frame;
         let Some(file) = self.file.as_mut() else {
             return;
         };
         let _ = writeln!(
             file,
-            "sortie {} : {missed} image(s) présentée(s) sans rendu — {aim}",
-            self.shown
+            "image {} : l'arme {} — {aim}",
+            self.frame,
+            if refused {
+                "est refusée"
+            } else {
+                "est revenue"
+            }
         );
     }
 
