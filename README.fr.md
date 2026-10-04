@@ -74,5 +74,6 @@ Clic gauche prend le curseur, clic du milieu le rend, `Échap` quitte.
 **On marche, on longe et on tombe** : les murs, le sol et le plafond retiennent, un pas
 de biais suit la paroi au lieu de s'y coller, et la pesanteur ramène au sol.
 
-**Les étages ne se visitent pas encore** : une volée de marches arrête et une rampe se
-redescend, parce que le seuil de franchissement manque. Il vient tout de suite après.
+**Les étages se parcourent** : une marche se monte sans sauter, une rampe se gravit
+sans se redescendre, et un mur reste un mur. Il manque encore le pas de côté — les
+touches latérales font pivoter.

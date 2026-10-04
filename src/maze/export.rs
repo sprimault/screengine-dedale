@@ -97,10 +97,11 @@ const STEPS: u32 = 14;
 
 /// La hauteur d'une marche.
 ///
-/// Elle vaut aussi le seuil que l'étape 2 donnera au déplacement : ce qu'on monte
-/// sans sauter se mesure ici, et nulle part ailleurs. **Elle n'a pas bougé quand
-/// l'étage a monté**, et c'est ce qui a décidé du nombre de marches.
-const RISE: f32 = LEVEL / STEPS as f32;
+/// **C'est aussi le seuil du déplacement** : ce qu'on monte sans sauter se mesure
+/// ici, et nulle part ailleurs — publiée pour cela, puisqu'un seuil recopié dans le
+/// joueur cesserait de suivre le décor au premier changement d'étage. **Elle n'a pas
+/// bougé quand l'étage a monté**, et c'est ce qui a décidé du nombre de marches.
+pub const RISE: f32 = LEVEL / STEPS as f32;
 
 /// Le palier au pied de la volée, entre le portail d'entrée et la première
 /// contremarche.
@@ -122,8 +123,13 @@ const TREAD: f32 = (INNER - LANDING) / STEPS as f32;
 /// Ce que le sol peut monter par unité parcourue à l'horizontale.
 ///
 /// **Le maximum des deux formes de cage**, et c'est l'escalier qui le donne :
-/// `RISE / TREAD`, soit `8/7`, contre `1` pour une rampe. Ailleurs le sol est
-/// plat.
+/// `RISE / TREAD`, soit `4/3`, contre `7/6` pour une rampe — qui monte l'étage sur
+/// le côté intérieur d'une case. Ailleurs le sol est plat.
+///
+/// **C'est la pente la plus raide que cet export produise**, donc ce dont un hôte
+/// dérive son critère de surface marchable : `1/√(1+SLOPE²)`, la composante
+/// verticale minimale d'une normale qu'il faut accepter. Ce que le décor porte est
+/// ainsi marchable par construction, et un décor plus raide le dirait.
 ///
 /// **C'est ce qu'il faut à qui pose un volume** : une empreinte de soixante
 /// centimètres dépasse le palier d'une cage, qui en fait trente-sept, et
