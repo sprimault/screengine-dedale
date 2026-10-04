@@ -67,9 +67,9 @@ Left click grabs the cursor, middle click releases it, `Esc` quits.
 | `W` `S`, or up and down arrows | move forward, back |
 | `A` `D`, or left and right arrows | turn in place |
 | mouse | aim the view, once the cursor is grabbed |
-| `Space` `C` | rise, descend |
 
-**The map stops you, but you do not walk yet**: walls, floor and ceiling hold, and
-altitude only changes with `Space` and `C`, so a staircase is climbed by rising while
-moving forward. Walking, gravity and sliding along a wall come next — for now you stop
-dead against a slanted wall.
+**You walk, you hug walls and you fall**: walls, floor and ceiling hold, an angled step
+follows the wall instead of sticking to it, and gravity brings you back down.
+
+**Upper floors are out of reach for now**: a flight of steps stops you and a ramp slides
+you back down, because the step threshold is missing. It comes next.
