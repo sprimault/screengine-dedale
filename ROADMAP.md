@@ -47,7 +47,7 @@ personne, cellule de la caméra suivie par les traversées de portails.
 **L'export est le vrai sujet**, pas la génération. Une cellule est un volume fermé
 dont le sens de parcours décide de la face vue, ses portails sont appariés au bit
 près des deux côtés, et le repère de lightmap a quatre contraintes :
-`../screengine/docs/cartes.md` les écrit, et rien ici ne les devine.
+`docs/cartes.md` de `screengine` les écrit, et rien ici ne les devine.
 
 **Une graine, et le même labyrinthe se rejoue.** C'est ce qui rend tout le reste
 reproductible — un monstre mal placé, un portail qui ne s'apparie pas, une

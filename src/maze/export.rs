@@ -1179,10 +1179,11 @@ fn mapping(u: [f32; 3], v: [f32; 3], out: &mut Vec<u8>) {
 
 /// Vérifie qu'aucune coordonnée dérivée ne dépasse ce que le chargement accepte.
 ///
-/// Cette borne n'est écrite nulle part dans la documentation des cartes, et le
-/// décor le plus riche du moteur est **pile dessus** : un mur d'une unité de plus
-/// y ferait refuser le fichier entier, sans que rien ne dise laquelle des
-/// surfaces est en cause.
+/// **Ce que ce contrôle ajoute n'est pas la borne, mais le nom de la surface.**
+/// `docs/cartes.md` de `screengine` plafonne les coordonnées de texture à 16384
+/// texels ; le refus, lui, porte sur le décor entier et ne dit pas laquelle des
+/// surfaces le dépasse. Le décor le plus riche du moteur est **pile dessus**, donc
+/// un mur d'une unité de plus suffirait à perdre le fichier sans rien nommer.
 fn check(id: u32, indices: &[u32], points: &[[f32; 3]], axis: [f32; 3]) {
     /// La plus grande coordonnée de texture que le chargement accepte.
     const LIMIT: f32 = 16_384.0;

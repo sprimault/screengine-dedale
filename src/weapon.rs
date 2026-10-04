@@ -14,12 +14,10 @@
 //! balancement avance avec la distance **réellement parcourue**, pas avec le
 //! temps.
 //!
-//! **Ce que cela donnera, et qu'on ne peut pas encore voir** : rien n'arrête
-//! aujourd'hui le déplacement — ni le filtrage, qui reste à écrire, ni le décor,
-//! dont les cellules de case ne retiennent rien. Quand l'un des deux sera là, le
-//! balancement s'arrêtera de lui-même contre un mur sans qu'une ligne change ici,
-//! et des mains qui continueraient dénonceraient un déplacement appliqué avant la
-//! collision.
+//! **Et c'est ce qui en fait un instrument de mesure.** Le décor filtre le
+//! déplacement, donc le balancement s'arrête de lui-même contre un mur sans qu'une
+//! ligne d'ici le sache : des mains qui continueraient dénonceraient un déplacement
+//! appliqué avant la collision.
 
 use std::sync::Arc;
 
