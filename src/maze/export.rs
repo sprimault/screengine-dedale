@@ -19,6 +19,8 @@
 //! et deux cellules superposées sans lien sont un cas que le moteur éprouve déjà.
 //! La cellule-escalier les reliera.
 
+use screengine_play::screengine::{MAX_TEXEL_COORD, MAX_TEXTURE_SIZE};
+
 use super::grid::{Grid, Shape, Side, Stair};
 
 #[cfg(test)]
@@ -80,6 +82,15 @@ const TEXELS: f32 = 128.0;
 /// d'un mur, trop grossier pour l'éclairage que l'étape 8 veut y poser. Le carré
 /// de l'axe vaut donc 16, qui est bien une puissance de deux.
 const LUXELS: f32 = 4.0;
+
+/// L'étendue maximale d'une surface dans son repère de lightmap, en luxels sur un
+/// côté.
+///
+/// **Recopiée faute d'être exposée**, là où `MAX_TEXEL_COORD` et `MAX_TEXTURE_SIZE`
+/// s'appellent : le moteur la garde privée, et sa documentation des cartes la donne
+/// — deux cent cinquante-six par côté. Elle est donc juste et vérifiable, mais c'est
+/// une valeur recopiée, et le constat qui demande son exposition est parti.
+const MAX_LUXELS: f32 = 256.0;
 
 /// Le côté intérieur d'une cellule de case, sur un axe horizontal.
 ///
@@ -1074,10 +1085,10 @@ fn surface(
     check(id, indices, points, scaled(across, TEXELS));
     planar(id, indices, points, along, across);
     for (axis, limit) in [
-        (scaled(along, TEXELS), 16_384.0),
-        (scaled(across, TEXELS), 16_384.0),
-        (scaled(along, LUXELS), 256.0),
-        (scaled(across, LUXELS), 256.0),
+        (scaled(along, TEXELS), MAX_TEXEL_COORD),
+        (scaled(across, TEXELS), MAX_TEXEL_COORD),
+        (scaled(along, LUXELS), MAX_LUXELS),
+        (scaled(across, LUXELS), MAX_LUXELS),
     ] {
         span(id, indices, points, axis, limit);
     }
@@ -1110,9 +1121,11 @@ fn span(id: u32, indices: &[u32], points: &[[f32; 3]], axis: [f32; 3], limit: f3
     // Le chargement replie les coordonnées de texture d'un multiple entier de la
     // plus grande planche, pour que le minimum rentre dans la fenêtre. Ce qui
     // reste dehors après ce repli est refusé, et l'étendue seule ne le dit pas :
-    // le minimum replié s'y ajoute.
-    if limit > 256.0 {
-        let folded = low - (low / 2048.0).floor() * 2048.0;
+    // le minimum replié s'y ajoute. Un repère de lightmap n'y est pas soumis, et
+    // c'est sa borne, plus basse, qui le distingue ici.
+    if limit > MAX_LUXELS {
+        let window = MAX_TEXTURE_SIZE as f32;
+        let folded = low - (low / window).floor() * window;
         assert!(
             folded + (high - low) <= limit,
             "la surface {id} sort de la fenêtre après repli : {} le long de {axis:?}",
@@ -1185,14 +1198,11 @@ fn mapping(u: [f32; 3], v: [f32; 3], out: &mut Vec<u8>) {
 /// surfaces le dépasse. Le décor le plus riche du moteur est **pile dessus**, donc
 /// un mur d'une unité de plus suffirait à perdre le fichier sans rien nommer.
 fn check(id: u32, indices: &[u32], points: &[[f32; 3]], axis: [f32; 3]) {
-    /// La plus grande coordonnée de texture que le chargement accepte.
-    const LIMIT: f32 = 16_384.0;
-
     for &index in indices {
         let point = points[index as usize];
         let coordinate = point[0] * axis[0] + point[1] * axis[1] + point[2] * axis[2];
         assert!(
-            coordinate.abs() <= LIMIT,
+            coordinate.abs() <= MAX_TEXEL_COORD,
             "la surface {id} porte une coordonnée de {coordinate}"
         );
     }
