@@ -70,9 +70,9 @@ Clic gauche prend le curseur, clic du milieu le rend, `Échap` quitte.
 | `Z` `S`, ou flèches haut et bas | avancer, reculer |
 | `Q` `D`, ou flèches gauche et droite | pivoter sur place |
 | souris | orienter la vue, le curseur pris |
-| `Espace` `C` | monter, descendre |
 
-**Le décor arrête, mais on ne marche pas encore** : les murs, le sol et le plafond
-retiennent, et l'altitude ne change qu'avec `Espace` et `C`, si bien qu'un escalier se
-gravit en montant tout en avançant. La marche, la gravité et la glissade le long d'un
-mur viennent ensuite — pour l'instant on s'arrête net contre une paroi en biais.
+**On marche, on longe et on tombe** : les murs, le sol et le plafond retiennent, un pas
+de biais suit la paroi au lieu de s'y coller, et la pesanteur ramène au sol.
+
+**Les étages ne se visitent pas encore** : une volée de marches arrête et une rampe se
+redescend, parce que le seuil de franchissement manque. Il vient tout de suite après.

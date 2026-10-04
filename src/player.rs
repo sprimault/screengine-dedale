@@ -16,8 +16,14 @@
 //! le moteur signale le départ pénétrant sans jamais dégager, c'est sa clause, donc
 //! la poussée est ici aussi.
 //!
-//! Ce qui n'y est pas encore, et qui se voit en jouant : rien ne tombe, et une
-//! marche s'arrête au lieu de se franchir.
+//! **Et la pesanteur ramène au sol**, ce qui fait du contact l'état normal : la
+//! vitesse de chute vit dans le corps, le critère de repos est un triplet que
+//! [`Player::grounded`] porte, et une chute glisse le long de ce qu'elle rencontre
+//! comme un pas.
+//!
+//! Ce qui n'y est pas encore, et qui se voit en jouant : une marche arrête au lieu
+//! de se franchir, et une pente continue se redescend faute d'un critère de surface
+//! marchable.
 
 use screengine_play::{Vec3, World, sweep_skin};
 
@@ -85,6 +91,23 @@ const SLIDES: usize = 4;
 /// seul réglage de cette politique — le reste est géométrique.
 const ESCAPE: f32 = 64.0;
 
+/// Ce que la chute gagne en vitesse par seconde, en unités de monde.
+///
+/// **Deux fois la pesanteur, et c'est un réglage d'écran** : à 9,81 la chute d'un
+/// étage paraît planer, ce que les jeux de cette famille corrigeaient déjà en
+/// prenant une pesanteur plus franche. La cote se juge en tombant d'un palier, pas
+/// en raisonnant.
+const GRAVITY: f32 = 20.0;
+
+/// La course de la sonde qui demande si le corps repose sur quelque chose.
+///
+/// **Dimensionnée par domination et non par égalité** : il suffit qu'elle dépasse
+/// le flottement d'un corps posé — la marge que le balayage laisse, un millième de
+/// la plus grande demi-étendue, soit neuf dix-millièmes ici —, pas qu'elle lui soit
+/// égale. Deux centimètres laissent un ordre de grandeur, donc ce critère n'attend
+/// aucune constante du moteur et ne se dérègle pas si la marge change.
+const PROBE: f32 = 0.02;
+
 // **Ce que le décor laisse de place, vérifié à la compilation.** Un corps plus
 // large qu'une cellule coincerait dans un couloir, un corps plus haut que le
 // plafond ne passerait nulle part, et l'œil sous le plafond est ce qui empêche de
@@ -103,6 +126,13 @@ pub struct Player {
     cell: u32,
     /// Où son centre était au pas précédent, ce dont le suivi a besoin.
     previous: Vec3,
+    /// La vitesse verticale, négative en descente.
+    ///
+    /// **Elle vit dans le corps et non dans la partie**, et la frontière tient : ce
+    /// n'est pas un compteur de jeu mais l'état d'un mouvement, comme la pose
+    /// elle-même. Un rechargement de carte repose le corps, donc la remet à zéro
+    /// avec lui.
+    fall: f32,
 }
 
 impl Player {
@@ -156,7 +186,32 @@ impl Player {
             centre,
             cell,
             previous: centre,
+            fall: 0.0,
         }
+    }
+
+    /// Vrai si le corps **repose** sur quelque chose.
+    ///
+    /// **Trois conditions, et aucune ne suffit seule.** Un départ dans le solide dit
+    /// qu'on est dedans, pas qu'on est posé — c'est le piège de ce critère, et il
+    /// disqualifie donc. Une fraction nulle sans normale verticale est un mur qu'on
+    /// touche de côté. Et une normale verticale rencontrée plus loin est un sol vers
+    /// lequel on tombe, pas un sol sur lequel on est.
+    ///
+    /// **Ce qui rend ce critère possible est le flottement** : le balayage pose un
+    /// corps à sa marge du sol, donc la sonde rencontre ce sol aussitôt — à quatre
+    /// centièmes de sa course, pas à zéro exact, et c'est pourquoi la comparaison
+    /// porte sur « avant le bout » plutôt que sur une égalité.
+    ///
+    /// **La course est donc aussi une tolérance, et c'est voulu** : un corps à moins
+    /// de deux centimètres du sol est tenu pour posé. Sans elle, le moindre
+    /// flottement au passage d'un joint ferait repartir une chute d'une image, ce qui
+    /// se verrait comme un tremblement.
+    fn grounded(&self, map: &World) -> bool {
+        let below = Vec3::new(self.centre.x, self.centre.y, self.centre.z - PROBE);
+
+        map.sweep(self.cell, HALF, self.centre, below)
+            .is_some_and(|hit| !hit.start_solid && hit.fraction < 1.0 && hit.normal.z > 0.5)
     }
 
     /// Déplace le corps de ce qu'il peut parcourir, et suit sa cellule.
@@ -169,8 +224,13 @@ impl Player {
     /// lui qui a un volume et que c'est son volume qu'on balaie. Le moteur ne se
     /// relocalise jamais de lui-même : zéro veut dire « sorti du décor », et c'est
     /// à l'hôte de le redemander.
-    pub fn advance(&mut self, map: &World, moved: Vec3) -> f32 {
-        let wanted = self.centre + moved;
+    pub fn advance(&mut self, map: &World, moved: Vec3, dt: f32) -> f32 {
+        // **La pesanteur s'intègre avant le pas, et la chute en fait partie** : un
+        // seul balayage par image porte les deux, donc ce qui tombe glisse le long
+        // de ce qu'il rencontre au lieu de s'y arrêter net.
+        self.fall -= GRAVITY * dt;
+        let wanted = self.centre + moved + Vec3::new(0.0, 0.0, self.fall * dt);
+
         let (reached, _) = self.slide(map, wanted);
         let travel = reached - self.centre;
 
@@ -182,6 +242,13 @@ impl Player {
             found
         };
         self.previous = self.centre;
+
+        // **Posé, la vitesse de chute repart de zéro.** Sans cela elle croîtrait
+        // pendant toute la marche, et le premier bord franchi donnerait une chute de
+        // plusieurs mètres en une image — un corps téléporté vers le bas.
+        if self.grounded(map) {
+            self.fall = 0.0;
+        }
 
         travel.dot(travel).sqrt()
     }

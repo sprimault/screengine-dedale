@@ -34,6 +34,14 @@ fn maze(seed: u64) -> (Grid, World) {
 /// Les graines éprouvées, dont celle du jeu.
 const SEEDS: [u64; 6] = [0x5EED_1A8E, 1, 2, 3, 0xD1CE, 0xFACE];
 
+/// Le pas de temps d'une image, à soixante par seconde.
+///
+/// **Ce qu'il sert à éprouver est la chute, et rien d'autre ne doit en dépendre** :
+/// un prédicat de déplacement qui changerait de réponse selon la cadence serait un
+/// défaut, et c'est pourquoi les épreuves de glissade l'emploient aussi — elles
+/// passent sous une pesanteur qui les appuie au sol.
+const DT: f32 = 1.0 / 60.0;
+
 /// Les quatre côtés horizontaux, ceux qu'un pas de marche emprunte.
 fn sides() -> Vec<Side> {
     Side::ALL.into_iter().filter(|s| !s.is_vertical()).collect()
@@ -88,10 +96,10 @@ fn across(side: Side) -> Vec<Side> {
 /// oblique qui distingue une glissade d'un arrêt, et c'est lui qui présente deux
 /// normales à la fois dans un coin.
 ///
-/// **Le vertical en fait partie, et ce n'est pas une anticipation de la gravité** :
-/// les deux touches du vol d'inspection montent et descendent aujourd'hui, donc un
-/// pas qui rencontre un sol ou un plafond **en même temps** qu'un mur existe déjà.
-/// C'est là que trois plans se présentent dans le même pas.
+/// **Le vertical en fait partie, et la pesanteur l'a rendu quotidien** : chaque
+/// image ajoute une composante de chute au pas demandé, donc un pas qui rencontre un
+/// sol ou un plafond **en même temps** qu'un mur est le cas courant et non un cas
+/// limite. C'est là que trois plans se présentent dans le même pas.
 fn bearings() -> Vec<Vec3> {
     let mut out = Vec::with_capacity(26);
     for dx in [-1.0, 0.0, 1.0] {
@@ -251,7 +259,7 @@ fn le_joueur_ne_franchit_pas_un_mur() {
             let (dx, dy, _) = side.step();
             let step = Vec3::new(dx as f32 * export::CELL, dy as f32 * export::CELL, 0.0);
 
-            let travel = player.advance(&map, step);
+            let travel = player.advance(&map, step, DT);
             let gone = player.centre - before;
 
             assert!(
@@ -292,7 +300,7 @@ fn un_passage_ouvert_laisse_passer_le_joueur() {
 
             let mut player = Player::stand(&grid, &map, at);
             let target = Player::stand(&grid, &map, next).centre;
-            let travel = player.advance(&map, target - player.centre);
+            let travel = player.advance(&map, target - player.centre, DT);
 
             assert!(
                 travel > 0.0,
@@ -334,7 +342,7 @@ fn un_pas_oblique_le_long_d_un_mur_glisse() {
                 let before = player.centre;
                 let aim = unit(side) * export::CELL + unit(tangent) * ALONG;
 
-                player.advance(&map, aim);
+                player.advance(&map, aim, DT);
                 let kept = (player.centre - before).dot(unit(tangent));
 
                 assert!(
@@ -375,7 +383,7 @@ fn un_pas_de_face_contre_un_mur_ne_derive_pas() {
             let mut player = Player::stand(&grid, &map, at);
             let before = player.centre;
 
-            player.advance(&map, unit(side) * export::CELL);
+            player.advance(&map, unit(side) * export::CELL, DT);
             let gone = player.centre - before;
 
             assert!(
@@ -442,7 +450,7 @@ fn un_coude_ne_bloque_pas() {
                 let before = player.centre;
                 let aim = (unit(side) + unit(tangent)) * export::CELL;
 
-                player.advance(&map, aim);
+                player.advance(&map, aim, DT);
                 let taken = (player.centre - before).dot(unit(tangent));
 
                 assert!(
@@ -477,7 +485,7 @@ fn la_glissade_ne_fait_jamais_reculer() {
             let mut player = Player::stand(&grid, &map, at);
             let before = player.centre;
 
-            player.advance(&map, aim);
+            player.advance(&map, aim, DT);
             let gone = player.centre - before;
 
             assert!(
@@ -540,7 +548,7 @@ fn longer_un_mur_pas_a_pas_avance() {
                 let before = player.centre;
                 let push = (unit(side) + unit(tangent)) * STEP;
                 for _ in 0..FRAMES {
-                    player.advance(&map, push);
+                    player.advance(&map, push, DT);
                 }
                 let taken = (player.centre - before).dot(unit(tangent));
 
@@ -621,6 +629,24 @@ fn stuck(grid: &Grid, at: (u32, u32, u32)) -> Player {
         centre,
         cell: export::cover(grid, at),
         previous: centre,
+        fall: 0.0,
+    }
+}
+
+/// Un corps suspendu au-dessus du sol d'une case, de quoi le faire tomber.
+///
+/// **La cote se prend du sol et non du plafond** : une case porte un étage de 3,5
+/// sous un plafond de 3,25, donc un corps relevé d'un mètre a encore sa tête sous la
+/// dalle — ce qu'une pose aveugle n'aurait pas.
+fn aloft(grid: &Grid, at: (u32, u32, u32), lift: f32) -> Player {
+    let spot = export::ground(grid, at);
+    let centre = Vec3::new(spot[0], spot[1], spot[2] + HALF.z + lift);
+
+    Player {
+        centre,
+        cell: export::cover(grid, at),
+        previous: centre,
+        fall: 0.0,
     }
 }
 
@@ -659,7 +685,7 @@ fn un_depart_dans_le_solide_se_degage() {
 
             let from = player.centre;
             for _ in 0..FRAMES {
-                player.advance(&map, Vec3::new(STEP, 0.0, 0.0));
+                player.advance(&map, Vec3::new(STEP, 0.0, 0.0), DT);
             }
 
             assert_ne!(
@@ -679,6 +705,138 @@ fn un_depart_dans_le_solide_se_degage() {
         }
 
         assert!(seen > 0, "graine {seed:#x} : aucun départ solide produit");
+    }
+}
+
+/// Une chute s'arrête sur le sol, et le corps y repose.
+///
+/// **Deux exigences et non une** : s'arrêter ne suffit pas — un corps arrêté *dans*
+/// le plancher s'est arrêté aussi. C'est [`Player::grounded`] qui tranche, et il
+/// refuse un départ pénétrant.
+///
+/// **Le relevé est d'un mètre**, assez pour que la pesanteur ait le temps
+/// d'accélérer et que le pas d'une image ne couvre pas la distance d'un coup : la
+/// chute se fait donc en plusieurs balayages, comme en jouant.
+#[test]
+fn une_chute_s_arrete_sur_le_sol() {
+    /// La hauteur du lâcher, en unités de monde.
+    const LIFT: f32 = 1.0;
+    /// Combien d'images la chute a pour se faire.
+    const FRAMES: usize = 120;
+
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+        let mut seen = 0;
+
+        for at in cases(&grid) {
+            if !plain(&grid, at) {
+                continue;
+            }
+            let mut player = aloft(&grid, at, LIFT);
+            if player.grounded(&map) {
+                continue;
+            }
+            seen += 1;
+
+            let from = player.centre;
+            for _ in 0..FRAMES {
+                player.advance(&map, Vec3::new(0.0, 0.0, 0.0), DT);
+            }
+
+            assert!(
+                player.grounded(&map),
+                "graine {seed:#x} : lâché en {from:?} au-dessus de {at:?}, \
+                 le corps ne repose sur rien en {:?}",
+                player.centre
+            );
+        }
+
+        assert!(seen > 0, "graine {seed:#x} : aucun lâcher éprouvé");
+    }
+}
+
+/// Un corps posé reste posé, et sa cote ne dérive pas.
+///
+/// **C'est le prédicat que la pesanteur met en danger**, et il manquerait à
+/// l'épreuve précédente : une chute qui s'arrête peut très bien repartir à l'image
+/// suivante, et un corps qui s'enfonce d'un cheveu par image finit sous le décor en
+/// une minute. Ce qui est exigé est donc l'immobilité verticale sur la durée, à la
+/// marge du balayage près.
+#[test]
+fn un_corps_pose_ne_derive_pas() {
+    /// Combien d'images le corps reste sans qu'on lui demande rien.
+    const FRAMES: usize = 600;
+
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+        let player = Player::spawn(&grid, &map);
+        let start = player.centre.z;
+
+        let mut player = player;
+        for _ in 0..FRAMES {
+            player.advance(&map, Vec3::new(0.0, 0.0, 0.0), DT);
+        }
+
+        assert!(
+            player.grounded(&map),
+            "graine {seed:#x} : après {FRAMES} images sans rien demander, \
+             le corps ne repose plus sur rien en {:?}",
+            player.centre
+        );
+        assert!(
+            (player.centre.z - start).abs() <= skin(),
+            "graine {seed:#x} : la cote a dérivé de {} en {FRAMES} images",
+            player.centre.z - start
+        );
+    }
+}
+
+/// Une longue station au sol ne charge pas la chute qui suivra.
+///
+/// **C'est l'épreuve qui paie la remise à zéro**, et elle a été écrite parce que
+/// rien ne la payait : la pesanteur s'intègre à chaque image, donc un corps posé qui
+/// garderait sa vitesse l'accumulerait pendant toute la marche. Au bout de dix
+/// secondes elle vaut deux cents unités par seconde, et le premier rebord quitté
+/// donnerait une plongée de trois mètres en une image — un corps téléporté vers le
+/// bas, là où le sol l'avait simplement retenu.
+///
+/// **La mesure est un rapport et non une valeur** : la descente de la première image
+/// après la station se compare à celle d'un corps frais lâché de la même hauteur.
+/// Elle ne dépend donc ni de la pesanteur retenue ni de la cadence.
+#[test]
+fn une_station_au_sol_ne_charge_pas_la_chute() {
+    /// Combien d'images le corps passe au sol avant d'être relevé.
+    const FRAMES: usize = 600;
+    /// De combien on le relève ensuite.
+    const LIFT: f32 = 1.0;
+
+    let still = Vec3::new(0.0, 0.0, 0.0);
+
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+        let at = grid.start();
+
+        // La référence : un corps qui n'a rien vécu, lâché d'un mètre.
+        let mut fresh = aloft(&grid, at, LIFT);
+        let was = fresh.centre.z;
+        fresh.advance(&map, still, DT);
+        let reference = was - fresh.centre.z;
+
+        // Le même, mais après dix secondes passées posé, puis relevé d'autant.
+        let mut rested = Player::stand(&grid, &map, at);
+        for _ in 0..FRAMES {
+            rested.advance(&map, still, DT);
+        }
+        rested.centre.z += LIFT;
+        let was = rested.centre.z;
+        rested.advance(&map, still, DT);
+        let dropped = was - rested.centre.z;
+
+        assert!(
+            dropped <= reference * 2.0,
+            "graine {seed:#x} : après {FRAMES} images au sol, la première image de \
+             chute descend de {dropped} contre {reference} pour un corps frais"
+        );
     }
 }
 
