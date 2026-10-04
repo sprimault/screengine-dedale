@@ -22,7 +22,7 @@ cela s'adresse à quelqu'un.
 
 ### Modifié
 - **Le décor arrête, et on glisse le long de ce qui arrête** : un pas de biais longe
-  le mur au lieu de s'y coller. Longer une paroi accroche encore de place en place.
+  le mur au lieu de s'y coller, et une paroi se longe d'un bout à l'autre.
 - **Les étages sont plus hauts** d'un demi-mètre : un couloir large de trois mètres
   sous deux et demi paraissait écrasé. Les escaliers et les rampes y sont un peu
   plus raides.
@@ -39,7 +39,7 @@ cela s'adresse à quelqu'un.
 
 ### Changed
 - **The map stops you, and you slide along what stops you**: an angled step follows
-  the wall instead of sticking to it. Hugging a wall still snags here and there.
+  the wall instead of sticking to it, and a wall can be hugged end to end.
 - **Floors are half a metre taller**: a corridor three metres wide under two and a
   half looked squashed. Stairs and ramps are a little steeper for it.
 
