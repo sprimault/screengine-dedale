@@ -596,6 +596,92 @@ fn une_glissade_garde_sa_marge() {
     );
 }
 
+/// Vrai si le corps est dans le solide, par une sonde que le moteur tranche.
+///
+/// **Un pas, et non une position** : le balayage ne se prononce que sur un
+/// mouvement, donc la sonde descend. Sa longueur n'a pas d'importance — un départ
+/// solide se signale avant qu'elle serve.
+fn solid(map: &World, player: &Player) -> bool {
+    let below = Vec3::new(player.centre.x, player.centre.y, player.centre.z - 1.0);
+    map.sweep(player.cell(), HALF, player.centre, below)
+        .is_some_and(|hit| hit.start_solid)
+}
+
+/// Un corps posé à la seule cote du sol, au milieu d'un palier de cage.
+///
+/// **C'est le seul départ solide que ce décor produise**, et c'est pour cela que
+/// les oracles de l'export l'écartent : l'empreinte dépasse le palier et surplombe
+/// des marches, que `SLOPE` corrige dans [`Player::stand`]. On reprend donc la pose
+/// **sans** cette correction, ce qui la met dans le solide à coup sûr.
+fn stuck(grid: &Grid, at: (u32, u32, u32)) -> Player {
+    let spot = export::ground(grid, at);
+    let centre = Vec3::new(spot[0], spot[1], spot[2] + HALF.z);
+
+    Player {
+        centre,
+        cell: export::cover(grid, at),
+        previous: centre,
+    }
+}
+
+/// Un départ dans le solide se dégage, en quelques images.
+///
+/// **L'épreuve part d'un état que les autres évitent**, et c'est tout son objet :
+/// `Player::stand` corrige la pente du palier précisément pour ne jamais naître
+/// ainsi, donc rien d'autre ici ne visite ce cas.
+///
+/// **Ce qu'elle exige est la sortie, pas un déplacement** : la pose d'arrivée reste
+/// dans une cellule connue, et n'est plus solide. Dans cet ordre, parce que le
+/// second critère est vide sans le premier — hors du décor, le balayage ne répond
+/// plus rien et « pas solide » ne veut plus rien dire. C'est ce qu'elle a mesuré en
+/// naissant rouge : laissé passer, le pas traversait les murs.
+///
+/// **Le pas demandé est non nul, et c'est une limite à connaître** : le balayage ne
+/// se prononce que sur un mouvement, donc un joueur immobile dans le solide y reste.
+/// La gravité de `E2.3` fera de chaque image un mouvement, et le cas disparaîtra.
+#[test]
+fn un_depart_dans_le_solide_se_degage() {
+    /// Ce qu'une image parcourt, en unités de monde.
+    const STEP: f32 = 0.05;
+    /// Combien d'images le dégagement a pour sortir.
+    const FRAMES: usize = 60;
+
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+        let mut seen = 0;
+
+        for stair in grid.stairs() {
+            let mut player = stuck(&grid, stair.foot);
+            if !solid(&map, &player) {
+                continue;
+            }
+            seen += 1;
+
+            let from = player.centre;
+            for _ in 0..FRAMES {
+                player.advance(&map, Vec3::new(STEP, 0.0, 0.0));
+            }
+
+            assert_ne!(
+                player.cell(),
+                0,
+                "graine {seed:#x} : parti du palier de {:?} en {from:?}, \
+                 le corps a quitté le décor",
+                stair.foot
+            );
+            assert!(
+                !solid(&map, &player),
+                "graine {seed:#x} : parti du palier de {:?} en {from:?}, \
+                 le corps est encore dans le solide en {:?}",
+                stair.foot,
+                player.centre
+            );
+        }
+
+        assert!(seen > 0, "graine {seed:#x} : aucun départ solide produit");
+    }
+}
+
 /// Le décor joué tient là où la boîte du joueur garde son jeu de collision.
 ///
 /// **Une épreuve de dimensionnement, et elle est verte d'avance** : le balayage
