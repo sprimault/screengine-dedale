@@ -811,14 +811,18 @@ fn l_empreinte_a_une_aire_positive() {
     assert!(twice_area(&footprint) > 0.0);
 }
 
-/// Un rang de case rend la même cote quel que soit le côté qui la demande.
+/// Deux rangs voisins ne rendent jamais la même cote.
 ///
-/// L'appariement des portails tient entièrement là-dessus : le format compare
-/// les positions au bit près, sans tolérance d'aucune sorte.
+/// **C'est l'injectivité qui est en jeu, pas l'égalité des bits** : `coord` étant
+/// une fonction pure du rang, deux appels rendent les mêmes bits par construction
+/// et l'affirmer ne prouve rien. Ce qui peut casser est l'inverse — un calcul qui
+/// replierait deux rangs sur la même cote donnerait deux cases partageant un plan,
+/// et leurs portails s'apparieraient à tort.
+///
+/// L'appariement réel est éprouvé plus bas, par relecture des octets.
 #[test]
-fn une_arete_a_les_memes_bits_des_deux_cotes() {
+fn deux_rangs_voisins_rendent_des_cotes_distinctes() {
     for index in 0..64u32 {
-        assert_eq!(coord(index + 1).to_bits(), coord(index + 1).to_bits());
         assert_ne!(coord(index).to_bits(), coord(index + 1).to_bits());
     }
 }

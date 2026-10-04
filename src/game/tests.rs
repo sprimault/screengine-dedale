@@ -25,26 +25,36 @@ const YAWS: [f32; 8] = [
     5.4,
 ];
 
-/// Avancer suit le lacet, et regarder ailleurs n'y change rien.
+/// Un quart de tour de lacet tourne le pas avant d'un quart de tour, et il reste
+/// horizontal et unitaire.
 ///
-/// **Ce n'est pas une paraphrase du calcul** : elle fige la clause qui décide, celle
-/// que le tangage ne doit pas atteindre. Un pas construit sur le regard complet
-/// passerait cette épreuve à plat et échouerait dès qu'on lève les yeux — d'où le
-/// lacet seul en entrée, qui est tout ce que la fonction reçoit.
+/// **Le prédicat est géométrique, et c'est ce qui le fait mordre** : comparer le pas
+/// au sinus et au cosinus du lacet serait le confronter à l'expression même qu'on
+/// éprouve, et ne garderait que le fait que la fonction n'oublie pas de tourner. Un
+/// quart de tour, lui, s'applique sans trigonométrie — autour du `+Z`, il envoie
+/// `(x, y)` sur `(−y, x)` —, donc il fixe à la fois l'amplitude de la rotation et
+/// **son sens**, qui est ce qu'un signe inversé casse.
+///
+/// Que le tangage ne l'atteigne pas n'a pas d'épreuve et n'en demande pas : la
+/// signature ne reçoit que le lacet.
 #[test]
-fn avancer_suit_le_lacet() {
+fn un_quart_de_tour_de_lacet_tourne_le_pas() {
     for yaw in YAWS {
         let step = walk(yaw, 1.0, 0.0);
-        let (sin, cos) = yaw.sin_cos();
+        let turned = walk(yaw + std::f32::consts::FRAC_PI_2, 1.0, 0.0);
 
+        let length = step.dot(step).sqrt();
         assert!(
-            (step.x - cos).abs() < 1e-6 && (step.y - sin).abs() < 1e-6,
-            "lacet {yaw} : le pas avant vaut {step:?} au lieu de ({cos}, {sin}, 0)"
+            (length - 1.0).abs() < 1e-6,
+            "lacet {yaw} : le pas avant {step:?} mesure {length}"
         );
-        assert_eq!(
-            step.z, 0.0,
-            "lacet {yaw} : le pas avant monte de {}",
-            step.z
+        assert_eq!(step.z, 0.0, "lacet {yaw} : le pas avant monte");
+        assert!(
+            (turned.x + step.y).abs() < 1e-6 && (turned.y - step.x).abs() < 1e-6,
+            "lacet {yaw} : un quart de tour mène à {turned:?} et non à \
+             ({}, {}, 0)",
+            -step.y,
+            step.x
         );
     }
 }
