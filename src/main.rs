@@ -16,9 +16,12 @@ mod probe;
 mod scene;
 mod weapon;
 
+#[cfg(test)]
+mod tests;
+
 use game::Game;
 use maze::export;
-use maze::grid::{Settings, Shape, Side};
+use maze::grid::{Grid, Settings, Shape, Side};
 use probe::Probe;
 use scene::Scenery;
 use screengine_play::{Error, KeyCode, Output, Play};
@@ -156,6 +159,23 @@ const INSET: u32 = 8;
 /// L'écart entre deux étages voisins, en pixels.
 const GAP: u32 = 10;
 
+/// Le rappel de sortie : le relevé de l'image finie, puis le plan par-dessus.
+///
+/// **Dans cet ordre et pas l'autre.** Le relevé échantillonne le tampon pour dire
+/// si l'image est noire ; les pixels du plan compteraient sinon comme des pixels
+/// peints par la soumission.
+fn overview(session: &mut Session, output: &mut Output<'_>) {
+    // Un échantillon du tampon dit si l'image est noire, ce qu'aucune valeur
+    // rendue par la soumission ne dit. Le relevé compte aussi les images
+    // présentées, pour les comparer aux rendues : un écart dirait qu'un tampon a
+    // été montré sans que la scène y soit.
+    let aim = session.game.aim();
+    session.probe.look(output, &session.scenery.map, &aim);
+    session.probe.present(&aim);
+
+    plot(output, &session.scenery.maze, aim.cell);
+}
+
 /// Le labyrinthe dessiné à plat, un étage par plan, dans le tampon de l'hôte.
 ///
 /// **C'est un contrôle, pas la vue de dessus du jeu.** Celle-ci se trace en
@@ -171,20 +191,11 @@ const GAP: u32 = 10;
 /// plan de la gauche vers la droite comme on lit une coupe de haut en bas, et le
 /// départ — au milieu de la grille, donc à l'étage supérieur quand il y en a deux
 /// — tombe alors du côté où l'œil arrive d'abord.
-fn overview(session: &mut Session, output: &mut Output<'_>) {
-    // **Le relevé regarde l'image avant qu'on dessine dessus**, et c'est tout
-    // l'intérêt de le faire ici : le tampon porte l'image finie, donc un
-    // échantillon dit si elle est noire — ce qu'aucune valeur rendue par la
-    // soumission ne dit. Le plan tracé plus bas compterait sinon comme des pixels
-    // peints.
-    //
-    // Il compte aussi les images présentées, pour les comparer aux rendues : un
-    // écart dirait qu'un tampon a été montré sans que la scène y soit.
-    let aim = session.game.aim();
-    session.probe.look(output, &session.scenery.map, &aim);
-    session.probe.present(&aim);
-
-    let maze = &session.scenery.maze;
+///
+/// **Il ne prend que la grille et la cellule où l'on est**, là où il vivait dans le
+/// rappel : un plan se juge sur ses pixels, et `Output::new` les donne sans fenêtre.
+/// Le repère inversé des rampes a tenu une version faute de ce découpage.
+fn plot(output: &mut Output<'_>, maze: &Grid, here: u32) {
     let (width, height, levels) = maze.extent();
 
     // Un fond opaque sous le plan : posé à même le décor, il se confond avec
@@ -221,7 +232,7 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
                     block(output, left + CELL, top, 1, CELL + 1, WALL);
                 }
 
-                mark(output, session, cell, aim.cell, left, top);
+                mark(output, maze, cell, here, left, top);
             }
         }
     }
@@ -236,13 +247,12 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
 /// exactement ce qu'un plan existe pour éviter.
 fn mark(
     output: &mut Output<'_>,
-    session: &Session,
+    maze: &Grid,
     cell: (u32, u32, u32),
     here: u32,
     left: u32,
     top: u32,
 ) {
-    let maze = &session.scenery.maze;
     let inner = CELL - 2;
 
     // **Départ et sortie en anneau, volées en plein**, et c'est la forme qui
@@ -318,6 +328,10 @@ fn mark(
 /// **Le nord est en haut de l'écran**, comme pour le reste du plan, donc la pointe
 /// d'une montée vers le nord va vers les ordonnées décroissantes du tampon.
 ///
+/// **La base occupe le côté opposé à celui vers lequel la pointe va**, et c'est
+/// la confusion qui a fait pointer les quatre bras à l'envers : le rang 0 écrit la
+/// base, donc son bord est celui dont on s'éloigne.
+///
 /// La base fait tout le côté et le triangle en occupe un peu plus de la moitié :
 /// à cinq pixels, une pointe franche se lit mieux qu'un triangle qui remplirait le
 /// carré en perdant son sommet dans les bords.
@@ -325,10 +339,10 @@ fn wedge(output: &mut Output<'_>, x: u32, y: u32, side: u32, towards: Side, colo
     for rank in 0..side.div_ceil(2) {
         let span = side - 2 * rank;
         match towards {
-            Side::East => block(output, x + side - 1 - rank, y + rank, 1, span, color),
-            Side::West => block(output, x + rank, y + rank, 1, span, color),
-            Side::North => block(output, x + rank, y + rank, span, 1, color),
-            _ => block(output, x + rank, y + side - 1 - rank, span, 1, color),
+            Side::East => block(output, x + rank, y + rank, 1, span, color),
+            Side::West => block(output, x + side - 1 - rank, y + rank, 1, span, color),
+            Side::North => block(output, x + rank, y + side - 1 - rank, span, 1, color),
+            _ => block(output, x + rank, y + rank, span, 1, color),
         }
     }
 }
