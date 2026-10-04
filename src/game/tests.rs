@@ -88,6 +88,13 @@ fn un_pas_de_cote_est_perpendiculaire() {
 /// **C'est la seule clause de la fonction qui ne soit pas de la trigonométrie**, et
 /// elle se mesure : sans elle, marcher de biais avance d'un facteur `√2`, ce qui se
 /// joue en permanence et déforme tous les réglages de vitesse.
+///
+/// **Sans tolérance, et c'est le plafond du noyau qui l'autorise** : la table de
+/// racine inverse du moteur est une approximation, mais elle n'arrondit jamais au
+/// delà de un sur les quatre diagonales et les lacets éprouvés. Une tolérance
+/// laisserait passer exactement ce que l'épreuve refuse — un pas de biais plus
+/// rapide qu'un pas droit —, et un dépassement d'un seul ulp serait un vrai
+/// changement de vitesse.
 #[test]
 fn la_diagonale_ne_va_pas_plus_vite() {
     for yaw in YAWS {
@@ -96,7 +103,7 @@ fn la_diagonale_ne_va_pas_plus_vite() {
             let length = step.dot(step).sqrt();
 
             assert!(
-                length <= 1.0 + 1e-6,
+                length <= 1.0,
                 "lacet {yaw}, pas ({ahead}, {side}) : la diagonale {step:?} \
                  vaut {length}"
             );

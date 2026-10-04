@@ -65,10 +65,14 @@ fn walk(yaw: f32, ahead: f32, side: f32) -> Vec3 {
     let right = Vec3::new(sin, -cos, 0.0);
 
     let step = forward * ahead + right * side;
-    let length = step.dot(step).sqrt();
 
-    match length > 1.0 {
-        true => step * (1.0 / length),
+    // **La racine vient du noyau, et seulement quand elle sert** : le carré se
+    // compare à un sans racine du tout, et `normalize` passe par la table de racine
+    // inverse du moteur plutôt que par un calcul local. Ce n'est pas une
+    // normalisation mais un plafond — un pas simple vaut déjà un et ne se touche
+    // pas.
+    match step.dot(step) > 1.0 {
+        true => step.normalize(),
         false => step,
     }
 }
