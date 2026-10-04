@@ -498,16 +498,18 @@ fn la_glissade_ne_fait_jamais_reculer() {
 /// Le pas vaut ce qu'une image parcourt, et non une case : c'est le régime réel,
 /// et c'est lui qui enchaîne les contacts.
 ///
-/// **Elle attend un correctif du moteur, et elle est née rouge.** Un corps posé à
-/// la distance de contact que le balayage rend lui-même est arrêté par l'**arête
-/// terminale** du panneau qu'il longe, à la jointure de deux cellules : fraction
-/// `1,67e-6` au lieu de 1, normale `(0, 1, 0)` perpendiculaire à celle du mur
-/// `(1, 0, 0)`, et la même surface nommée pour les deux. Un demi-millième d'unité
-/// d'écart — la moitié d'une peau — suffit à libérer le pas, et rien n'obstrue :
-/// la case d'en face n'a pas de mur de ce côté.
+/// **Elle est née rouge et le moteur l'a rendue verte.** Un corps posé à la
+/// distance de contact que le balayage rend lui-même était arrêté par l'**arête
+/// terminale** du panneau qu'il longe : fraction `1,67e-6` au lieu de 1, normale
+/// perpendiculaire à celle du mur, et la même surface nommée pour les deux. Le
+/// bord d'un panneau arrête désormais une demi-marge plus tard que sa face, ce qui
+/// laisse au contact la place de repartir tangent.
+///
+/// **La case d'arrivée doit être plate elle aussi**, et pas seulement celle de
+/// départ : une cage présente une contremarche en travers du chemin, que la
+/// glissade ne franchit pas et n'a pas à franchir — monter ce qui se monte est
+/// l'affaire du seuil, qui n'existe pas encore.
 #[test]
-#[ignore = "attend un correctif du moteur : l'arête terminale d'un panneau arrête \
-            la boîte qui le longe à la distance de contact"]
 fn longer_un_mur_pas_a_pas_avance() {
     /// Ce qu'une image parcourt, en unités de monde.
     const STEP: f32 = 0.05;
@@ -527,6 +529,10 @@ fn longer_un_mur_pas_a_pas_avance() {
             }
             for tangent in across(side) {
                 if grid.has_wall(at, tangent) {
+                    continue;
+                }
+                let beyond = grid.neighbour(at, tangent);
+                if !beyond.is_some_and(|case| plain(&grid, case)) {
                     continue;
                 }
 
