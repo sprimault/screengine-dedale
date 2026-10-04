@@ -12,11 +12,14 @@
 //! l'arrête.** Le moteur ne rend qu'un temps d'impact et une normale : la réponse
 //! est une politique du jeu, et c'est [`Player::slide`] qui la porte.
 //!
-//! Ce qui n'y est pas encore, et qui se voit en jouant : un départ dans le solide
-//! passe au lieu de se dégager, rien ne tombe, et une marche s'arrête au lieu de
-//! se franchir.
+//! **Et un corps pris dans le solide en sort**, au lieu d'y traverser le décor :
+//! le moteur signale le départ pénétrant sans jamais dégager, c'est sa clause, donc
+//! la poussée est ici aussi.
+//!
+//! Ce qui n'y est pas encore, et qui se voit en jouant : rien ne tombe, et une
+//! marche s'arrête au lieu de se franchir.
 
-use screengine_play::{Vec3, World};
+use screengine_play::{Vec3, World, sweep_skin};
 
 use crate::maze::export::{self, SLOPE};
 use crate::maze::grid::Grid;
@@ -67,6 +70,20 @@ pub const EYE_ABOVE: f32 = 0.6;
 /// **Le dépasser écourte un pas, il ne franchit rien** : chaque passe balaie, donc
 /// la borne ne décide que du confort dans un coin, jamais de la solidité d'un mur.
 const SLIDES: usize = 4;
+
+/// En combien de marges se fait un pas de dégagement d'un départ solide.
+///
+/// **Dimensionné sur la marge du balayage plutôt que sur une distance choisie** :
+/// une valeur en unités de monde serait juste pour ce corps et fausse pour un
+/// monstre, là où la marge suit la taille de la boîte. Pour ce corps, cela fait
+/// cinquante-six millimètres par image — l'ordre d'un pas de marche —, donc on sort
+/// d'un palier en une quinzaine d'images sans être éjecté.
+///
+/// **Le dégagement est progressif, et il ne peut pas être autrement** : le moteur
+/// rend la normale de la surface la moins pénétrée, jamais la profondeur de
+/// pénétration. Rien ici ne peut donc décider d'un recul exact, et ce facteur est le
+/// seul réglage de cette politique — le reste est géométrique.
+const ESCAPE: f32 = 64.0;
 
 // **Ce que le décor laisse de place, vérifié à la compilation.** Un corps plus
 // large qu'une cellule coincerait dans un couloir, un corps plus haut que le
@@ -201,9 +218,11 @@ impl Player {
     /// - **une cellule que la carte ne connaît pas**, qui ne devrait pas arriver
     ///   puisqu'elle vient du suivi : le déplacement passe plutôt que de bloquer
     ///   sur une erreur de comptabilité ;
-    /// - **un départ dans le solide**, que le moteur signale sans dégager. Laissé
-    ///   passer ici, et c'est provisoire : le bloquer sans dégager y enfermerait le
-    ///   joueur, et le dégagement est le lot d'après.
+    /// - **un départ dans le solide**, que le moteur signale sans dégager : le pas
+    ///   ne s'applique pas et le corps est repoussé le long de la normale rendue,
+    ///   d'un pas de [`ESCAPE`] marges. C'est la politique que l'exemple `carte` du
+    ///   moteur a adoptée, donc celle que ses épreuves exercent — en prendre une
+    ///   autre priverait de ce qu'elles couvrent.
     ///
     /// Rend le point atteint **et le nombre de plans consommés**, dont seule une
     /// épreuve se sert : c'est ce qui mesure [`SLIDES`] au lieu de le supposer.
@@ -220,7 +239,11 @@ impl Player {
                 return (at + rest, plane);
             };
             if hit.start_solid {
-                return (wanted, plane);
+                // **Sortir passe avant avancer**, donc le pas demandé ne s'applique
+                // pas : le rendre libre enfoncerait davantage, l'image suivante
+                // repartirait solide, et un seul départ fautif rendrait la collision
+                // inopérante pour de bon — mesuré, le corps traversait les murs.
+                return (at + hit.normal * (sweep_skin(HALF) * ESCAPE), plane);
             }
 
             at = at + rest * hit.fraction;
