@@ -25,9 +25,10 @@ police en CC0, dont [`THIRD-PARTY-NOTICES`](THIRD-PARTY-NOTICES) rend compte.
 
 ## État
 
-**Étape 1 : le labyrinthe.** Un labyrinthe engendré qu'on parcourt à la première
-personne, des étages reliés par des cages — à marches, ou en rampe. Pas encore un
-jeu : ni monstres, ni tir, ni ramassages.
+**Étape 2 : le joueur.** Un labyrinthe engendré qu'on parcourt à la première
+personne, des étages reliés par des cages — à marches, ou en rampe. Le décor
+arrête : on longe les murs, on gravit les marches et les rampes, et la pesanteur
+ramène au sol. Pas encore un jeu : ni monstres, ni tir, ni ramassages.
 
 - [`ROADMAP.md`](ROADMAP.md) — les étapes et ce qui est hors périmètre
 - [`CHANGELOG.md`](CHANGELOG.md) — ce que chaque version a apporté, daté
@@ -45,9 +46,11 @@ Cette liste n'est pas une plainte : c'est la frontière, et elle a des raisons.
 - **Le tir contre un monstre.** Le moteur arrête un rayon sur la géométrie d'une
   cellule ; un monstre n'a pas de portail, donc pas d'adjacence. Décider qu'il est
   touchable est une règle de jeu.
-- **La barre de vie, le score, l'arme en main.** Tout ce qui est en coordonnées
-  d'écran se dessine dans le tampon après la fin d'image. Le moteur ne connaît pas
-  d'interface, et son tracé de lignes prend des coordonnées de monde.
+- **La barre de vie, le score.** Tout ce qui est en coordonnées d'écran se dessine
+  dans le tampon après la fin d'image. Le moteur ne connaît pas d'interface, et son
+  tracé de lignes prend des coordonnées de monde. **L'arme en main n'en fait pas
+  partie** : elle est un objet du monde, un sprite orienté caméra posé devant l'œil
+  et soumis comme un autre, qui reçoit donc le brouillard et les lumières.
 - **Le son.** Le moteur n'a ni horloge ni sortie audio, et n'en aura pas.
 
 ## Construction

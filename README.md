@@ -24,8 +24,10 @@ font, recorded in [`THIRD-PARTY-NOTICES`](THIRD-PARTY-NOTICES).
 
 ## Status
 
-**Step 1: the maze.** A generated maze walked in first person, floors linked by
-shafts — stepped, or ramped. Not a game yet: no monsters, no shooting, no pickups.
+**Step 2: the player.** A generated maze walked in first person, floors linked by
+shafts — stepped, or ramped. The map stops you: you hug walls, you climb steps and
+ramps, and gravity brings you back down. Not a game yet: no monsters, no shooting,
+no pickups.
 
 - [`ROADMAP.md`](ROADMAP.md) — the steps and what is out of scope (French)
 - [`CHANGELOG.md`](CHANGELOG.md) — what each version brought, dated
@@ -42,9 +44,11 @@ This list is not a complaint: it is the boundary, and it has reasons.
   a response. Sliding, stepping and gravity are game policy.
 - **Shooting a monster.** The engine stops a ray on a cell's geometry; a monster has
   no portal, hence no adjacency. Deciding it is hittable is a game rule.
-- **The health bar, the score, the weapon in hand.** Everything in screen
-  coordinates is drawn into the buffer after the frame ends. The engine knows no
-  interface, and its line drawing takes world coordinates.
+- **The health bar, the score.** Everything in screen coordinates is drawn into the
+  buffer after the frame ends. The engine knows no interface, and its line drawing
+  takes world coordinates. **The weapon in hand is not one of them**: it is an object
+  of the world, a camera-facing sprite set in front of the eye and submitted like any
+  other, so it takes the fog and the lights.
 - **Sound.** The engine has neither a clock nor an audio output, and never will.
 
 ## Building
