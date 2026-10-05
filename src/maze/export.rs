@@ -83,15 +83,6 @@ const TEXELS: f32 = 128.0;
 /// de l'axe vaut donc 16, qui est bien une puissance de deux.
 const LUXELS: f32 = 4.0;
 
-/// L'étendue maximale d'une surface dans son repère de lightmap, en luxels sur un
-/// côté.
-///
-/// **Recopiée faute d'être exposée**, là où `MAX_TEXEL_COORD` et `MAX_TEXTURE_SIZE`
-/// s'appellent : le moteur la garde privée, et sa documentation des cartes la donne
-/// — deux cent cinquante-six par côté. Elle est donc juste et vérifiable, mais c'est
-/// une valeur recopiée, et le constat qui demande son exposition est parti.
-const MAX_LUXELS: f32 = 256.0;
-
 /// L'origine de tout repère écrit ici : le zéro du monde.
 ///
 /// **Constante parce que deux endroits doivent en donner le même point** : celui
@@ -1089,8 +1080,6 @@ fn surface(
     mapping(scaled(along, TEXELS), scaled(across, TEXELS), out);
     mapping(scaled(along, LUXELS), scaled(across, LUXELS), out);
 
-    check(id, indices, points, scaled(along, TEXELS));
-    check(id, indices, points, scaled(across, TEXELS));
     lightmap(
         id,
         indices,
@@ -1098,22 +1087,26 @@ fn surface(
         scaled(along, LUXELS),
         scaled(across, LUXELS),
     );
-    for (axis, limit) in [
-        (scaled(along, TEXELS), MAX_TEXEL_COORD),
-        (scaled(across, TEXELS), MAX_TEXEL_COORD),
-        (scaled(along, LUXELS), MAX_LUXELS),
-        (scaled(across, LUXELS), MAX_LUXELS),
-    ] {
-        span(id, indices, points, axis, limit);
+    for axis in [scaled(along, TEXELS), scaled(across, TEXELS)] {
+        check(id, indices, points, axis);
+        span(id, indices, points, axis);
     }
 }
 
-/// Vérifie que l'étendue d'une surface sur un axe tient sous son plafond.
+/// Vérifie que l'étendue d'une surface sur un axe de texels tient dans la fenêtre.
 ///
-/// Deux plafonds, et le chargement les refuse tous deux sans nommer la surface :
-/// 256 luxels par côté, et 16 384 texels après le repli — qui ramène le minimum
-/// dans la fenêtre, pas la surface entière.
-fn span(id: u32, indices: &[u32], points: &[[f32; 3]], axis: [f32; 3], limit: f32) {
+/// Le chargement la refuse sans nommer la surface, et le repli lui laisse moins de
+/// place que le plafond ne le dit : il ramène le minimum dans la fenêtre, pas la
+/// surface entière.
+///
+/// **Les deux contrôles ne sont pas redondants bien que le second implique le
+/// premier** : celui-ci dit qu'aucun placement ne sauverait la surface, celui-là
+/// qu'elle tiendrait ailleurs. C'est la différence entre un mur à redécouper et un
+/// repère à décaler, et seul l'ordre des deux la donne.
+///
+/// **Rien de tel n'est à écrire pour les luxels** : leur étendue est une clause de
+/// `lightmap_fault`, que `lightmap` soumet déjà.
+fn span(id: u32, indices: &[u32], points: &[[f32; 3]], axis: [f32; 3]) {
     let mut low = f32::MAX;
     let mut high = f32::MIN;
     for &index in indices {
@@ -1127,35 +1120,39 @@ fn span(id: u32, indices: &[u32], points: &[[f32; 3]], axis: [f32; 3], limit: f3
         }
     }
     assert!(
-        high - low <= limit,
-        "la surface {id} s'étend sur {} le long de {axis:?}, au-delà de {limit}",
+        high - low <= MAX_TEXEL_COORD,
+        "la surface {id} s'étend sur {} le long de {axis:?}, au-delà de {MAX_TEXEL_COORD}",
         high - low
     );
 
     // Le chargement replie les coordonnées de texture d'un multiple entier de la
     // plus grande planche, pour que le minimum rentre dans la fenêtre. Ce qui
     // reste dehors après ce repli est refusé, et l'étendue seule ne le dit pas :
-    // le minimum replié s'y ajoute. Un repère de lightmap n'y est pas soumis, et
-    // c'est sa borne, plus basse, qui le distingue ici.
-    if limit > MAX_LUXELS {
-        let window = MAX_TEXTURE_SIZE as f32;
-        let folded = low - (low / window).floor() * window;
-        assert!(
-            folded + (high - low) <= limit,
-            "la surface {id} sort de la fenêtre après repli : {} le long de {axis:?}",
-            folded + (high - low)
-        );
-    }
+    // le minimum replié s'y ajoute.
+    let window = MAX_TEXTURE_SIZE as f32;
+    let folded = low - (low / window).floor() * window;
+    assert!(
+        folded + (high - low) <= MAX_TEXEL_COORD,
+        "la surface {id} sort de la fenêtre après repli : {} le long de {axis:?}",
+        folded + (high - low)
+    );
 }
 
 /// Soumet le repère de lightmap d'une surface au prédicat du chargeur.
 ///
-/// **C'est `lightmap_fault` qui répond, et non une écriture d'ici.** Les quatre
+/// **C'est `lightmap_fault` qui répond, et non une écriture d'ici.** Les cinq
 /// clauses — un axe dégénéré, une origine hors de sa grille, des axes non
-/// orthogonaux, un axe hors du plan de sa surface — se mesurent sur des tolérances
-/// que le moteur publie et peut faire bouger. La règle réécrite serait juste le
-/// jour où on l'écrit et fausse le jour où la valeur change en face, sans que rien
-/// ne le dise ; l'appel, lui, ne peut pas diverger.
+/// orthogonaux, un axe hors du plan de sa surface, une étendue au-delà du plafond
+/// de luxels — se mesurent sur des tolérances et des bornes dont le moteur fait
+/// bouger les valeurs. La règle réécrite serait juste le jour où on l'écrit et
+/// fausse le jour où la valeur change en face, sans que rien ne le dise ; l'appel,
+/// lui, ne peut pas diverger.
+///
+/// **La cinquième est aussi la raison pour laquelle ce plafond ne se lit nulle
+/// part** : le moteur le garde privé pour que l'étendue ne se remesure pas ici,
+/// elle qui ne divise pas par le carré de la longueur de l'axe. Une copie qui
+/// divise est neutre sur un axe unitaire — tous ceux de ce décor — et fausse
+/// partout ailleurs.
 ///
 /// Ce que le jeu y gagne est le **nom** : le refus de chargement ne dit ni quelle
 /// surface ni quelle clause, et avec trente-trois surfaces par cage dans quatre
@@ -1181,8 +1178,8 @@ fn lightmap(id: u32, indices: &[u32], points: &[[f32; 3]], u: [f32; 3], v: [f32;
 /// **Le carré des axes n'est pas contrôlé** : un axe **unitaire oblique** ne peut
 /// pas tomber sur une puissance de deux — à 45°, le sien passe à quelques ulp de
 /// seize à l'échelle des luxels, jamais dessus —, et le chargement ne le demande
-/// pas. Ce qu'un tel contrôle attraperait d'un repère faux, `planar` et `span` le
-/// voient déjà.
+/// pas. Ce qu'un tel contrôle attraperait d'un repère faux, le prédicat du
+/// chargeur et `span` le voient déjà.
 fn mapping(u: [f32; 3], v: [f32; 3], out: &mut Vec<u8>) {
     floats(&ORIGIN, out);
     floats(&u, out);

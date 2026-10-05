@@ -33,7 +33,7 @@ publish = false
 # quelle version de l'API ce jeu est écrit. Les deux se vérifient : le commit dit
 # d'où vient le code, la version dit ce qu'il promet.
 [dependencies]
-screengine-play = { version = "0.8", git = "https://github.com/sprimault/screengine", rev = "58c7515ec77a92f86b64c5d3f5d2977495429fac" }
+screengine-play = { version = "0.8", git = "https://github.com/sprimault/screengine", rev = "cce3ece8d1a3771f4084d51c9a781ab9ad29e6d6" }
 
 [lints.rust]
 missing_docs = "warn"
