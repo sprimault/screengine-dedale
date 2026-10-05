@@ -11,6 +11,8 @@
 //!
 //! Chacune a été vérifiée en la faisant échouer une fois, sur un code falsifié.
 
+use core::f32;
+
 use super::*;
 
 /// Les lacets éprouvés : les quatre axes, et des valeurs qui ne tombent pas rond.
