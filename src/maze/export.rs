@@ -19,7 +19,7 @@
 //! et deux cellules superposées sans lien sont un cas que le moteur éprouve déjà.
 //! La cellule-escalier les reliera.
 
-use screengine_play::screengine::{MAX_TEXEL_COORD, MAX_TEXTURE_SIZE};
+use screengine_play::screengine::{MAX_TEXEL_COORD, MAX_TEXTURE_SIZE, Vec3, lightmap_fault};
 
 use super::grid::{Grid, Shape, Side, Stair};
 
@@ -91,6 +91,14 @@ const LUXELS: f32 = 4.0;
 /// — deux cent cinquante-six par côté. Elle est donc juste et vérifiable, mais c'est
 /// une valeur recopiée, et le constat qui demande son exposition est parti.
 const MAX_LUXELS: f32 = 256.0;
+
+/// L'origine de tout repère écrit ici : le zéro du monde.
+///
+/// **Constante parce que deux endroits doivent en donner le même point** : celui
+/// que `mapping` écrit dans le fichier, et celui que `lightmap` soumet au prédicat
+/// du chargeur. Vérifier un repère qui n'est pas celui qu'on écrit ne vérifierait
+/// rien, et l'écart ne se verrait qu'au chargement.
+const ORIGIN: [f32; 3] = [0.0, 0.0, 0.0];
 
 /// Le côté intérieur d'une cellule de case, sur un axe horizontal.
 ///
@@ -1083,7 +1091,13 @@ fn surface(
 
     check(id, indices, points, scaled(along, TEXELS));
     check(id, indices, points, scaled(across, TEXELS));
-    planar(id, indices, points, along, across);
+    lightmap(
+        id,
+        indices,
+        points,
+        scaled(along, LUXELS),
+        scaled(across, LUXELS),
+    );
     for (axis, limit) in [
         (scaled(along, TEXELS), MAX_TEXEL_COORD),
         (scaled(across, TEXELS), MAX_TEXEL_COORD),
@@ -1134,42 +1148,27 @@ fn span(id: u32, indices: &[u32], points: &[[f32; 3]], axis: [f32; 3], limit: f3
     }
 }
 
-/// Vérifie que les deux axes d'un repère tiennent dans le plan de la surface.
+/// Soumet le repère de lightmap d'une surface au prédicat du chargeur.
 ///
-/// Le chargement l'exige, par la normale de Newell du polygone, et le refus qu'il
-/// rend ne nomme pas la surface. Avec trente-trois surfaces par cage dans quatre
-/// orientations, c'est la faute la plus probable et la plus coûteuse à chercher.
-fn planar(id: u32, indices: &[u32], points: &[[f32; 3]], along: [f32; 3], across: [f32; 3]) {
-    /// La tolérance du chargement, relative et sur le carré du produit scalaire.
-    const TOLERANCE: f64 = 1.0 / 1_048_576.0;
+/// **C'est `lightmap_fault` qui répond, et non une écriture d'ici.** Les quatre
+/// clauses — un axe dégénéré, une origine hors de sa grille, des axes non
+/// orthogonaux, un axe hors du plan de sa surface — se mesurent sur des tolérances
+/// que le moteur publie et peut faire bouger. La règle réécrite serait juste le
+/// jour où on l'écrit et fausse le jour où la valeur change en face, sans que rien
+/// ne le dise ; l'appel, lui, ne peut pas diverger.
+///
+/// Ce que le jeu y gagne est le **nom** : le refus de chargement ne dit ni quelle
+/// surface ni quelle clause, et avec trente-trois surfaces par cage dans quatre
+/// orientations, c'est la faute la plus coûteuse à chercher. Le message porte les
+/// deux.
+fn lightmap(id: u32, indices: &[u32], points: &[[f32; 3]], u: [f32; 3], v: [f32; 3]) {
+    let corners: Vec<Vec3> = indices
+        .iter()
+        .map(|&index| vector(points[index as usize]))
+        .collect();
 
-    // **En simple précision et par la somme de Newell, comme le chargement** :
-    // le résidu d'arrondi d'un polygone à trente sommets loin de l'origine
-    // est précisément ce qu'on cherche à voir, et le calculer en double le
-    // ferait disparaître.
-    let mut normal = [0.0f32; 3];
-    for slot in 0..indices.len() {
-        let a = points[indices[slot] as usize];
-        let b = points[indices[(slot + 1) % indices.len()] as usize];
-        normal[0] += (a[1] - b[1]) * (a[2] + b[2]);
-        normal[1] += (a[2] - b[2]) * (a[0] + b[0]);
-        normal[2] += (a[0] - b[0]) * (a[1] + b[1]);
-    }
-
-    let square = f64::from(normal[0]) * f64::from(normal[0])
-        + f64::from(normal[1]) * f64::from(normal[1])
-        + f64::from(normal[2]) * f64::from(normal[2]);
-    for axis in [along, across] {
-        let dot = f64::from(normal[0]) * f64::from(axis[0])
-            + f64::from(normal[1]) * f64::from(axis[1])
-            + f64::from(normal[2]) * f64::from(axis[2]);
-        let unit = f64::from(axis[0]) * f64::from(axis[0])
-            + f64::from(axis[1]) * f64::from(axis[1])
-            + f64::from(axis[2]) * f64::from(axis[2]);
-        assert!(
-            dot * dot <= TOLERANCE * TOLERANCE * square * unit,
-            "l'axe {axis:?} de la surface {id} sort de son plan, de normale {normal:?}"
-        );
+    if let Some(fault) = lightmap_fault(vector(ORIGIN), vector(u), vector(v), &corners) {
+        panic!("le repère de lightmap de la surface {id} est refusé : {fault:?}");
     }
 }
 
@@ -1185,7 +1184,7 @@ fn planar(id: u32, indices: &[u32], points: &[[f32; 3]], along: [f32; 3], across
 /// pas. Ce qu'un tel contrôle attraperait d'un repère faux, `planar` et `span` le
 /// voient déjà.
 fn mapping(u: [f32; 3], v: [f32; 3], out: &mut Vec<u8>) {
-    floats(&[0.0, 0.0, 0.0], out);
+    floats(&ORIGIN, out);
     floats(&u, out);
     floats(&v, out);
 }
@@ -1250,6 +1249,15 @@ fn twice_area(footprint: &[[f32; 2]]) -> f32 {
 /// Un axe à l'échelle d'une densité.
 fn scaled(axis: [f32; 3], density: f32) -> [f32; 3] {
     [axis[0] * density, axis[1] * density, axis[2] * density]
+}
+
+/// Un triplet de cotes en vecteur du moteur.
+///
+/// Les cotes d'ici sont des `[f32; 3]`, qui est ce que l'écriture binaire
+/// consomme ; le prédicat du chargeur veut des `Vec3`. La conversion se nomme
+/// plutôt que de se répéter quatre fois dans le même appel.
+fn vector(values: [f32; 3]) -> Vec3 {
+    Vec3::new(values[0], values[1], values[2])
 }
 
 /// Ajoute des flottants, octet de poids faible en tête.
