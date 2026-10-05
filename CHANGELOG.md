@@ -14,6 +14,18 @@ cela s'adresse à quelqu'un.
 
 ## [Non publié]
 
+## [0.2.2] — 2026-10-05 — Les règles du moteur, et pas les nôtres
+
+### Modifié
+- **Rien ne change pour qui joue.** Le jeu ne juge plus ses cartes sur ses
+  propres règles, mais sur celles du moteur, seul à en faire foi.
+
+***
+
+### Changed
+- **Nothing changes for players.** The game no longer judges its maps by its own
+  rules, but by the engine's, which alone are authoritative.
+
 ## [0.2.1] — 2026-10-05 — Le plan juste et les planches signées
 
 ### Modifié
