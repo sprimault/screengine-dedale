@@ -11,8 +11,6 @@
 //! La partie **lit** le monde, en revanche, et c'est normal : suivre sa cellule
 //! demande d'interroger la carte.
 
-use core::f32;
-
 use screengine_play::{Error, FreeCamera, KeyCode, MouseButton, Tick, Vec3, World};
 
 use crate::maze::grid::Grid;
@@ -90,10 +88,11 @@ pub struct Game {
     /// garde est ce qu'elle sait faire — composer lacet et tangage dans le bon ordre,
     /// ce qu'une reconstruction à la main pencherait de travers.
     ///
-    /// **Sa mise à jour n'est plus appelée**, et c'est le prix du pas de côté : elle
-    /// mappe les touches latérales sur la rotation, et on ne défait pas après coup une
-    /// rotation déjà appliquée. Le jeu lit donc ses propres commandes, ce qui est sa
-    /// place — le moteur ne connaît pas les règles du déplacement.
+    /// **C'est sa moitié « regard » qui est appelée, pas sa mise à jour entière**, et
+    /// c'est le prix du pas de côté : `update` mappe les touches latérales sur la
+    /// rotation, et on ne défait pas après coup une rotation déjà appliquée. Le jeu
+    /// appelle donc `look` seul et garde sa politique de marche, ce qui est sa place —
+    /// le moteur ne connaît pas les règles du déplacement.
     camera: FreeCamera,
     /// L'arme qu'il tient, et où elle en est de son balancement.
     weapon: Weapon,
@@ -138,7 +137,7 @@ impl Game {
             self.weapon.shoot();
         }
 
-        self.look(tick);
+        self.camera.look(tick);
         let moved = self.wanted(tick) * (WALK * tick.dt());
 
         // Le corps rend ce qu'il a **réellement** parcouru, le décor l'ayant
@@ -150,42 +149,6 @@ impl Game {
         // **Le balancement suit cette distance et non les touches** : contre un
         // mur elle vaut zéro, donc l'arme s'arrête d'elle-même.
         self.weapon.advance(travel, self.camera.yaw, tick.dt());
-    }
-
-    /// Oriente le regard : la souris, et les deux touches qui tournent.
-    ///
-    /// **Écrit ici plutôt que pris du moteur**, et c'est le prix d'un pas de côté :
-    /// la caméra libre mappe les touches latérales sur la rotation, et on ne défait
-    /// pas après coup une rotation qu'elle vient d'appliquer. Elle garde donc ce
-    /// qu'elle sait faire — porter le lacet et le tangage, et composer l'orientation.
-    ///
-    /// **Quatre touches tournent, et la souris n'est jamais nécessaire** : les flèches
-    /// latérales et `Q` `D`, qui étaient le pivot depuis le début et le restent. Seules
-    /// des touches rejouent un déplacement à l'identique, là où la souris ne rend que
-    /// des déplacements bruts — le moteur le dit de son côté, et c'est aussi la
-    /// manière dont ce jeu se joue.
-    ///
-    /// **Le tangage se borne au quart de tour**, il ne se replie pas : passé la
-    /// verticale l'image se retourne, et cela se lit comme un défaut du moteur.
-    fn look(&mut self, tick: &Tick<'_>) {
-        let dt = tick.dt();
-        let input = tick.input();
-
-        if tick.cursor_captured() {
-            let (dx, dy) = input.mouse_delta();
-            self.camera.yaw -= dx * self.camera.sensitivity;
-            self.camera.pitch -= dy * self.camera.sensitivity;
-        }
-
-        let turn = axis(
-            input.down(KeyCode::ArrowLeft),
-            input.down(KeyCode::ArrowRight),
-        ) + axis(input.down(KeyCode::KeyA), input.down(KeyCode::KeyD));
-        self.camera.yaw += turn.clamp(-1.0, 1.0) * self.camera.turn_rate * dt;
-        self.camera.pitch = self
-            .camera
-            .pitch
-            .clamp(-f32::consts::FRAC_PI_2, f32::consts::FRAC_PI_2);
     }
 
     /// Le pas que les touches demandent, en direction seule.
