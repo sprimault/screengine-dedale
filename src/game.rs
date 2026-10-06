@@ -14,6 +14,7 @@
 use screengine_play::{Error, FreeCamera, KeyCode, MouseButton, Tick, Vec3, World};
 
 use crate::maze::grid::Grid;
+use crate::monster::Monster;
 use crate::player::Player;
 use crate::probe::Aim;
 use crate::scene::View;
@@ -96,6 +97,13 @@ pub struct Game {
     camera: FreeCamera,
     /// L'arme qu'il tient, et où elle en est de son balancement.
     weapon: Weapon,
+    /// La créature posée près de l'entrée.
+    ///
+    /// **Une seule, et immobile** : ce qui se juge est qu'une silhouette se lise à
+    /// distance et que ses huit vues se suivent quand on tourne autour. Une
+    /// population et une poursuite viennent après, et le champ devient alors une
+    /// liste sans que rien d'autre ne bouge.
+    monster: Monster,
 }
 
 impl Game {
@@ -111,6 +119,7 @@ impl Game {
         let camera = FreeCamera::new(player.eye());
         Ok(Self {
             weapon: Weapon::new(camera.yaw)?,
+            monster: Monster::new(grid, map)?,
             camera,
             player,
         })
@@ -149,6 +158,10 @@ impl Game {
         // **Le balancement suit cette distance et non les touches** : contre un
         // mur elle vaut zéro, donc l'arme s'arrête d'elle-même.
         self.weapon.advance(travel, self.camera.yaw, tick.dt());
+
+        // La créature avance son cycle de ce qu'elle a parcouru : immobile, elle
+        // n'offre aucune distance et respire au temps.
+        self.monster.advance(0.0, tick.dt());
     }
 
     /// Le pas que les touches demandent, en direction seule.
@@ -198,5 +211,21 @@ impl Game {
     /// L'arme en main, que le rendu soumet après le décor.
     pub fn weapon(&self) -> &Weapon {
         &self.weapon
+    }
+
+    /// Les créatures, que le rendu soumet entre le décor et l'arme.
+    pub fn monsters(&self) -> [&Monster; 1] {
+        [&self.monster]
+    }
+
+    /// À quelle distance de l'œil la créature se trouve, pour le titre.
+    ///
+    /// **La cote qu'on va régler s'affiche avant d'être réglée** : la demi-étendue
+    /// d'un sprite se juge à une distance donnée, et chercher cette distance en
+    /// comptant les dalles est ce qui a coûté un essai par relance quand la hauteur
+    /// d'œil s'est posée.
+    pub fn reach(&self) -> f32 {
+        let gap = self.monster.at() - self.camera.position;
+        gap.dot(gap).sqrt()
     }
 }

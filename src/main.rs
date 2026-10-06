@@ -12,9 +12,11 @@
 mod body;
 mod game;
 mod maze;
+mod monster;
 mod player;
 mod probe;
 mod scene;
+mod sheet;
 mod weapon;
 
 #[cfg(test)]
@@ -113,10 +115,12 @@ fn main() -> Result<(), Error> {
             // difficile à lire autrement.
             let eye = session.game.view().camera.position.z;
             tick.set_title(&format!(
-                "{title} — œil {:.2} sur {:.2} d'étage, plafond {:.2}, cellule {}, vue {:?}",
+                "{title} — œil {:.2} sur {:.2} d'étage, plafond {:.2}, \
+                 démon à {:.2}, cellule {}, vue {:?}",
                 eye.rem_euclid(export::LEVEL),
                 export::LEVEL,
                 export::CEILING,
+                session.game.reach(),
                 session.game.cell(),
                 session.probe.seen()
             ));
@@ -143,16 +147,25 @@ fn main() -> Result<(), Error> {
                 Err(_) => probe::State::Refused,
             };
             session.probe.note(shown, &session.game.aim());
-            // **L'arme après le décor**, et c'est le seul ordre qui vaille : elle
-            // est la plus proche de l'œil, donc la profondeur la laisserait gagner
-            // de toute façon, mais la soumettre en dernier évite qu'un décor très
-            // proche la rejette à égalité.
+            // **Les créatures après le décor, l'arme en dernier.** L'ordre ne tient
+            // pas au mélange — la transparence du moteur est binaire, donc le
+            // z-buffer tranche dans n'importe quel ordre et aucun tri n'est à faire
+            // — mais à la profondeur : un décor très proche rejetterait à égalité ce
+            // qui lui est collé, et l'arme est la plus proche de l'œil de toutes.
             //
-            // Son refus se relève comme celui du décor : il vient de la même
-            // capacité, et une arme qui disparaît de la main est un symptôme qu'on
-            // chercherait longtemps sans la ligne qui le dit.
+            // Leur refus se relève comme celui du décor : il vient de la même
+            // capacité, et une arme qui disparaît de la main ou un démon qui
+            // s'efface d'un couloir sont des symptômes qu'on chercherait longtemps
+            // sans la ligne qui le dit.
+            let seen = monster::submit(context, &session.game.monsters(), &view.camera);
+            session
+                .probe
+                .refusal(probe::Part::Monsters, seen.is_err(), &session.game.aim());
+
             let hand = weapon::submit(context, session.game.weapon(), &view.camera);
-            session.probe.weapon(hand.is_err(), &session.game.aim());
+            session
+                .probe
+                .refusal(probe::Part::Weapon, hand.is_err(), &session.game.aim());
         },
         overview,
     )
