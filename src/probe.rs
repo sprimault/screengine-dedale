@@ -148,6 +148,33 @@ impl State {
     }
 }
 
+/// Une soumission dont le seul refus se relève, le décor mis à part.
+///
+/// **Le décor n'en fait pas partie**, et c'est ce qui justifie deux chemins : sa
+/// soumission rend une visibilité en plus de pouvoir échouer, donc elle a quatre
+/// états là où celles-ci en ont deux. Les fondre obligerait à porter un
+/// `Visibility` qui n'aurait pas de sens pour une arme.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Part {
+    /// L'arme en main.
+    Weapon,
+    /// Les créatures du décor.
+    Monsters,
+}
+
+/// Combien de parties [`Part`] nomme, donc la taille du relevé qui les suit.
+const PARTS: usize = 2;
+
+impl Part {
+    /// Comment la ligne du relevé la nomme.
+    fn label(self) -> &'static str {
+        match self {
+            Self::Weapon => "l'arme",
+            Self::Monsters => "les créatures",
+        }
+    }
+}
+
 /// Ce que le relevé garde entre deux images.
 ///
 /// **Un état de partie**, comme le reste : il est jeté au rechargement de la
@@ -167,8 +194,9 @@ pub struct Probe {
     frame: u64,
     /// Vrai si la dernière image échantillonnée était noire.
     dark: bool,
-    /// Vrai si la dernière soumission de l'arme a été refusée.
-    handless: bool,
+    /// Pour chaque partie de [`Part`], vrai si sa dernière soumission a été
+    /// refusée.
+    refused: [bool; PARTS],
 }
 
 impl Probe {
@@ -194,7 +222,7 @@ impl Probe {
             runs: 0,
             frame: 0,
             dark: false,
-            handless: false,
+            refused: [false; PARTS],
         }
     }
 
@@ -253,27 +281,36 @@ impl Probe {
         );
     }
 
-    /// Note si la soumission de l'arme a été refusée, ou qu'elle ne l'est plus.
+    /// Note si la soumission de cette partie a été refusée, ou qu'elle ne l'est
+    /// plus.
     ///
-    /// **Le refus du décor se relève, celui de l'arme se perdait.** Les deux
+    /// **Le refus du décor se relève, celui du reste se perdait.** Toutes les
     /// soumissions peuvent échouer pour la même raison — la capacité de triangles
-    /// —, et l'arme disparaîtrait alors de la main sans qu'aucune ligne ne le dise.
+    /// —, et l'arme disparaîtrait de la main, les créatures du couloir, sans
+    /// qu'aucune ligne ne le dise.
+    ///
+    /// **Une fonction et non une par partie** : c'est le troisième corps identique
+    /// à un libellé près, et le moment où le motif se nomme plutôt que de se
+    /// recopier une fois de plus. Le décor garde la sienne, qui relève une
+    /// visibilité en plus d'un refus.
     ///
     /// Relevé au changement comme le reste : une capacité dépassée l'est pendant des
     /// dizaines d'images, et une ligne par image noierait le relevé.
-    pub fn weapon(&mut self, refused: bool, aim: &Aim) {
-        if refused == self.handless {
+    pub fn refusal(&mut self, part: Part, refused: bool, aim: &Aim) {
+        let was = &mut self.refused[part as usize];
+        if refused == *was {
             return;
         }
-        self.handless = refused;
+        *was = refused;
 
         let Some(file) = self.file.as_mut() else {
             return;
         };
         let _ = writeln!(
             file,
-            "image {} : l'arme {} — {aim}",
+            "image {} : {} {} — {aim}",
             self.frame,
+            part.label(),
             if refused {
                 "est refusée"
             } else {
