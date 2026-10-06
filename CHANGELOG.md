@@ -15,14 +15,14 @@ cela s'adresse à quelqu'un.
 ## [Non publié]
 
 ### Ajouté
-- **Un démon se tient dans le labyrinthe**, et se montre sous huit angles selon
-  l'endroit d'où on le regarde.
+- **Un démon se tient dans le labyrinthe**, pose son ombre au sol, et se montre
+  sous huit angles selon l'endroit d'où on le regarde.
 
 ***
 
 ### Added
-- **A demon stands in the maze**, shown from eight angles depending on where you
-  look at it from.
+- **A demon stands in the maze**, casts its shadow on the floor, and is shown from
+  eight angles depending on where you look at it from.
 
 ## [0.2.2] — 2026-10-05 — Les règles du moteur, et pas les nôtres
 
