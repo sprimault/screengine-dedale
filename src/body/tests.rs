@@ -23,8 +23,10 @@
 
 use super::*;
 use crate::maze::grid::Shape;
+use crate::monster;
 use crate::player::HALF;
 use crate::test_support::{DT, SEEDS, across, bearings, cases, maze, plain, sides, unit};
+use screengine_play::sweep_reach;
 
 /// Vrai si le corps est dans le solide, par une sonde que le moteur tranche.
 ///
@@ -1034,6 +1036,63 @@ fn le_relevement_refuse_un_mur_plein() {
     }
 
     assert!(seen > 0, "aucun mur éprouvé");
+}
+
+/// Le gabarit de la créature garde la même marge de glissade que le joueur.
+///
+/// **Les deux bornes du module sont relevées pour une seule boîte**, et c'est ce
+/// qui les rendrait supposées pour une autre : [`SLIDES`] a été mesuré contre le
+/// gabarit du joueur, et rien ne dit qu'une boîte plus étroite présente le même
+/// nombre de plans dans un coin. Elle en présente moins ou autant — une boîte fine
+/// touche moins de choses à la fois —, mais c'est à mesurer, pas à déduire.
+#[test]
+fn le_gabarit_de_la_creature_garde_la_marge_de_glissade() {
+    let (grid, map) = maze(SEEDS[0]);
+    let mut worst = 0;
+    let mut whence = None;
+
+    for at in cases(&grid) {
+        if !plain(&grid, at) {
+            continue;
+        }
+        for bearing in bearings() {
+            let body = Body::stand(monster::HALF, &grid, &map, at);
+            let wanted = body.centre + bearing * export::CELL;
+            let planes = body.slide(&map, body.centre, wanted).planes;
+
+            if planes > worst {
+                worst = planes;
+                whence = Some((at, bearing));
+            }
+        }
+    }
+
+    assert!(
+        worst < SLIDES,
+        "une glissade de la créature a consommé les {SLIDES} plans de la borne, \
+         en {whence:?}"
+    );
+}
+
+/// Le décor joué tient là où la boîte de la créature garde son jeu de collision.
+///
+/// **La même épreuve que pour le joueur, et pour la même raison** : le jeu que le
+/// balayage laisse à une boîte se perd avec l'éloignement de l'origine, et il dépend
+/// de **sa taille**. Une boîte plus petite le perd plus tôt, donc la borne du joueur
+/// ne vaut pas pour elle — c'est précisément le cas que cette épreuve couvre.
+#[test]
+fn le_decor_joue_garde_le_jeu_de_la_creature() {
+    let (width, height, levels) = crate::MAZE.extent;
+
+    let far = (width as f32 * export::CELL)
+        .max(height as f32 * export::CELL)
+        .max((levels - 1) as f32 * export::LEVEL + export::CEILING);
+
+    assert!(
+        far < sweep_reach(monster::HALF),
+        "le décor va jusqu'à {far}, et la boîte de la créature perd son jeu à {}",
+        sweep_reach(monster::HALF)
+    );
 }
 
 /// Un autre gabarit que celui du joueur emprunte le même chemin.

@@ -35,6 +35,12 @@ publish = false
 [dependencies]
 screengine-play = { version = "0.8", git = "https://github.com/sprimault/screengine", rev = "cce3ece8d1a3771f4084d51c9a781ab9ad29e6d6" }
 
+# Pour écrire les images de contrôle que les épreuves rendent hors fenêtre. Déjà
+# dans l'arbre par le moteur, qui décode les planches avec : la déclarer en direct
+# n'ajoute ni licence ni source, et rien n'en dépend hors des tests.
+[dev-dependencies]
+png = "0.18"
+
 [lints.rust]
 missing_docs = "warn"
 

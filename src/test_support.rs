@@ -15,6 +15,10 @@
 //! monte ici est ce qui s'écrit avec l'API publique seule — une grille, une carte
 //! chargée, un jeu de directions.
 
+use std::fs::File;
+use std::io::BufWriter;
+
+use png::{BitDepth, ColorType, Encoder};
 use screengine_play::screengine::{BYTES_PER_PIXEL, Config};
 use screengine_play::{Context, Vec3, World};
 
@@ -43,6 +47,30 @@ pub fn context(max_triangles: u32) -> Context {
         max_lines: 0,
     })
     .expect("configuration tenable")
+}
+
+/// Écrit une image rendue hors fenêtre dans `.tmp/`, pour qu'on la regarde.
+///
+/// **C'est un instrument, pas une épreuve.** Ce qu'une image de contrôle tranche —
+/// de quel côté une silhouette regarde, si des pieds touchent le sol — ne s'écrit
+/// dans aucune assertion : il faut l'œil. Ce que le rendu hors fenêtre apporte est
+/// qu'on n'a plus à ouvrir une fenêtre et à attraper le bon instant.
+///
+/// Le chemin est dans `.tmp/`, que l'antivirus ne surveille pas et que rien ne
+/// versionne.
+pub fn snapshot(name: &str, pixels: &[u8]) {
+    let path = format!(".tmp/{name}.png");
+    let Ok(file) = File::create(&path) else {
+        eprintln!("image de contrôle {path} non écrite");
+        return;
+    };
+
+    let mut encoder = Encoder::new(BufWriter::new(file), WIDTH, HEIGHT);
+    encoder.set_color(ColorType::Rgba);
+    encoder.set_depth(BitDepth::Eight);
+    if let Ok(mut writer) = encoder.write_header() {
+        let _ = writer.write_image_data(pixels);
+    }
 }
 
 /// Termine l'image et rend ses pixels.
