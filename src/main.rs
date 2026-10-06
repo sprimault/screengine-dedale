@@ -9,6 +9,7 @@
 //! du `README`, et tout ce qui vivrait dans un rappel serait à en sortir ce
 //! jour-là.
 
+mod body;
 mod game;
 mod maze;
 mod player;
@@ -16,6 +17,8 @@ mod probe;
 mod scene;
 mod weapon;
 
+#[cfg(test)]
+mod test_support;
 #[cfg(test)]
 mod tests;
 
