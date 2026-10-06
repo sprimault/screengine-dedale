@@ -14,6 +14,8 @@ cela s'adresse à quelqu'un.
 
 ## [Non publié]
 
+## [0.3.0] — 2026-10-06 — Les monstres
+
 ### Ajouté
 - **Trois démons parcourent le labyrinthe**, chacun sa silhouette : ils posent leur
   ombre au sol, s'évitent, et se montrent sous huit angles selon d'où on les regarde.
