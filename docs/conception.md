@@ -38,6 +38,7 @@ une graine, et le même se rejoue.
 | **Tir et contact contre un monstre** | **le jeu**, qui a placé son volume |
 | **Ramassage** | **le jeu**, contre les poses qu'il place |
 | Déplacement des monstres | le balayage du moteur + la logique du jeu |
+| **Deux monstres qui se croisent** | **le jeu** — ni l'un ni l'autre n'a de portail, donc le balayage ne les voit pas |
 | **Barre de vie, score** | **le jeu**, dans le tampon de sortie |
 | **Arme vue en main** | **le jeu**, en sprite du monde — ce n'est pas de l'interface |
 | Vue de dessus | le tracé de lignes du moteur, en mode visible à travers |

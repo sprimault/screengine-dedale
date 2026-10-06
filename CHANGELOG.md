@@ -15,14 +15,14 @@ cela s'adresse à quelqu'un.
 ## [Non publié]
 
 ### Ajouté
-- **Un démon parcourt le labyrinthe**, pose son ombre au sol, et se montre sous
-  huit angles selon l'endroit d'où on le regarde.
+- **Trois démons parcourent le labyrinthe**, chacun sa silhouette : ils posent leur
+  ombre au sol, s'évitent, et se montrent sous huit angles selon d'où on les regarde.
 
 ***
 
 ### Added
-- **A demon roams the maze**, casts its shadow on the floor, and is shown from
-  eight angles depending on where you look at it from.
+- **Three demons roam the maze**, each with its own figure: they cast their shadow
+  on the floor, keep out of each other's way, and are shown from eight angles.
 
 ## [0.2.2] — 2026-10-05 — Les règles du moteur, et pas les nôtres
 
