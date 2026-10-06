@@ -159,9 +159,10 @@ impl Game {
         // mur elle vaut zéro, donc l'arme s'arrête d'elle-même.
         self.weapon.advance(travel, self.camera.yaw, tick.dt());
 
-        // La créature avance son cycle de ce qu'elle a parcouru : immobile, elle
-        // n'offre aucune distance et respire au temps.
-        self.monster.advance(0.0, tick.dt());
+        // La créature marche pour son compte : elle ne poursuit personne, la
+        // navigation d'une cellule à l'autre demandant un graphe que la carte ne
+        // donne pas. Elle avance droit et fait demi-tour sur ce qui l'arrête.
+        self.monster.walk(map, tick.dt());
     }
 
     /// Le pas que les touches demandent, en direction seule.

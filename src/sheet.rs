@@ -79,10 +79,17 @@ impl Motion {
 /// montre de dos. Zéro met donc l'œil droit devant elle, et la ligne 0 est la vue
 /// de face ; un demi-tour donne la ligne 4, de dos.
 ///
-/// **Les lignes tournent dans le sens trigonométrique**, l'écart étant mesuré par
-/// `atan2` : vu de dessus, les vues se succèdent dans le sens inverse des
-/// aiguilles. C'est la convention des planches du projet, et celle que l'exemple
-/// `couloir` du moteur exerce à l'écran sur des planches de la même famille.
+/// **Les lignes tournent dans le sens horaire vu de dessus**, d'où l'écart pris
+/// comme `facing − to_eye` et non l'inverse. C'est la convention de **nos**
+/// planches, mesurée sur une image de contrôle : à cap nul et œil posé en `+Y`, la
+/// créature doit regarder vers la gauche de l'image, et l'autre sens la montrait
+/// tournée vers la droite.
+///
+/// **Elle n'est pas celle de l'exemple `couloir` du moteur**, qui prend l'écart
+/// dans l'autre sens pour ses propres planches. Une convention de données ne se
+/// déduit pas du code qui lit d'autres données, et c'est ce que cette ligne a
+/// coûté : lues de travers, les vues restent régulières et la créature marche à
+/// reculons.
 ///
 /// **Arrondi au secteur le plus proche, et non tronqué.** La troncature
 /// décalerait chaque vue d'un demi-secteur, soit vingt-deux degrés et demi : la
@@ -93,7 +100,7 @@ impl Motion {
 pub fn row(facing: f32, at: Vec3, eye: Vec3) -> u32 {
     let to_eye = (eye.y - at.y).atan2(eye.x - at.x);
     let turn = core::f32::consts::TAU;
-    let relative = (to_eye - facing).rem_euclid(turn);
+    let relative = (facing - to_eye).rem_euclid(turn);
 
     // Le demi-secteur ajouté avant la troncature est ce qui fait l'arrondi, et le
     // modulo rattrape le tour entier qu'il produit au-delà du dernier secteur.

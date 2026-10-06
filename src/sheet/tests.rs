@@ -94,7 +94,10 @@ const SHEETS: [(&str, &[u8], Motion); 9] = [
 /// pas unitaire pour autant : une longueur de un laisserait passer un code qui
 /// aurait oublié de retrancher la pose de la créature.
 fn eye(at: Vec3, facing: f32, relative: f32) -> Vec3 {
-    let bearing = facing + relative;
+    // **L'écart se retranche du cap**, parce que c'est ainsi que les vues tournent
+    // sur nos planches : l'œil qui donne l'écart `relative` se place donc en
+    // `facing − relative`, et non à sa somme.
+    let bearing = facing - relative;
     Vec3::new(at.x + 6.5 * bearing.cos(), at.y + 6.5 * bearing.sin(), at.z)
 }
 

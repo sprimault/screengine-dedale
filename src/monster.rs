@@ -52,7 +52,7 @@ const WALK: &[u8] = include_bytes!("../assets/sprites/demon-d1-walk-8x8-64.png")
 /// couloir et sous une porte, et c'est tout ce que le volume décide. Le brief de
 /// l'étape borne un démon à `1,5` sur les deux axes horizontaux et `1,625` en
 /// hauteur, donc il y a de la marge.
-const HALF: Vec3 = Vec3::new(0.35, 0.35, 0.9);
+pub const HALF: Vec3 = Vec3::new(0.35, 0.35, 0.9);
 
 /// La demi-étendue du **sprite**, en unités de monde et jamais en texels.
 ///
@@ -66,27 +66,45 @@ const HALF: Vec3 = Vec3::new(0.35, 0.35, 0.9);
 /// ce qu'un démon qui dépasse l'homme demande une fois le cadrage retranché.
 const SPRITE_HALF: f32 = 0.96;
 
-/// Ce que la planche de cette silhouette laisse de vide sous les pieds, en texels.
+/// Ce que la planche d'un cycle laisse de vide sous les pieds, en texels.
 ///
-/// **Mesurée sur la planche employée, et elle n'est pas celle qu'on croyait** : le
-/// cadrage de la chaîne vise deux pixels, mais le rendu en laisse **trois** sous
-/// les pieds de cette silhouette-ci — et deux sous ceux d'une autre. Une marge
-/// supposée faisait donc flotter la créature d'un texel, soit trois centimètres à
-/// l'échelle du décor.
+/// **Elle appartient au cycle autant qu'à la silhouette**, et c'est ce que la
+/// créature en marche a montré : réglée sur le repos, elle vaut trois, et la marche
+/// descend à deux — le pied d'appui touche plus bas que les pieds joints. Posée à
+/// trois pour les deux, la créature flottait d'un texel dès qu'elle marchait.
 ///
-/// **Elle appartient à la silhouette et non à la grille**, et c'est ce que la
-/// mesure a montré : les trois démons ne se cadrent pas pareil. Elle rejoindra la
-/// table des silhouettes quand les trois entreront, et
-/// `la_marge_annoncee_est_celle_de_la_planche` la tient d'ici là.
-const MARGIN: f32 = 3.0;
+/// **C'est la marge la plus fréquente du cycle qui décide, et non son minimum** —
+/// mesuré, la marche relève `[3, 4, 4, 4, 4, 4, 3, 2]`. Ancrée sur le `2`, la
+/// créature flotte pendant sept trames sur huit : la trame la plus basse est
+/// l'exception, pas la règle. Ancrée sur le `4`, cinq trames touchent exactement et
+/// les deux autres s'enfoncent d'un texel, ce qui se voit infiniment moins qu'un
+/// pied en l'air.
+///
+/// Les trois silhouettes ne se cadrent pas pareil non plus ; la table les portera
+/// quand elles entreront, et `la_marge_annoncee_est_la_plus_frequente` la tient
+/// d'ici là.
+fn margin(motion: Motion) -> f32 {
+    match motion {
+        Motion::Idle => 3.0,
+        Motion::Walk => 4.0,
+        // Non mesurée : rien ne tue avant l'étape 4, et la planche de mort n'est pas
+        // encore chargée. Elle se relèvera avec elle.
+        Motion::Dead => 3.0,
+    }
+}
 
 /// Le rayon de la tache d'ombre, en unités de monde.
 ///
-/// **Plus étroite que la silhouette et plus large que le corps** : une tache à la
-/// taille du dessin déborderait sur les dalles voisines dès qu'on longe un mur, une
-/// tache à la taille de la boîte ne se verrait pas. Elle se juge à l'écran, comme
-/// tout ce qui a une taille apparente.
-const SHADOW_RADIUS: f32 = 0.5;
+/// **Elle doit couvrir l'empreinte des pieds, et c'est ce qui la dimensionne.**
+/// Relevée sur la planche de marche, cette empreinte atteint quarante-deux texels,
+/// soit `1,26` de large ; une tache d'un mètre de diamètre y laissait les pieds
+/// dépasser, et un pied hors de son ombre se lit comme un pied en l'air. C'est ce
+/// qui faisait croire à un flottement, là où la mesure dans l'image montrait le bas
+/// du dessin exactement sur la ligne du sol.
+///
+/// **Le dégradé fait le reste** : la tache est dense au centre et blanche au bord,
+/// donc l'élargir ne la fait pas déborder sur les dalles voisines — elle s'y éteint.
+const SHADOW_RADIUS: f32 = 0.68;
 
 /// De combien la tache flotte au-dessus du sol, en unités de monde.
 ///
@@ -114,11 +132,10 @@ const SHADOW_SIDE: u32 = 64;
 /// Le côté de cette texture en coordonnées de texture, qui se prennent en texels.
 const SIDE: f32 = SHADOW_SIDE as f32;
 
-/// Le cap de la créature, en radians depuis le +X.
+/// Le cap de départ de la créature, en radians depuis le +X.
 ///
-/// **Fixe, et c'est ce qui rend les huit vues visibles.** Une créature qui se
-/// tournerait vers le joueur ne montrerait jamais que sa vue de face, et la planche
-/// entière resterait à prouver. Elle tournera quand elle marchera.
+/// Il ne reste fixe que jusqu'au premier obstacle : la créature fait demi-tour
+/// quand le décor l'arrête, donc son cap suit le couloir où elle se trouve.
 const FACING: f32 = 0.0;
 
 /// Combien de temps un cycle de repos met à se jouer, en secondes.
@@ -133,9 +150,64 @@ const IDLE_PERIOD: f32 = 1.5;
 ///
 /// **La marche avance avec la distance et non avec le temps**, comme le
 /// balancement de l'arme : un cycle indexé sur l'horloge continuerait de défiler
-/// contre un mur, et une créature arrêtée piétinerait sur place. Un peu moins de
-/// deux mètres pour huit trames donne une foulée d'un quart de mètre.
-const STRIDE: f32 = 1.9;
+/// contre un mur, et une créature arrêtée piétinerait sur place.
+///
+/// **Relevée sur la planche, et non posée au jugé.** Dans les deux vues de profil,
+/// l'empreinte des pieds passe de cinq texels joints à vingt-trois au plus écarté,
+/// soit dix-huit texels entre les deux appuis ; le cycle porte **deux pas** — ses
+/// huit trames montrent deux maxima —, donc la foulée vaut trente-six texels. À la
+/// vignette de soixante-quatre pour `2 × SPRITE_HALF`, cela fait `1,08`.
+///
+/// **Ce qu'une valeur fausse coûte se voit tout de suite** : les pieds patinent, et
+/// d'autant plus que l'écart est grand. Celle-ci valait `1,9` avant d'être mesurée,
+/// soit près du double — le cycle avançait deux fois trop lentement pour la
+/// distance, et la créature glissait sur place.
+///
+/// **Ce qu'elle coûte, et c'est assumé** : une phase indexée sur la distance avance
+/// plus vite en descendant une rampe et par à-coups dans un escalier. L'indexer sur
+/// le temps ferait patiner dès que la vitesse varie, ce qui se voit davantage et
+/// partout.
+const STRIDE: f32 = 1.08;
+
+/// La vitesse de marche de la créature, en unités de monde par seconde.
+///
+/// **Plus lente que le joueur, qui va à 3,2** : une créature qui avance aussi vite
+/// que celui qui la fuit ne se distingue pas d'un mur qui le suit. À cette vitesse
+/// elle accomplit un peu plus d'un cycle par seconde, ce qui est une marche posée.
+const SPEED: f32 = 1.4;
+
+/// En deçà de quelle part du pas demandé la créature se tient pour arrêtée.
+///
+/// **Le critère porte sur la distance et jamais sur un axe.** Le balayage rend la
+/// surface de **moindre pénétration**, donc l'axe qui arrête n'est pas celui qu'on
+/// croit : une créature poussée contre un mur de face peut se voir arrêtée par le
+/// sol, et une décision conditionnée à l'axe du cap ne se déclencherait jamais —
+/// elle dériverait le long de la paroi en avançant toujours.
+///
+/// **Le seuil se mesure sur la glissade la plus favorable, pas au jugé.** Un cap à
+/// quarante-cinq degrés contre une paroi axiale garde `cos 45°`, soit `0,707`, de
+/// son pas : sous ce chiffre, la créature longe les murs indéfiniment sans être
+/// retournée — relevé, neuf cents images sans un seul demi-tour. Au-dessus, elle se
+/// retourne dès qu'elle perd franchement sa route, et continue de longer tant
+/// qu'elle ne perd presque rien.
+const STALLED: f32 = 0.8;
+
+/// Combien d'images de suite la créature doit être gênée avant de se retourner.
+///
+/// **Une image gênée ne vaut pas un obstacle**, et c'est ce qui se voyait à
+/// l'écran : en ligne droite, le franchissement d'un joint de dalle ou la reprise
+/// d'une pente coûte un pas isolé, et la créature pivotait sans rien avoir
+/// rencontré. Un mur, lui, gêne toutes les images jusqu'à ce qu'on s'en détourne.
+///
+/// **Mesuré sur une marche de quinze secondes** : le décor produit des séries
+/// d'images gênées qui vont jusqu'à **six**, sans qu'aucun mur soit en cause — un
+/// joint de dalle, la reprise d'une pente. Six était donc exactement le seuil que
+/// la marche normale atteint, et la créature pivotait sur un accroc.
+///
+/// Le double, soit un cinquième de seconde : au-delà de ce que le décor produit en
+/// ligne droite, et bien en deçà de ce qu'un mur impose — contre une paroi, la gêne
+/// ne cesse pas tant qu'on ne s'en détourne pas.
+const PATIENCE: u32 = 12;
 
 /// Une créature posée dans le décor.
 ///
@@ -165,6 +237,11 @@ pub struct Monster {
     motion: Motion,
     /// Où en est son cycle, en tours.
     phase: f32,
+    /// Depuis combien d'images de suite le décor la gêne.
+    ///
+    /// **Remis à zéro dès qu'un pas passe**, ce qui est tout l'objet : ce qu'on
+    /// cherche est un obstacle qui dure, pas un accroc isolé.
+    hindered: u32,
 }
 
 impl Monster {
@@ -198,20 +275,65 @@ impl Monster {
             facing: FACING,
             motion: Motion::Idle,
             phase: 0.0,
+            hindered: 0,
         })
+    }
+
+    /// Marche droit devant, et fait demi-tour quand le décor l'arrête.
+    ///
+    /// **Le déplacement passe par le corps**, avec son propre gabarit : la glissade,
+    /// la chute et le franchissement sont ceux du joueur, et c'est ce que
+    /// l'extraction du corps a acheté. Une créature monte donc un escalier sans
+    /// qu'une ligne d'ici le sache.
+    ///
+    /// **Arrêtée veut dire demi-tour, quel que soit l'axe qui a arrêté**, et c'est le
+    /// piège de cette fonction : le balayage rend la surface de moindre pénétration,
+    /// donc la normale qui arrête n'est pas forcément celle du cap. Le critère porte
+    /// sur la **distance horizontale réellement franchie** contre celle demandée —
+    /// voir [`STALLED`].
+    ///
+    /// **La composante verticale ne compte pas** dans ce critère : la pesanteur en
+    /// ajoute une à chaque image, et une créature qui descend une rampe parcourt plus
+    /// que son pas horizontal sans avoir rien franchi de neuf.
+    ///
+    /// **Ce qu'elle coûte, vu à l'écran et assumé : la créature marche parfois en
+    /// crabe.** La vue vient du **cap**, le déplacement de ce que la glissade a
+    /// laissé passer ; en longeant une paroi de biais, les deux divergent et la
+    /// silhouette avance de travers. Faire suivre la vue au déplacement réel la
+    /// ferait pivoter à chaque frottement, ce qui se verrait davantage — et faire
+    /// suivre le cap au déplacement reviendrait à longer les murs indéfiniment, ce
+    /// que [`STALLED`] existe précisément pour empêcher.
+    pub fn walk(&mut self, map: &World, dt: f32) {
+        let step = Vec3::new(self.facing.cos(), self.facing.sin(), 0.0) * (SPEED * dt);
+
+        let before = self.body.centre();
+        self.body.advance(map, step, dt);
+        let after = self.body.centre();
+
+        let gone = Vec3::new(after.x - before.x, after.y - before.y, 0.0);
+        let wanted = step.dot(step);
+        self.hindered = match gone.dot(gone) < wanted * STALLED * STALLED {
+            true => self.hindered + 1,
+            false => 0,
+        };
+        if self.hindered >= PATIENCE {
+            self.facing += core::f32::consts::PI;
+            self.hindered = 0;
+        }
+
+        self.advance(gone.dot(gone).sqrt(), dt);
     }
 
     /// Avance son cycle de ce qu'elle a parcouru, et du temps écoulé.
     ///
-    /// **C'est la distance qui décide du cycle**, et la règle est écrite ici
-    /// quoiqu'elle ne se déplace pas encore : un cycle choisi ailleurs serait à
-    /// défaire le jour où elle marche, et une créature qui marche en montrant des
-    /// poses de repos est précisément ce qu'on ne verrait pas tout de suite.
+    /// **C'est la distance qui décide du cycle** : une créature qui marche en
+    /// montrant des poses de repos est précisément ce qu'on ne verrait pas tout de
+    /// suite, et un cycle indexé sur l'horloge continuerait de défiler contre un mur.
     ///
     /// **Changer de cycle remet la phase à zéro**, parce que les deux planches n'ont
     /// pas le même compte de trames et qu'une phase reportée tomberait au milieu
     /// d'un pas. Une créature qui s'arrête repart de sa première pose de repos.
-    pub fn advance(&mut self, travel: f32, dt: f32) {
+    fn advance(&mut self, travel: f32, dt: f32) {
         let motion = match travel > 0.0 {
             true => Motion::Walk,
             false => Motion::Idle,
@@ -300,8 +422,8 @@ fn shadow_corners(centre: Vec3) -> [Vec3; 4] {
 /// sous les pieds. Le centre monte donc de la demi-étendue du sprite, moins ce que
 /// le cadrage a laissé — un retrait qui est la même fraction de la vignette en
 /// unités de monde qu'en texels.
-fn anchor(centre: Vec3) -> Vec3 {
-    let lift = SPRITE_HALF - MARGIN / FRAME * (2.0 * SPRITE_HALF);
+fn anchor(centre: Vec3, motion: Motion) -> Vec3 {
+    let lift = SPRITE_HALF - margin(motion) / FRAME * (2.0 * SPRITE_HALF);
 
     Vec3::new(centre.x, centre.y, centre.z - HALF.z + lift)
 }
@@ -371,7 +493,7 @@ pub fn submit(
         context.submit_sprites(
             Affine3::IDENTITY,
             &[Sprite {
-                center: anchor(centre),
+                center: anchor(centre, monster.motion),
                 half_width: SPRITE_HALF,
                 half_height: SPRITE_HALF,
                 u0,
