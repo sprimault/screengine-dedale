@@ -25,10 +25,11 @@ police en CC0, dont [`THIRD-PARTY-NOTICES`](THIRD-PARTY-NOTICES) rend compte.
 
 ## État
 
-**Étape 2 : le joueur.** Un labyrinthe engendré qu'on parcourt à la première
+**Étape 3 : les monstres.** Un labyrinthe engendré qu'on parcourt à la première
 personne, des étages reliés par des cages — à marches, ou en rampe. Le décor
 arrête : on longe les murs, on gravit les marches et les rampes, et la pesanteur
-ramène au sol. Pas encore un jeu : ni monstres, ni tir, ni ramassages.
+ramène au sol. Trois démons le parcourent aussi, chacun sa silhouette, et posent
+leur ombre au sol. Pas encore un jeu : ni tir, ni ramassages.
 
 - [`ROADMAP.md`](ROADMAP.md) — les étapes et ce qui est hors périmètre
 - [`CHANGELOG.md`](CHANGELOG.md) — ce que chaque version a apporté, daté

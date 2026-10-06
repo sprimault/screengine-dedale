@@ -24,10 +24,10 @@ font, recorded in [`THIRD-PARTY-NOTICES`](THIRD-PARTY-NOTICES).
 
 ## Status
 
-**Step 2: the player.** A generated maze walked in first person, floors linked by
+**Step 3: the monsters.** A generated maze walked in first person, floors linked by
 shafts — stepped, or ramped. The map stops you: you hug walls, you climb steps and
-ramps, and gravity brings you back down. Not a game yet: no monsters, no shooting,
-no pickups.
+ramps, and gravity brings you back down. Three demons roam it too, each with its own
+figure, casting their shadow on the floor. Not a game yet: no shooting, no pickups.
 
 - [`ROADMAP.md`](ROADMAP.md) — the steps and what is out of scope (French)
 - [`CHANGELOG.md`](CHANGELOG.md) — what each version brought, dated
