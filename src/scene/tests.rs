@@ -6,8 +6,9 @@
 use super::*;
 use crate::maze::grid::Side;
 use crate::player::{EYE_ABOVE, HALF, Player};
-use screengine_play::screengine::{BYTES_PER_PIXEL, Config};
-use screengine_play::{Affine3, Angle, Context, FreeCamera, Quat, Vec3, Visibility};
+use crate::test_support::{HEIGHT, WIDTH, context, frame};
+use screengine_play::screengine::BYTES_PER_PIXEL;
+use screengine_play::{Affine3, Angle, Camera, FreeCamera, Quat, Vec3, Visibility};
 
 /// Les réglages du labyrinthe d'épreuve.
 fn settings() -> Settings {
@@ -18,30 +19,6 @@ fn settings() -> Settings {
         ramps: 2,
         loops: 8,
     }
-}
-
-/// La largeur des images d'épreuve.
-const WIDTH: u32 = 320;
-
-/// Leur hauteur.
-const HEIGHT: u32 = 180;
-
-/// Un contexte hors fenêtre, au budget de triangles donné.
-///
-/// `0` prend le défaut du moteur, qui suffit à la traversée mais **pas** au
-/// chemin brut : celui-ci soumet toutes les cellules de la carte, visibles ou
-/// non, et les compte toutes.
-fn context(max_triangles: u32) -> Context {
-    Context::new(Config {
-        max_width: WIDTH,
-        max_height: HEIGHT,
-        width: WIDTH,
-        height: HEIGHT,
-        tile_size: 64,
-        max_triangles,
-        max_lines: 0,
-    })
-    .expect("configuration tenable")
 }
 
 /// Un échantillon de poses dans le labyrinthe, chacune regardant les quatre
@@ -146,15 +123,6 @@ fn poses_contre_un_portail(scenery: &Scenery) -> Vec<Camera> {
         }
     }
     out
-}
-
-/// L'image que rend un contexte, en octets.
-fn frame(context: &mut Context) -> Vec<u8> {
-    let mut pixels = vec![0u8; WIDTH as usize * HEIGHT as usize * BYTES_PER_PIXEL];
-    context
-        .frame_end(&mut pixels, WIDTH)
-        .expect("image rendue hors fenêtre");
-    pixels
 }
 
 /// Le nombre de pixels où deux images diffèrent, sur le total.

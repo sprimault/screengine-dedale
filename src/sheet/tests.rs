@@ -15,7 +15,7 @@
 //! Chacune a été vérifiée en la faisant échouer une fois, sur un code falsifié.
 
 use super::*;
-use screengine_play::load_png_masked;
+use screengine_play::{Texture, load_png_masked};
 
 /// L'angle que couvre une vue, en radians.
 const SECTOR: f32 = core::f32::consts::TAU / VIEWS as f32;
@@ -334,6 +334,78 @@ fn le_rectangle_couvre_sa_vignette() {
                 assert!(
                     u1 <= wide && v1 <= high,
                     "{motion:?} : la vignette {view}/{frame} sort de la planche"
+                );
+            }
+        }
+    }
+}
+
+/// La gouttière minimale qu'une vignette garde sur ses quatre bords, en texels.
+///
+/// **Elle se mesure plutôt que de se lire dans le nom d'un fichier**, et le relevé
+/// donne le pire cas : deux texels en haut et en bas sur les trois silhouettes,
+/// trois à onze sur les côtés. C'est donc deux qui décide, et c'est cette valeur
+/// qu'une planche future ne doit pas descendre.
+const GUTTER: u32 = 2;
+
+/// Combien de texels une vignette garde de vide entre sa silhouette et un bord.
+///
+/// Rend `(gauche, droite, haut, bas)`. Une vignette entièrement vide rendrait son
+/// côté quatre fois, ce qui ne se produit sur aucune planche du dépôt.
+fn gutter(sheet: &Texture, view: u32, frame: u32) -> (u32, u32, u32, u32) {
+    let side = FRAME as u32;
+    let (bu, bv) = (frame * side, view * side);
+    let solid = |du: u32, dv: u32| sheet.texel(0, (bu + du) as i32, (bv + dv) as i32) >> 24 != 0;
+
+    // Le premier rang non vide depuis chaque bord : la distance cherchée est son
+    // indice, puisqu'on compte les rangs entièrement transparents qui précèdent.
+    let scan = |pick: &dyn Fn(u32, u32) -> bool| {
+        (0..side)
+            .find(|&d| (0..side).any(|o| pick(d, o)))
+            .unwrap_or(side)
+    };
+
+    (
+        scan(&|d, o| solid(d, o)),
+        scan(&|d, o| solid(side - 1 - d, o)),
+        scan(&|d, o| solid(o, d)),
+        scan(&|d, o| solid(o, side - 1 - d)),
+    )
+}
+
+/// Chaque vignette garde une gouttière, et c'est ce qui l'empêche d'emprunter à sa
+/// voisine.
+///
+/// **Elle existe parce que le moteur n'en réserve aucune pour l'hôte**, et il n'a
+/// pas à le faire : il ne sait pas qu'un atlas porte des vignettes. Ce que le
+/// contrat publie suffit à en déduire le besoin — les mipmaps sont engendrés
+/// jusqu'à `1×1` par moyenne des texels, la réduction d'un format masqué pondère le
+/// RGB par l'alpha, et le RGB est dilaté sous les texels transparents. Une planche
+/// collée bord à bord verrait donc ses vues se mêler dès les niveaux grossiers.
+///
+/// **Le seuil, mesuré** : la gouttière vaut deux texels au plus serré, donc elle
+/// tient entière au niveau 0, vaut un texel au niveau 1, et tombe **sous un texel
+/// au niveau 2** — où une vignette ne fait plus que seize texels de côté. C'est de
+/// là qu'un bord pourrait emprunter, et seulement de là.
+///
+/// **Et la réduction elle-même ne mêle rien avant le niveau 7** : la vignette fait
+/// soixante-quatre texels, une puissance de deux, donc chaque réduction reste dans
+/// ses frontières jusqu'à ce qu'elle vaille un seul texel, au niveau 6. Ce qui est
+/// en jeu ici est le filtrage, pas la réduction.
+#[test]
+fn chaque_vignette_garde_sa_gouttiere() {
+    for (name, bytes, motion) in SHEETS {
+        let sheet = load_png_masked(bytes).expect("planche du dépôt valide");
+
+        for view in 0..VIEWS {
+            for frame in 0..motion.frames() {
+                let (left, right, top, bottom) = gutter(&sheet, view, frame);
+                let worst = left.min(right).min(top).min(bottom);
+
+                assert!(
+                    worst >= GUTTER,
+                    "{name}, vue {view}, trame {frame} : gouttière de {worst} texel(s) \
+                     — gauche {left}, droite {right}, haut {top}, bas {bottom}"
                 );
             }
         }

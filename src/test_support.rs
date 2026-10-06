@@ -15,10 +15,48 @@
 //! monte ici est ce qui s'écrit avec l'API publique seule — une grille, une carte
 //! chargée, un jeu de directions.
 
-use screengine_play::{Vec3, World};
+use screengine_play::screengine::{BYTES_PER_PIXEL, Config};
+use screengine_play::{Context, Vec3, World};
 
 use crate::maze::export;
 use crate::maze::grid::{Grid, Settings, Side};
+
+/// La largeur des images d'épreuve.
+pub const WIDTH: u32 = 320;
+
+/// Leur hauteur.
+pub const HEIGHT: u32 = 180;
+
+/// Un contexte hors fenêtre, au budget de triangles donné.
+///
+/// `0` prend le défaut du moteur, qui suffit à la traversée mais **pas** au
+/// chemin brut : celui-ci soumet toutes les cellules de la carte, visibles ou
+/// non, et les compte toutes.
+pub fn context(max_triangles: u32) -> Context {
+    Context::new(Config {
+        max_width: WIDTH,
+        max_height: HEIGHT,
+        width: WIDTH,
+        height: HEIGHT,
+        tile_size: 64,
+        max_triangles,
+        max_lines: 0,
+    })
+    .expect("configuration tenable")
+}
+
+/// Termine l'image et rend ses pixels.
+///
+/// **C'est le chemin que l'étape 8 empruntera pour l'image animée**, et il est déjà
+/// celui des épreuves : rien de ce qui se soumet ne lit de fenêtre, donc une scène
+/// se rend ici exactement comme elle se rendra là.
+pub fn frame(context: &mut Context) -> Vec<u8> {
+    let mut pixels = vec![0u8; WIDTH as usize * HEIGHT as usize * BYTES_PER_PIXEL];
+    context
+        .frame_end(&mut pixels, WIDTH)
+        .expect("image rendue hors fenêtre");
+    pixels
+}
 
 /// Un labyrinthe d'épreuve, par sa graine.
 ///

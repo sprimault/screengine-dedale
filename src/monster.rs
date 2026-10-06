@@ -20,8 +20,8 @@
 use std::sync::Arc;
 
 use screengine_play::{
-    Affine3, Angle, Camera, Color, Context, Error, Sprite, SpriteOrientation, Texture, Vec3, World,
-    load_png_masked,
+    Affine3, Angle, Camera, Color, Context, Error, Sprite, SpriteOrientation, Texture, Triangle,
+    Vec3, VertexUv, World, load_png_masked,
 };
 
 use crate::body::Body;
@@ -80,6 +80,40 @@ const SPRITE_HALF: f32 = 0.96;
 /// `la_marge_annoncee_est_celle_de_la_planche` la tient d'ici là.
 const MARGIN: f32 = 3.0;
 
+/// Le rayon de la tache d'ombre, en unités de monde.
+///
+/// **Plus étroite que la silhouette et plus large que le corps** : une tache à la
+/// taille du dessin déborderait sur les dalles voisines dès qu'on longe un mur, une
+/// tache à la taille de la boîte ne se verrait pas. Elle se juge à l'écran, comme
+/// tout ce qui a une taille apparente.
+const SHADOW_RADIUS: f32 = 0.5;
+
+/// De combien la tache flotte au-dessus du sol, en unités de monde.
+///
+/// **Un décalage de géométrie et non un biais de profondeur**, et la nuance est
+/// celle que le contrat pose : une tache posée dans le plan de la surface qu'elle
+/// marque la marque, le test de profondeur tolérant la pente. Ce centimètre ne sert
+/// donc pas à gagner le test — il sert à ne pas entrer dans la dalle quand le sol
+/// est en pente sous la créature, le quadrilatère étant horizontal et la rampe non.
+const SHADOW_LIFT: f32 = 0.01;
+
+/// Ce que la tache laisse passer en son centre, sur 255.
+///
+/// **255 est le neutre de la modulation**, donc un texel blanc laisse le sol intact
+/// et un texel noir l'éteint : une surface modulée assombrit ou ne fait rien, elle
+/// n'éclaircit jamais. Un peu plus du cinquième ne noircit pas la dalle, ce qui
+/// ferait un trou là où on veut un appui.
+const SHADOW_CORE: f32 = 0x38 as f32;
+
+/// Le côté de la texture de la tache, en texels.
+///
+/// **Une puissance de deux, que le moteur exige**, et petite : c'est un dégradé
+/// radial, donc elle n'a aucun détail à porter et son filtrage fait le reste.
+const SHADOW_SIDE: u32 = 64;
+
+/// Le côté de cette texture en coordonnées de texture, qui se prennent en texels.
+const SIDE: f32 = SHADOW_SIDE as f32;
+
 /// Le cap de la créature, en radians depuis le +X.
 ///
 /// **Fixe, et c'est ce qui rend les huit vues visibles.** Une créature qui se
@@ -113,6 +147,12 @@ pub struct Monster {
     idle: Arc<Texture>,
     /// Celle de sa marche.
     walk: Arc<Texture>,
+    /// La tache qu'elle pose au sol.
+    ///
+    /// **Une par créature plutôt qu'une pour toutes**, parce qu'un `Arc` se
+    /// partagera quand elles seront plusieurs : c'est la population qui décidera où
+    /// la fabriquer, pas ce lot, et la déplacer alors ne coûte rien.
+    shadow: Arc<Texture>,
     /// Son corps, qui porte sa pose et sa cellule.
     ///
     /// **Le même chemin que le joueur**, et c'est ce que l'extraction du corps a
@@ -153,6 +193,7 @@ impl Monster {
         Ok(Self {
             idle: Arc::new(load_png_masked(IDLE)?),
             walk: Arc::new(load_png_masked(WALK)?),
+            shadow: Arc::new(shadow_texture()),
             body: Body::stand(HALF, grid, map, at),
             facing: FACING,
             motion: Motion::Idle,
@@ -203,6 +244,55 @@ impl Monster {
     }
 }
 
+/// La texture de la tache d'ombre : sombre au centre, **blanche au bord**.
+///
+/// **Blanche et non transparente**, parce que 255 est le neutre de la modulation :
+/// un texel blanc laisse le sol intact, et la tache s'éteint d'elle-même sur son
+/// pourtour sans qu'on ait à la découper. La transparence binaire du moteur
+/// donnerait un bord franc, qui se lirait comme un disque posé.
+///
+/// **Engendrée et non chargée** : c'est une forme, et une forme s'écrit. Une
+/// planche de plus dans `assets/` demanderait à la chaîne de produire ce que
+/// quatre lignes décrivent exactement.
+fn shadow_texture() -> Texture {
+    let side = SHADOW_SIDE;
+    let mut bytes = Vec::with_capacity((side * side) as usize * 4);
+    let half = side as f32 / 2.0;
+
+    for v in 0..side {
+        for u in 0..side {
+            let (dx, dy) = (u as f32 + 0.5 - half, v as f32 + 0.5 - half);
+            // Le carré du rayon normalisé : la racine ne servirait à rien, la
+            // courbe voulue étant justement quadratique — une ombre dense sous le
+            // corps et qui s'efface vite.
+            let fade = ((dx * dx + dy * dy) / (half * half)).min(1.0);
+            let level = (SHADOW_CORE + (255.0 - SHADOW_CORE) * fade) as u8;
+            bytes.extend_from_slice(&[level, level, level, 0xFF]);
+        }
+    }
+
+    Texture::load(side, side, &bytes)
+        .unwrap_or_else(|_| unreachable!("carrée, puissance de deux, et de la bonne longueur"))
+}
+
+/// Les quatre coins de la tache d'une créature, dans le sens qui la rend visible.
+///
+/// **Le sens décide de la face vue**, et c'est le piège du projet : la caméra
+/// neutre regarde le +X, son axe droit est le −Y et son haut le +Z. Décrit dans
+/// l'autre sens, le quadrilatère est un dos de face et disparaît — sans erreur, et
+/// sans rien à l'écran.
+fn shadow_corners(centre: Vec3) -> [Vec3; 4] {
+    let z = centre.z - HALF.z + SHADOW_LIFT;
+    let corner = |dx: f32, dy: f32| Vec3::new(centre.x + dx, centre.y + dy, z);
+
+    [
+        corner(-SHADOW_RADIUS, -SHADOW_RADIUS),
+        corner(SHADOW_RADIUS, -SHADOW_RADIUS),
+        corner(SHADOW_RADIUS, SHADOW_RADIUS),
+        corner(-SHADOW_RADIUS, SHADOW_RADIUS),
+    ]
+}
+
 /// Où poser le centre du quadrilatère pour que les pieds touchent le sol.
 ///
 /// **Ce n'est pas le centre du corps**, et c'est ce que la fonction existe pour
@@ -218,11 +308,17 @@ fn anchor(centre: Vec3) -> Vec3 {
 
 /// Soumet les créatures, **après le décor et avant l'arme**.
 ///
-/// **L'ordre ne tient pas au mélange mais à la profondeur** : la transparence du
-/// moteur est binaire, donc le z-buffer tranche dans n'importe quel ordre et aucun
-/// tri de sprites n'est à faire. Ce que l'ordre évite est qu'un décor très proche
-/// les rejette à égalité, et l'arme reste la dernière parce qu'elle est la plus
-/// proche de l'œil.
+/// **Les taches d'abord, et c'est la seule contrainte d'ordre qui reste.** Une
+/// surface modulée multiplie le tampon : elle ne peut assombrir que ce qui y est
+/// déjà, donc le décor doit avoir été soumis. Elle teste la profondeur sans
+/// l'écrire, et son test tolère la pente, si bien qu'elle gagne sur les dalles par
+/// le seul ordre de soumission — sans biais de profondeur, qui vaudrait des
+/// millimètres de près et des mètres au loin.
+///
+/// **Les sprites, eux, ne s'ordonnent pas** : la transparence du moteur est binaire,
+/// donc le z-buffer tranche dans n'importe quel ordre et aucun tri n'est à faire. Ce
+/// que leur ordre évite est qu'un décor très proche les rejette à égalité, et l'arme
+/// reste la dernière parce qu'elle est la plus proche de l'œil.
 ///
 /// **Le centre du quadrilatère n'est pas celui du corps.** Les pieds doivent
 /// toucher le sol, et la planche laisse du vide sous eux : le centre monte donc de
@@ -237,6 +333,35 @@ pub fn submit(
     monsters: &[&Monster],
     camera: &Camera,
 ) -> Result<(), screengine_play::screengine::Error> {
+    for monster in monsters {
+        let corners = shadow_corners(monster.body.centre());
+        let white = Color::new(0xFF, 0xFF, 0xFF, 0xFF);
+        let vertices: Vec<VertexUv> = corners
+            .iter()
+            .zip([(0.0, 0.0), (SIDE, 0.0), (SIDE, SIDE), (0.0, SIDE)])
+            .map(|(&position, (u, v))| VertexUv { position, u, v })
+            .collect();
+
+        context.submit_blended(
+            Affine3::IDENTITY,
+            &vertices,
+            &[
+                Triangle {
+                    indices: [0, 1, 2],
+                    color: white,
+                },
+                Triangle {
+                    indices: [0, 2, 3],
+                    color: white,
+                },
+            ],
+            // Pas de mode à passer : `submit_blended` **est** la modulation côté
+            // Rust, là où la frontière C prend un `blend` qui lui laisse la place
+            // d'un mode additif. Rien à choisir ici, donc rien à se tromper.
+            Some(&monster.shadow),
+        )?;
+    }
+
     for monster in monsters {
         let centre = monster.body.centre();
         let row = sheet::row(monster.facing, centre, camera.position);

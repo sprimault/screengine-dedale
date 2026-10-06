@@ -16,7 +16,9 @@
 //! Chacune a été vérifiée en la faisant échouer une fois, sur un code falsifié.
 
 use super::*;
-use crate::test_support::{SEEDS, maze};
+use crate::test_support::{HEIGHT, SEEDS, WIDTH, context, frame, maze};
+use screengine_play::FreeCamera;
+use screengine_play::screengine::BYTES_PER_PIXEL;
 
 /// Combien de lignes vides la planche laisse sous la silhouette d'une vignette.
 ///
@@ -248,4 +250,127 @@ fn une_distance_parcourue_fait_passer_a_la_marche() {
         "au retour au repos, la phase est à {} au lieu de repartir de zéro",
         monster.phase
     );
+}
+
+/// Une dalle unie sous la caméra, de quoi lire un facteur de modulation.
+///
+/// **Un cas minimal et non la scène du jeu**, et c'est ce qu'une mesure demande :
+/// sous la scène, le pixel qu'on vise porte une texture de sol, un angle
+/// d'éclairage et peut-être le sprite de la créature. Ici il ne porte qu'un gris
+/// connu, donc ce qu'on lit est le facteur et rien d'autre.
+fn slab() -> Texture {
+    let side = 4u32;
+    let bytes = vec![0x80; (side * side) as usize * 4];
+
+    Texture::load(side, side, &bytes)
+        .unwrap_or_else(|_| unreachable!("carrée et puissance de deux"))
+}
+
+/// Le pixel du centre de l'image, en RGB.
+fn middle(pixels: &[u8]) -> [u8; 3] {
+    let at = ((HEIGHT / 2) * WIDTH + WIDTH / 2) as usize * BYTES_PER_PIXEL;
+
+    [pixels[at], pixels[at + 1], pixels[at + 2]]
+}
+
+/// Soumet une dalle unie vue de dessus, et rend l'image.
+///
+/// La caméra plonge à la verticale sur l'origine : c'est l'angle sous lequel une
+/// tache au sol se lit entière, et il ne demande aucune rotation à écrire à la main
+/// — `FreeCamera` compose le tangage dans le bon ordre.
+fn over_slab(shade: bool) -> Vec<u8> {
+    let mut context = context(0);
+    let mut eye = FreeCamera::new(Vec3::new(0.0, 0.0, 3.0));
+    eye.pitch = -core::f32::consts::FRAC_PI_2;
+    context.set_camera(eye.camera()).expect("pose tenable");
+
+    let ground = Arc::new(slab());
+    let reach = 4.0;
+    let corners = [
+        Vec3::new(-reach, -reach, 0.0),
+        Vec3::new(reach, -reach, 0.0),
+        Vec3::new(reach, reach, 0.0),
+        Vec3::new(-reach, reach, 0.0),
+    ];
+    let white = Color::new(0xFF, 0xFF, 0xFF, 0xFF);
+    let vertices: Vec<VertexUv> = corners
+        .iter()
+        .zip([(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)])
+        .map(|(&position, (u, v))| VertexUv { position, u, v })
+        .collect();
+    let faces = [
+        Triangle {
+            indices: [0, 1, 2],
+            color: white,
+        },
+        Triangle {
+            indices: [0, 2, 3],
+            color: white,
+        },
+    ];
+
+    context
+        .submit_textured(Affine3::IDENTITY, &vertices, &faces, &ground)
+        .expect("dalle soumise");
+
+    if shade {
+        let shadow = Arc::new(shadow_texture());
+        let spot = shadow_corners(Vec3::new(0.0, 0.0, HALF.z));
+        let marks: Vec<VertexUv> = spot
+            .iter()
+            .zip([(0.0, 0.0), (SIDE, 0.0), (SIDE, SIDE), (0.0, SIDE)])
+            .map(|(&position, (u, v))| VertexUv { position, u, v })
+            .collect();
+        context
+            .submit_blended(Affine3::IDENTITY, &marks, &faces, Some(&shadow))
+            .expect("tache soumise");
+    }
+
+    frame(&mut context)
+}
+
+/// Le facteur d'une surface modulée s'applique entier sur le chemin non éclairé.
+///
+/// **C'est la mesure que ce lot existe pour prendre, et elle ne se reprendra pas.**
+/// Dès qu'une lumière dynamique sera réglée à l'étape 8, toute soumission passera
+/// par le chemin éclairé : le chemin nu disparaîtra comme cas observable, et avec
+/// lui la seule référence contre laquelle comparer. Le soupçon qui la motive est que
+/// le facteur soit multiplié par l'éclairage reçu — auquel cas une tache hors de
+/// portée de toute lampe noircirait la dalle au lieu de l'assombrir.
+///
+/// **Elle attrape aussi le sens des sommets**, et c'est ce qui la rend doublement
+/// utile : décrit à l'envers, le quadrilatère est un dos de face et disparaît sans
+/// lever d'erreur. Le pixel resterait alors identique, et la première assertion le
+/// dit.
+///
+/// La mesure : dalle unie à `0x80`, tache dont le centre vaut `0x38`. Le produit
+/// attendu est `128 × 56 / 255`, soit `28` — à une unité près, le moteur modulant en
+/// entiers.
+#[test]
+fn le_facteur_de_modulation_s_applique_entier_sans_eclairage() {
+    /// Ce que la dalle vaut avant la tache, sur 255.
+    const GROUND: f32 = 0x80 as f32;
+
+    let bare = middle(&over_slab(false));
+    let shaded = middle(&over_slab(true));
+
+    assert_ne!(
+        bare, shaded,
+        "la tache n'a rien changé au sol : soit elle n'est pas soumise, \
+         soit ses sommets sont décrits dans le sens qui la rend invisible"
+    );
+
+    let expected = (GROUND * SHADOW_CORE / 255.0).round();
+    for (channel, (&got, &was)) in shaded.iter().zip(bare.iter()).enumerate() {
+        assert!(
+            got < was,
+            "canal {channel} : la tache a éclairci le sol, de {was} à {got}, \
+             alors qu'une surface modulée n'éclaircit jamais"
+        );
+        assert!(
+            (got as f32 - expected).abs() <= 1.0,
+            "canal {channel} : la dalle à {was} sous une tache à {SHADOW_CORE} \
+             rend {got}, là où le facteur entier donnerait {expected}"
+        );
+    }
 }
