@@ -16,7 +16,15 @@
 //! **Il ne porte aucune normale**, et ce n'est pas un manque à combler : un
 //! quadrilatère orienté caméra n'en a pas et n'en prend pas. Une créature garde
 //! l'atténuation par la distance seule.
+//!
+//! **Les cotes du dessin appartiennent à la silhouette, pas au module**, et c'est
+//! ce que la population a montré : marge de cadrage et foulée se relèvent sur
+//! chaque planche, et les trois silhouettes ne s'accordent sur ni l'une ni
+//! l'autre — la foulée va de seize à trente-six texels. Partagées, deux
+//! silhouettes sur trois flotteraient d'un texel et patineraient du double. Elles
+//! vivent donc dans [`FIGURES`], une ligne par silhouette.
 
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use screengine_play::{
@@ -31,20 +39,126 @@ use crate::sheet::{self, FRAME, Motion};
 #[cfg(test)]
 mod tests;
 
-/// La planche du premier démon, au repos.
+/// Une silhouette : ses planches, et les cotes qu'elles imposent.
 ///
-/// **Une seule silhouette pour l'instant** : les trois entrent avec le labyrinthe
-/// peuplé, et ce qui se juge ici est qu'une vignette se découpe et se lise à
-/// distance. Trois planches ne le diraient pas mieux.
-const IDLE: &[u8] = include_bytes!("../assets/sprites/demon-d1-idle-8x8-64.png");
+/// **Une entrée par silhouette plutôt qu'une table par cote.** Tout ce qui est ici
+/// se relève sur la même planche, à la même occasion : deux tables indexées par le
+/// même nom finiraient par ne plus s'accorder, et c'est la marge de cadrage qui l'a
+/// montré — relevée d'abord pour une silhouette, elle s'est trouvée fausse pour les
+/// deux autres.
+///
+/// **La planche de mort n'y est pas**, et le blocage est nommé : rien ne tue avant
+/// l'étape 4, donc sa marge n'est pas relevée et la charger serait du poids mort.
+struct Figure {
+    /// Son nom, celui que portent ses fichiers de planche.
+    ///
+    /// **Affiché dans le titre de la fenêtre** pour la créature la plus proche :
+    /// une cote qui cloche se juge à l'œil, et dire laquelle des trois cloche
+    /// demande de pouvoir la nommer.
+    name: &'static str,
+    /// Les octets de sa planche de repos.
+    idle: &'static [u8],
+    /// Ceux de sa planche de marche.
+    walk: &'static [u8],
+    /// Ce que son repos laisse de vide sous les pieds, en texels.
+    idle_margin: f32,
+    /// Ce que sa marche en laisse, en texels.
+    walk_margin: f32,
+    /// Ce qu'un cycle de marche complet avance, en texels de planche.
+    ///
+    /// **En texels parce que c'est l'unité de la mesure**, et la conversion en
+    /// unités de monde est l'affaire de [`Figure::stride`] : la planche se relève en
+    /// texels, et un chiffre converti à la main dans une table est un chiffre qu'on
+    /// ne peut plus comparer à ce qu'on remesure.
+    stride: f32,
+}
 
-/// Celle de sa marche.
+impl Figure {
+    /// Ce que la planche d'un cycle laisse de vide sous les pieds, en texels.
+    ///
+    /// **La marge appartient au cycle autant qu'à la silhouette**, et les six
+    /// relevés ne laissent aucune case libre : `d1` passe de trois au repos à quatre
+    /// en marche, `d2` de deux à trois, `d3` de trois à **deux**. Une seule valeur
+    /// pour les six ferait flotter ou enterrer cinq cadrages sur six.
+    ///
+    /// **C'est la marge la plus fréquente du cycle qui décide, et non son
+    /// minimum** — la marche de `d1` relève `[3, 4, 4, 4, 4, 4, 3, 2]`. Ancrée sur
+    /// le `2`, la créature flotte pendant sept trames sur huit : la trame la plus
+    /// basse est l'exception, pas la règle. Ancrée sur le `4`, cinq trames touchent
+    /// exactement et les deux autres s'enfoncent d'un texel, ce qui se voit
+    /// infiniment moins qu'un pied en l'air.
+    fn margin(&self, motion: Motion) -> f32 {
+        match motion {
+            Motion::Walk => self.walk_margin,
+            // Le repos fait office de défaut pour la mort, dont la planche n'est pas
+            // chargée : sa marge se relèvera avec elle, à l'étape 4.
+            Motion::Idle | Motion::Dead => self.idle_margin,
+        }
+    }
+
+    /// La distance d'un cycle de marche complet, en unités de monde.
+    ///
+    /// **La marche avance avec la distance et non avec le temps**, comme le
+    /// balancement de l'arme : un cycle indexé sur l'horloge continuerait de défiler
+    /// contre un mur, et une créature arrêtée piétinerait sur place.
+    ///
+    /// **Ce qu'une valeur fausse coûte se voit tout de suite** : les pieds patinent,
+    /// et d'autant plus que l'écart est grand. Celle de `d1` valait `1,9` avant
+    /// d'être mesurée, soit près du double de ses trente-six texels — le cycle
+    /// avançait deux fois trop lentement pour la distance, et la créature glissait
+    /// sur place.
+    ///
+    /// **Ce qu'elle coûte, et c'est assumé** : une phase indexée sur la distance
+    /// avance plus vite en descendant une rampe et par à-coups dans un escalier.
+    /// L'indexer sur le temps ferait patiner dès que la vitesse varie, ce qui se voit
+    /// davantage et partout.
+    fn stride(&self) -> f32 {
+        self.stride / FRAME * (2.0 * SPRITE_HALF)
+    }
+}
+
+/// Les trois silhouettes du labyrinthe, et ce que leurs planches imposent.
 ///
-/// **Chargée bien que rien ne marche encore**, et ce n'est pas du poids mort : la
-/// règle qui choisit le cycle est écrite ici, et une planche qui manquerait le jour
-/// où une distance devient non nulle ferait défiler des poses de repos sur un
-/// déplacement.
-const WALK: &[u8] = include_bytes!("../assets/sprites/demon-d1-walk-8x8-64.png");
+/// **Chaque cote est relevée sur sa planche, aucune n'est partagée**, et c'est le
+/// relevé qui l'a imposé : les marges valent `3/4`, `2/3` et `3/2` selon la
+/// silhouette et le cycle, et les foulées trente-six, seize et vingt-deux texels.
+/// Une table unique aurait fait patiner deux silhouettes du double et flotter cinq
+/// cadrages sur six.
+///
+/// **La foulée se relève sur les deux vues de profil** : l'empreinte des pieds y
+/// passe de son écartement le plus serré au plus large, et le cycle porte **deux
+/// pas** — ses huit trames montrent deux maxima. La foulée vaut donc deux fois cet
+/// écart, et `la_foulee_annoncee_est_celle_de_la_planche` la remesure.
+///
+/// **Un `static` et non une constante**, pour qu'une créature puisse en garder la
+/// référence : une constante est recopiée à chaque emploi, donc elle n'a pas
+/// d'adresse à emprunter.
+static FIGURES: [Figure; 3] = [
+    Figure {
+        name: "d1",
+        idle: include_bytes!("../assets/sprites/demon-d1-idle-8x8-64.png"),
+        walk: include_bytes!("../assets/sprites/demon-d1-walk-8x8-64.png"),
+        idle_margin: 3.0,
+        walk_margin: 4.0,
+        stride: 36.0,
+    },
+    Figure {
+        name: "d2",
+        idle: include_bytes!("../assets/sprites/demon-d2-idle-8x8-64.png"),
+        walk: include_bytes!("../assets/sprites/demon-d2-walk-8x8-64.png"),
+        idle_margin: 2.0,
+        walk_margin: 3.0,
+        stride: 16.0,
+    },
+    Figure {
+        name: "d3",
+        idle: include_bytes!("../assets/sprites/demon-d3-idle-8x8-64.png"),
+        walk: include_bytes!("../assets/sprites/demon-d3-walk-8x8-64.png"),
+        idle_margin: 3.0,
+        walk_margin: 2.0,
+        stride: 22.0,
+    },
+];
 
 /// Les demi-étendues du **corps**, en unités de monde.
 ///
@@ -66,41 +180,20 @@ pub const HALF: Vec3 = Vec3::new(0.35, 0.35, 0.9);
 /// ce qu'un démon qui dépasse l'homme demande une fois le cadrage retranché.
 const SPRITE_HALF: f32 = 0.96;
 
-/// Ce que la planche d'un cycle laisse de vide sous les pieds, en texels.
-///
-/// **Elle appartient au cycle autant qu'à la silhouette**, et c'est ce que la
-/// créature en marche a montré : réglée sur le repos, elle vaut trois, et la marche
-/// descend à deux — le pied d'appui touche plus bas que les pieds joints. Posée à
-/// trois pour les deux, la créature flottait d'un texel dès qu'elle marchait.
-///
-/// **C'est la marge la plus fréquente du cycle qui décide, et non son minimum** —
-/// mesuré, la marche relève `[3, 4, 4, 4, 4, 4, 3, 2]`. Ancrée sur le `2`, la
-/// créature flotte pendant sept trames sur huit : la trame la plus basse est
-/// l'exception, pas la règle. Ancrée sur le `4`, cinq trames touchent exactement et
-/// les deux autres s'enfoncent d'un texel, ce qui se voit infiniment moins qu'un
-/// pied en l'air.
-///
-/// Les trois silhouettes ne se cadrent pas pareil non plus ; la table les portera
-/// quand elles entreront, et `la_marge_annoncee_est_la_plus_frequente` la tient
-/// d'ici là.
-fn margin(motion: Motion) -> f32 {
-    match motion {
-        Motion::Idle => 3.0,
-        Motion::Walk => 4.0,
-        // Non mesurée : rien ne tue avant l'étape 4, et la planche de mort n'est pas
-        // encore chargée. Elle se relèvera avec elle.
-        Motion::Dead => 3.0,
-    }
-}
-
 /// Le rayon de la tache d'ombre, en unités de monde.
 ///
 /// **Elle doit couvrir l'empreinte des pieds, et c'est ce qui la dimensionne.**
-/// Relevée sur la planche de marche, cette empreinte atteint quarante-deux texels,
-/// soit `1,26` de large ; une tache d'un mètre de diamètre y laissait les pieds
-/// dépasser, et un pied hors de son ombre se lit comme un pied en l'air. C'est ce
-/// qui faisait croire à un flottement, là où la mesure dans l'image montrait le bas
-/// du dessin exactement sur la ligne du sol.
+/// Relevée sur les six planches, cette empreinte atteint quarante-deux texels, soit
+/// `1,26` de large ; une tache d'un mètre de diamètre y laissait les pieds dépasser,
+/// et un pied hors de son ombre se lit comme un pied en l'air. C'est ce qui faisait
+/// croire à un flottement, là où la mesure dans l'image montrait le bas du dessin
+/// exactement sur la ligne du sol.
+///
+/// **Une seule tache pour les trois silhouettes, taillée sur la plus large.** Les
+/// deux autres chaussent trente-trois et trente texels, donc leur tache dépasse de
+/// dix-huit centimètres de chaque côté — et ne se voit pas, le dégradé s'y éteignant
+/// déjà. Une tache par silhouette ferait trois textures pour un bord qu'on ne
+/// distingue pas.
 ///
 /// **Le dégradé fait le reste** : la tache est dense au centre et blanche au bord,
 /// donc l'élargir ne la fait pas déborder sur les dalles voisines — elle s'y éteint.
@@ -132,12 +225,6 @@ const SHADOW_SIDE: u32 = 64;
 /// Le côté de cette texture en coordonnées de texture, qui se prennent en texels.
 const SIDE: f32 = SHADOW_SIDE as f32;
 
-/// Le cap de départ de la créature, en radians depuis le +X.
-///
-/// Il ne reste fixe que jusqu'au premier obstacle : la créature fait demi-tour
-/// quand le décor l'arrête, donc son cap suit le couloir où elle se trouve.
-const FACING: f32 = 0.0;
-
 /// Combien de temps un cycle de repos met à se jouer, en secondes.
 ///
 /// **Le repos avance avec l'horloge, là où une marche avancera avec la distance
@@ -146,34 +233,16 @@ const FACING: f32 = 0.0;
 /// respiration lente, qu'on ne confond pas avec un pas.
 const IDLE_PERIOD: f32 = 1.5;
 
-/// La distance parcourue pour un cycle de marche complet, en unités de monde.
-///
-/// **La marche avance avec la distance et non avec le temps**, comme le
-/// balancement de l'arme : un cycle indexé sur l'horloge continuerait de défiler
-/// contre un mur, et une créature arrêtée piétinerait sur place.
-///
-/// **Relevée sur la planche, et non posée au jugé.** Dans les deux vues de profil,
-/// l'empreinte des pieds passe de cinq texels joints à vingt-trois au plus écarté,
-/// soit dix-huit texels entre les deux appuis ; le cycle porte **deux pas** — ses
-/// huit trames montrent deux maxima —, donc la foulée vaut trente-six texels. À la
-/// vignette de soixante-quatre pour `2 × SPRITE_HALF`, cela fait `1,08`.
-///
-/// **Ce qu'une valeur fausse coûte se voit tout de suite** : les pieds patinent, et
-/// d'autant plus que l'écart est grand. Celle-ci valait `1,9` avant d'être mesurée,
-/// soit près du double — le cycle avançait deux fois trop lentement pour la
-/// distance, et la créature glissait sur place.
-///
-/// **Ce qu'elle coûte, et c'est assumé** : une phase indexée sur la distance avance
-/// plus vite en descendant une rampe et par à-coups dans un escalier. L'indexer sur
-/// le temps ferait patiner dès que la vitesse varie, ce qui se voit davantage et
-/// partout.
-const STRIDE: f32 = 1.08;
-
 /// La vitesse de marche de la créature, en unités de monde par seconde.
 ///
 /// **Plus lente que le joueur, qui va à 3,2** : une créature qui avance aussi vite
-/// que celui qui la fuit ne se distingue pas d'un mur qui le suit. À cette vitesse
-/// elle accomplit un peu plus d'un cycle par seconde, ce qui est une marche posée.
+/// que celui qui la fuit ne se distingue pas d'un mur qui le suit.
+///
+/// **La même pour les trois, et c'est la foulée qui fait la différence** : à vitesse
+/// égale, une silhouette à la foulée courte joue plus de cycles par seconde, donc
+/// elle trottine là où une autre marche. C'est ce que les planches disent, et leur
+/// donner une vitesse chacune pour égaliser la cadence reviendrait à corriger la
+/// planche par le déplacement.
 const SPEED: f32 = 1.4;
 
 /// En deçà de quelle part du pas demandé la créature se tient pour arrêtée.
@@ -215,15 +284,17 @@ const PATIENCE: u32 = 12;
 /// rechargement de la carte, et aucun de ses champs n'a sa place dans une structure
 /// du monde.
 pub struct Monster {
+    /// La silhouette dont elle tient ses planches et ses cotes.
+    figure: &'static Figure,
     /// Sa planche de repos, chargée une fois.
     idle: Arc<Texture>,
     /// Celle de sa marche.
     walk: Arc<Texture>,
-    /// La tache qu'elle pose au sol.
+    /// La tache qu'elle pose au sol, partagée par toute la population.
     ///
-    /// **Une par créature plutôt qu'une pour toutes**, parce qu'un `Arc` se
-    /// partagera quand elles seront plusieurs : c'est la population qui décidera où
-    /// la fabriquer, pas ce lot, et la déplacer alors ne coûte rien.
+    /// **Une seule pour les trois**, ce que la population a tranché comme prévu : le
+    /// dégradé est le même sous les trois silhouettes, donc trois textures
+    /// identiques n'auraient apporté que trois fois la mémoire.
     shadow: Arc<Texture>,
     /// Son corps, qui porte sa pose et sa cellule.
     ///
@@ -245,38 +316,55 @@ pub struct Monster {
 }
 
 impl Monster {
-    /// Pose une créature près de l'entrée du labyrinthe.
+    /// Pose une créature de cette silhouette debout sur cette case.
     ///
-    /// **Sur une case voisine du départ**, pour qu'elle soit en vue sans qu'on la
-    /// cherche : ce lot existe pour être regardé, et un démon à vingt cellules de là
-    /// ne dirait rien des planches.
+    /// **Le cap vient du rang et non d'une constante** : trois créatures au même cap
+    /// dans le même couloir marchent en file et ne montrent qu'une seule de leurs
+    /// huit vues. Réparties sur le tour, elles en montrent trois dès la première
+    /// image — ce que ce lot existe pour donner à voir.
     ///
     /// # Erreurs
     ///
-    /// Si la planche ne se décode pas — elle est intégrée au binaire, donc jamais en
-    /// pratique, mais un `expect` sur un chemin atteignable n'a pas sa place.
-    pub fn new(grid: &Grid, map: &World) -> Result<Self, Error> {
-        let start = grid.start();
-        // Un labyrinthe est connexe, donc le départ a toujours un passage ; s'en
-        // remettre au départ lui-même plutôt qu'à un `expect` évite d'ériger en
-        // invariant ce qui n'est qu'une commodité de placement.
-        let at = Side::ALL
-            .into_iter()
-            .filter(|side| !side.is_vertical())
-            .find(|&side| !grid.has_wall(start, side))
-            .and_then(|side| grid.neighbour(start, side))
-            .unwrap_or(start);
-
+    /// Si une planche ne se décode pas — elles sont intégrées au binaire, donc jamais
+    /// en pratique, mais un `expect` sur un chemin atteignable n'a pas sa place.
+    fn new(
+        figure: &'static Figure,
+        shadow: Arc<Texture>,
+        rank: usize,
+        grid: &Grid,
+        map: &World,
+        at: (u32, u32, u32),
+    ) -> Result<Self, Error> {
         Ok(Self {
-            idle: Arc::new(load_png_masked(IDLE)?),
-            walk: Arc::new(load_png_masked(WALK)?),
-            shadow: Arc::new(shadow_texture()),
+            figure,
+            idle: Arc::new(load_png_masked(figure.idle)?),
+            walk: Arc::new(load_png_masked(figure.walk)?),
+            shadow,
             body: Body::stand(HALF, grid, map, at),
-            facing: FACING,
+            facing: rank as f32 * core::f32::consts::TAU / FIGURES.len() as f32,
             motion: Motion::Idle,
             phase: 0.0,
             hindered: 0,
         })
+    }
+
+    /// Le pas que son cap lui demande pour cette image, avant tout obstacle.
+    fn step(&self, dt: f32) -> Vec3 {
+        Vec3::new(self.facing.cos(), self.facing.sin(), 0.0) * (SPEED * dt)
+    }
+
+    /// Vrai si ce pas la porterait dans le volume d'une autre créature.
+    ///
+    /// **Son propre rang s'écarte par l'indice et non par la distance** : une boîte
+    /// recouvre toujours la sienne, et un écart nul ne se distingue pas du cas qu'on
+    /// cherche.
+    fn crowded(&self, crowd: &[Monster], rank: usize, dt: f32) -> bool {
+        let wanted = self.body.centre() + self.step(dt);
+
+        crowd
+            .iter()
+            .enumerate()
+            .any(|(other, monster)| other != rank && meets(wanted, monster.body.centre()))
     }
 
     /// Marche droit devant, et fait demi-tour quand le décor l'arrête.
@@ -303,11 +391,26 @@ impl Monster {
     /// ferait pivoter à chaque frottement, ce qui se verrait davantage — et faire
     /// suivre le cap au déplacement reviendrait à longer les murs indéfiniment, ce
     /// que [`STALLED`] existe précisément pour empêcher.
-    pub fn walk(&mut self, map: &World, dt: f32) {
-        let step = Vec3::new(self.facing.cos(), self.facing.sin(), 0.0) * (SPEED * dt);
+    ///
+    /// **Une autre créature sur le chemin annule le pas, elle ne le dévie pas.** Le
+    /// pas nul épuise la patience comme une paroi le ferait, donc la créature
+    /// s'arrête un cinquième de seconde puis se détourne — aucune politique de plus
+    /// n'était à écrire. La chute, elle, continue de s'appliquer : [`Body::advance`]
+    /// la porte, et une créature gênée par une autre au bord d'un palier doit tomber
+    /// comme les autres.
+    fn walk(&mut self, map: &World, dt: f32, crowded: bool) {
+        let step = self.step(dt);
+        // **Le pas demandé reste celui du cap, même annulé**, et c'est ce qui fait
+        // tomber le critère du bon côté : comparé à zéro, un pas nul paraîtrait
+        // franchi en entier, la patience se remettrait à zéro, et deux créatures se
+        // pousseraient indéfiniment sans jamais se détourner.
+        let moved = match crowded {
+            true => Vec3::new(0.0, 0.0, 0.0),
+            false => step,
+        };
 
         let before = self.body.centre();
-        self.body.advance(map, step, dt);
+        self.body.advance(map, moved, dt);
         let after = self.body.centre();
 
         let gone = Vec3::new(after.x - before.x, after.y - before.y, 0.0);
@@ -344,7 +447,7 @@ impl Monster {
         }
 
         self.phase += match motion {
-            Motion::Walk => travel / STRIDE,
+            Motion::Walk => travel / self.figure.stride(),
             _ => dt / IDLE_PERIOD,
         };
     }
@@ -363,6 +466,117 @@ impl Monster {
     /// Où son centre se trouve, ce que le titre de la fenêtre affiche.
     pub fn at(&self) -> Vec3 {
         self.body.centre()
+    }
+
+    /// Le nom de sa silhouette, que le titre affiche avec sa distance.
+    pub fn name(&self) -> &'static str {
+        self.figure.name
+    }
+}
+
+/// Vrai si deux corps centrés là se recouvrent.
+///
+/// **Le gabarit est celui du module et non un champ du corps** : toutes les
+/// créatures le partagent, et une boîte par silhouette n'aurait pas de mesure pour
+/// la justifier — le volume tient à ce qui doit passer dans un couloir, pas au
+/// dessin.
+fn meets(here: Vec3, there: Vec3) -> bool {
+    (here.x - there.x).abs() < 2.0 * HALF.x
+        && (here.y - there.y).abs() < 2.0 * HALF.y
+        && (here.z - there.z).abs() < 2.0 * HALF.z
+}
+
+/// Les cases où les créatures naissent : les plus proches de l'entrée par les
+/// passages.
+///
+/// **Un parcours en largeur et non une distance de grille** : deux cases voisines
+/// peuvent être séparées par un mur, donc proches sans être en vue. Ce qui compte
+/// est la proximité **par les couloirs**, et c'est ce qu'un parcours mesure.
+///
+/// **Elles sont dans le champ au lancement, et c'est ce que ce lot demande** : trois
+/// silhouettes dispersées sur cinq cents cases ne se comparent pas, et comparer les
+/// trois planches est précisément ce qui se juge ici. Elles se séparent ensuite
+/// d'elles-mêmes en marchant.
+///
+/// **Les passages verticaux sont écartés** : une créature née dans une cage serait
+/// hors de vue au lancement, et c'est tout — sa pose, elle, se résout comme une
+/// autre, le relèvement de pente étant l'affaire de [`Body::stand`].
+///
+/// Rend moins de cases que de silhouettes si le labyrinthe n'en offre pas assez, ce
+/// qu'aucune taille jouable ne produit ; l'appelant retombe alors sur le départ
+/// plutôt que d'ériger en invariant une commodité de placement.
+fn spots(grid: &Grid) -> Vec<(u32, u32, u32)> {
+    let mut queue = VecDeque::from([grid.start()]);
+    let mut seen = vec![grid.start()];
+    let mut found = Vec::with_capacity(FIGURES.len());
+
+    while let Some(at) = queue.pop_front() {
+        for side in Side::ALL.into_iter().filter(|side| !side.is_vertical()) {
+            if found.len() == FIGURES.len() {
+                return found;
+            }
+            if grid.has_wall(at, side) {
+                continue;
+            }
+            let Some(next) = grid.neighbour(at, side) else {
+                continue;
+            };
+            if seen.contains(&next) {
+                continue;
+            }
+            seen.push(next);
+            queue.push_back(next);
+            found.push(next);
+        }
+    }
+
+    found
+}
+
+/// Peuple le labyrinthe de ses trois silhouettes.
+///
+/// **La tache d'ombre se fabrique ici, une fois pour toutes** : c'était la décision
+/// que ce lot devait prendre, et le partage par `Arc` la rend sans coût.
+///
+/// # Erreurs
+///
+/// Si une planche ne se décode pas — elles sont intégrées au binaire, donc jamais en
+/// pratique.
+pub fn population(grid: &Grid, map: &World) -> Result<Vec<Monster>, Error> {
+    let shadow = Arc::new(shadow_texture());
+    let spots = spots(grid);
+    let start = grid.start();
+
+    FIGURES
+        .iter()
+        .enumerate()
+        .map(|(rank, figure)| {
+            let at = spots.get(rank).copied().unwrap_or(start);
+            Monster::new(figure, Arc::clone(&shadow), rank, grid, map, at)
+        })
+        .collect()
+}
+
+/// Fait marcher la population : chacune contre le décor, et contre les autres.
+///
+/// **Qu'une créature en arrête une autre est une règle du jeu**, et il fallait
+/// l'écrire : le moteur n'arrête que la géométrie de cellule, un démon n'a ni
+/// portail ni adjacence, donc deux silhouettes se traversaient sans qu'aucune clause
+/// soit en défaut. C'est la même frontière que pour le tir.
+///
+/// **Elles se séparent sur leur volume et non sur leur dessin.** Deux vignettes font
+/// près de quatre unités de large, soit plus qu'un couloir n'en laisse : séparées
+/// ainsi, deux créatures s'y coinceraient pour de bon, chacune empêchant l'autre de
+/// passer. Elles se frôlent donc, et leurs dessins se chevauchent — ce que le
+/// z-tampon départage, et le volume n'est pas le dessin.
+///
+/// **Chacune décide contre les poses déjà avancées de cette image**, l'ordre de la
+/// liste faisant foi. Les faire toutes décider contre la pose d'avant laisserait deux
+/// créatures se croiser dans le même pas, qui est précisément le cas qu'on écarte.
+pub fn stroll(monsters: &mut [Monster], map: &World, dt: f32) {
+    for rank in 0..monsters.len() {
+        let crowded = monsters[rank].crowded(monsters, rank, dt);
+        monsters[rank].walk(map, dt, crowded);
     }
 }
 
@@ -422,8 +636,8 @@ fn shadow_corners(centre: Vec3) -> [Vec3; 4] {
 /// sous les pieds. Le centre monte donc de la demi-étendue du sprite, moins ce que
 /// le cadrage a laissé — un retrait qui est la même fraction de la vignette en
 /// unités de monde qu'en texels.
-fn anchor(centre: Vec3, motion: Motion) -> Vec3 {
-    let lift = SPRITE_HALF - margin(motion) / FRAME * (2.0 * SPRITE_HALF);
+fn anchor(centre: Vec3, figure: &Figure, motion: Motion) -> Vec3 {
+    let lift = SPRITE_HALF - figure.margin(motion) / FRAME * (2.0 * SPRITE_HALF);
 
     Vec3::new(centre.x, centre.y, centre.z - HALF.z + lift)
 }
@@ -452,7 +666,7 @@ fn anchor(centre: Vec3, motion: Motion) -> Vec3 {
 /// quelle.
 pub fn submit(
     context: &mut Context,
-    monsters: &[&Monster],
+    monsters: &[Monster],
     camera: &Camera,
 ) -> Result<(), screengine_play::screengine::Error> {
     for monster in monsters {
@@ -493,7 +707,7 @@ pub fn submit(
         context.submit_sprites(
             Affine3::IDENTITY,
             &[Sprite {
-                center: anchor(centre, monster.motion),
+                center: anchor(centre, monster.figure, monster.motion),
                 half_width: SPRITE_HALF,
                 half_height: SPRITE_HALF,
                 u0,

@@ -114,13 +114,13 @@ fn main() -> Result<(), Error> {
             // de contrôle, lui, continue de se dessiner, ce qui rend l'écran noir
             // difficile à lire autrement.
             let eye = session.game.view().camera.position.z;
+            let (figure, reach) = session.game.nearest();
             tick.set_title(&format!(
                 "{title} — œil {:.2} sur {:.2} d'étage, plafond {:.2}, \
-                 démon à {:.2}, cellule {}, vue {:?}",
+                 démon {figure} à {reach:.2}, cellule {}, vue {:?}",
                 eye.rem_euclid(export::LEVEL),
                 export::LEVEL,
                 export::CEILING,
-                session.game.reach(),
                 session.game.cell(),
                 session.probe.seen()
             ));
@@ -157,7 +157,7 @@ fn main() -> Result<(), Error> {
             // capacité, et une arme qui disparaît de la main ou un démon qui
             // s'efface d'un couloir sont des symptômes qu'on chercherait longtemps
             // sans la ligne qui le dit.
-            let seen = monster::submit(context, &session.game.monsters(), &view.camera);
+            let seen = monster::submit(context, session.game.monsters(), &view.camera);
             session
                 .probe
                 .refusal(probe::Part::Monsters, seen.is_err(), &session.game.aim());

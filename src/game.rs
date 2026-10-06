@@ -14,7 +14,7 @@
 use screengine_play::{Error, FreeCamera, KeyCode, MouseButton, Tick, Vec3, World};
 
 use crate::maze::grid::Grid;
-use crate::monster::Monster;
+use crate::monster::{self, Monster};
 use crate::player::Player;
 use crate::probe::Aim;
 use crate::scene::View;
@@ -97,13 +97,13 @@ pub struct Game {
     camera: FreeCamera,
     /// L'arme qu'il tient, et où elle en est de son balancement.
     weapon: Weapon,
-    /// La créature posée près de l'entrée.
+    /// Les créatures qui parcourent le labyrinthe.
     ///
-    /// **Une seule, et immobile** : ce qui se juge est qu'une silhouette se lise à
-    /// distance et que ses huit vues se suivent quand on tourne autour. Une
-    /// population et une poursuite viennent après, et le champ devient alors une
-    /// liste sans que rien d'autre ne bouge.
-    monster: Monster,
+    /// **Une liste et non trois champs**, parce que rien ici ne distingue une
+    /// silhouette d'une autre : ce qui les sépare vit dans leur table, et la partie
+    /// n'a qu'à les faire marcher et à les soumettre. Une poursuite viendra plus tard
+    /// sans que ce champ bouge.
+    monsters: Vec<Monster>,
 }
 
 impl Game {
@@ -119,7 +119,7 @@ impl Game {
         let camera = FreeCamera::new(player.eye());
         Ok(Self {
             weapon: Weapon::new(camera.yaw)?,
-            monster: Monster::new(grid, map)?,
+            monsters: monster::population(grid, map)?,
             camera,
             player,
         })
@@ -159,10 +159,11 @@ impl Game {
         // mur elle vaut zéro, donc l'arme s'arrête d'elle-même.
         self.weapon.advance(travel, self.camera.yaw, tick.dt());
 
-        // La créature marche pour son compte : elle ne poursuit personne, la
+        // Les créatures marchent pour leur compte : elles ne poursuivent personne, la
         // navigation d'une cellule à l'autre demandant un graphe que la carte ne
-        // donne pas. Elle avance droit et fait demi-tour sur ce qui l'arrête.
-        self.monster.walk(map, tick.dt());
+        // donne pas. Chacune avance droit et fait demi-tour sur ce qui l'arrête —
+        // une paroi, ou une autre créature.
+        monster::stroll(&mut self.monsters, map, tick.dt());
     }
 
     /// Le pas que les touches demandent, en direction seule.
@@ -215,18 +216,28 @@ impl Game {
     }
 
     /// Les créatures, que le rendu soumet entre le décor et l'arme.
-    pub fn monsters(&self) -> [&Monster; 1] {
-        [&self.monster]
+    pub fn monsters(&self) -> &[Monster] {
+        &self.monsters
     }
 
-    /// À quelle distance de l'œil la créature se trouve, pour le titre.
+    /// La créature la plus proche de l'œil : sa silhouette et sa distance.
     ///
     /// **La cote qu'on va régler s'affiche avant d'être réglée** : la demi-étendue
     /// d'un sprite se juge à une distance donnée, et chercher cette distance en
     /// comptant les dalles est ce qui a coûté un essai par relance quand la hauteur
     /// d'œil s'est posée.
-    pub fn reach(&self) -> f32 {
-        let gap = self.monster.at() - self.camera.position;
-        gap.dot(gap).sqrt()
+    ///
+    /// **Le nom va avec la distance depuis qu'elles sont trois** : les cotes de
+    /// cadrage diffèrent d'une silhouette à l'autre, donc dire laquelle flotte
+    /// demande de pouvoir la nommer. Sans population, le titre rend `aucune`.
+    pub fn nearest(&self) -> (&'static str, f32) {
+        self.monsters
+            .iter()
+            .map(|monster| {
+                let gap = monster.at() - self.camera.position;
+                (monster.name(), gap.dot(gap).sqrt())
+            })
+            .min_by(|(_, here), (_, there)| here.total_cmp(there))
+            .unwrap_or(("aucune", 0.0))
     }
 }
