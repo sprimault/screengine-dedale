@@ -93,6 +93,18 @@ const STRIDE: f32 = 1.7;
 /// part et ne revient jamais.
 const RECOIL: f32 = 0.25;
 
+/// À quelle vitesse l'amplitude du balancement se déploie et s'éteint, par seconde.
+///
+/// **Huit, soit un huitième de seconde pour l'essentiel du trajet** : assez vif pour que
+/// l'arme soit revenue au centre quand on s'arrête de marcher pour viser, assez lent
+/// pour qu'un pas isolé ne la fasse pas sursauter.
+///
+/// **Multiplié par le pas de temps, là où le rappel du lacet ne l'est pas.** Celui-ci
+/// dépend donc de la cadence — un amortissement deux fois plus rapide à cent vingt
+/// images par seconde qu'à soixante —, ce qui est un défaut de ce fichier que ce lot ne
+/// corrige pas mais n'étend pas non plus.
+const SETTLE: f32 = 8.0;
+
 /// L'inclinaison que le pas donne à l'arme, en radians.
 ///
 /// **Le roulis est ce qu'aucun déplacement du centre ne rend** : l'arme penche en
@@ -123,6 +135,14 @@ pub struct Weapon {
     flash: f32,
     /// La phase du pas, en tours — sa partie fractionnaire seule compte.
     stride: f32,
+    /// Combien le balancement est déployé, de zéro à un.
+    ///
+    /// **La phase ne suffit pas, et c'est ce qui a manqué** : elle n'avance qu'avec la
+    /// distance, donc à l'arrêt elle garde sa dernière valeur et le sinus reste figé
+    /// n'importe où — l'arme restait écartée du centre, jusqu'à six fois l'alignement
+    /// du canon. Une amplitude qui s'éteint ramène l'arme au neutre **sans falsifier la
+    /// phase**, qui est un instrument de mesure du déplacement.
+    sway: f32,
     /// Le retard du lacet sur la caméra, qui décale l'arme quand on tourne.
     drag: f32,
     /// Le lacet au pas précédent.
@@ -144,6 +164,7 @@ impl Weapon {
             fire: Arc::new(load_png_masked(FIRE)?),
             flash: 0.0,
             stride: 0.0,
+            sway: 0.0,
             drag: 0.0,
             last_yaw: yaw,
         })
@@ -172,6 +193,14 @@ impl Weapon {
         self.stride += travel / STRIDE;
         self.drag += (yaw - self.last_yaw - self.drag) * RECOIL;
         self.last_yaw = yaw;
+
+        // **L'amplitude suit la marche, la phase suit la distance**, et c'est ce qui
+        // sépare le cadrage de l'instrument : la phase ne se touche pas à l'arrêt —
+        // des mains qui balancent alors qu'on est bloqué dénoncent toujours un
+        // déplacement appliqué avant la collision —, mais son amplitude s'éteint, donc
+        // l'arme revient dans l'axe du réticule.
+        let wanted = f32::from(travel > 0.0);
+        self.sway += (wanted - self.sway) * (SETTLE * dt).min(1.0);
 
         // L'éclair s'éteint au temps et non à la distance : il ne dépend pas de la
         // marche, et il ne se prolonge pas quand on s'arrête.
@@ -202,9 +231,11 @@ pub fn submit(
     // fréquence du pas, le vertical au double — un pas gauche et un pas droit
     // descendent tous les deux. C'est ce rapport, et non l'amplitude, qui fait
     // lire une marche plutôt qu'un flottement.
+    // L'amplitude module le balancement sans toucher au retard du lacet, qui a son
+    // propre rappel et doit continuer de jouer quand on tourne sur place.
     let phase = weapon.stride * core::f32::consts::TAU;
-    let swing = phase.sin() * SWAY.0 - weapon.drag * 0.5;
-    let bob = (phase * 2.0).cos() * SWAY.1;
+    let swing = phase.sin() * SWAY.0 * weapon.sway - weapon.drag * 0.5;
+    let bob = (phase * 2.0).cos() * SWAY.1 * weapon.sway;
 
     let center =
         camera.position + ahead * DISTANCE + right * (OFFSET.0 + swing) + up * (OFFSET.1 + bob);

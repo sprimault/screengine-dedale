@@ -60,6 +60,94 @@ fn le_canon_tombe_dans_l_axe_du_regard() {
     );
 }
 
+/// Le balancement revient au neutre quand on cesse de marcher.
+///
+/// **L'épreuve ci-dessus ne suffisait pas, et c'est ce qui a laissé passer le défaut** :
+/// elle construit une arme neuve, donc une phase nulle dont le sinus l'est aussi. Elle
+/// mesure l'arme **au neutre**, jamais après une marche — et après une marche, l'arme
+/// restait écartée du centre jusqu'à six fois l'alignement du canon, parce que la phase
+/// ne bouge plus à l'arrêt et que rien n'éteignait son amplitude.
+///
+/// **La phase, elle, ne doit pas revenir** : elle est l'instrument qui dénonce un
+/// déplacement appliqué avant la collision, donc la ramener pour servir le cadrage
+/// reviendrait à casser une mesure pour arranger une image. C'est ce que le second point
+/// vérifie.
+#[test]
+fn le_balancement_revient_au_neutre_a_l_arret() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+
+    let mut weapon = Weapon::new(0.0).expect("planche du dépôt valide");
+
+    // Trois quarts de seconde de marche : l'amplitude est déployée, et la phase
+    // s'arrête à trois quarts de tour, là où le sinus vaut l'unité. **Une seconde
+    // ronde tomberait sur un tour entier**, donc sur un sinus nul, et l'épreuve ne
+    // mesurerait rien — c'est la garde ci-dessous qui l'a dit.
+    for _ in 0..45 {
+        weapon.advance(STRIDE * DT, 0.0, DT);
+    }
+    assert!(
+        weapon.sway > 0.9,
+        "après une seconde de marche, l'amplitude ne vaut que {}",
+        weapon.sway
+    );
+    let walked = weapon.stride;
+    assert!(
+        (walked * core::f32::consts::TAU).sin().abs() > 0.1,
+        "la marche s'arrête sur une phase dont le sinus est négligeable, \
+         donc l'épreuve ne verrait pas l'écart qu'elle cherche"
+    );
+
+    // Une demi-seconde d'arrêt.
+    for _ in 0..30 {
+        weapon.advance(0.0, 0.0, DT);
+    }
+
+    // **Le seuil n'est pas choisi, il est dérivé de ce qui compte** : l'écart latéral
+    // que le balancement résiduel peut encore produire vaut `SWAY.0 × sway`, et il doit
+    // rester sous la tolérance d'alignement du canon — deux texels de planche, celle de
+    // l'épreuve ci-dessus. Un chiffre rond dirait seulement que l'amplitude est petite,
+    // pas qu'elle est assez petite pour que le réticule désigne ce que l'arme pointe.
+    let slack = EXTENT.0 * 2.0 * 2.0 / SIDE;
+    assert!(
+        SWAY.0 * weapon.sway <= slack,
+        "à l'arrêt, le balancement laisse le canon à {} de l'axe, au-delà des \
+         {slack} que l'alignement tolère",
+        SWAY.0 * weapon.sway
+    );
+    assert_eq!(
+        weapon.stride, walked,
+        "la phase a bougé à l'arrêt, donc elle ne dénonce plus un déplacement \
+         appliqué avant la collision"
+    );
+}
+
+/// L'amplitude du balancement ne dépend pas de la cadence.
+///
+/// **Le rappel du lacet, lui, en dépend** — il s'applique sans pas de temps —, et c'est
+/// un défaut de ce fichier que ce lot n'étend pas. Une demi-seconde doit éteindre le
+/// balancement autant à trente images par seconde qu'à cent vingt.
+#[test]
+fn l_amplitude_ne_depend_pas_de_la_cadence() {
+    let settled = |dt: f32| {
+        let mut weapon = Weapon::new(0.0).expect("planche du dépôt valide");
+        for _ in 0..(1.0 / dt) as usize {
+            weapon.advance(STRIDE * dt, 0.0, dt);
+        }
+        for _ in 0..(0.25 / dt) as usize {
+            weapon.advance(0.0, 0.0, dt);
+        }
+        weapon.sway
+    };
+
+    let (slow, quick) = (settled(1.0 / 30.0), settled(1.0 / 120.0));
+    assert!(
+        (slow - quick).abs() <= 0.05,
+        "l'amplitude retombe à {slow} à trente images par seconde et à {quick} \
+         à cent vingt"
+    );
+}
+
 /// La phase avance avec la distance, et pas avec le temps.
 ///
 /// **C'est l'instrument de mesure du déplacement**, et c'est ce qui en fait une
