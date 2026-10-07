@@ -279,6 +279,40 @@ const STALLED: f32 = 0.8;
 /// ne cesse pas tant qu'on ne s'en détourne pas.
 const PATIENCE: u32 = 12;
 
+/// La vitesse d'un recul, en unités de monde par seconde.
+///
+/// **Quatre fois la marche, et c'est ce qui le rend lisible** : à la vitesse de
+/// promenade, un recul de trois images parcourrait sept centimètres, soit moins que le
+/// pas que la créature fait de toute façon — on ne distinguerait pas un coup porté d'un
+/// coup manqué, ce que l'étape existe précisément pour montrer.
+const RECOIL_SPEED: f32 = 4.0 * SPEED;
+
+/// Combien de temps un recul dure, en secondes.
+///
+/// **Trois images à soixante par seconde**, comme l'éclair de la pose de tir, et les
+/// deux se répondent : ce que le joueur voit est une saccade de l'arme et une saccade
+/// de la créature dans le même temps. Plus long, le recul deviendrait une poussée et la
+/// créature paraîtrait glisser.
+///
+/// Avec la vitesse ci-dessus, cela fait **vingt-huit centimètres** — assez pour se lire
+/// à quelques mètres, assez peu pour ne pas déplacer la créature d'une case.
+const RECOIL_TIME: f32 = 0.05;
+
+/// Le recul qu'un coup a imprimé à une créature.
+///
+/// **Un état et non un pas de plus**, et c'est tout ce que le lot a de difficile : le
+/// déplacement de la marche est lié au cap, au critère d'arrêt et au cycle, et un recul
+/// qui passerait par lui les fausserait tous les trois — la créature cesserait de se
+/// détourner d'un mur, pivoterait parce qu'on lui a tiré dessus, et avancerait ses
+/// jambes en étant poussée en arrière.
+#[derive(Clone, Copy)]
+struct Recoil {
+    /// Sa vitesse, en unités de monde par seconde, horizontale.
+    speed: Vec3,
+    /// Ce qu'il lui reste à courir, en secondes.
+    left: f32,
+}
+
 /// Une créature posée dans le décor.
 ///
 /// **Un état de partie**, comme le joueur et l'arme : elle est jetée au
@@ -314,6 +348,8 @@ pub struct Monster {
     /// **Remis à zéro dès qu'un pas passe**, ce qui est tout l'objet : ce qu'on
     /// cherche est un obstacle qui dure, pas un accroc isolé.
     hindered: u32,
+    /// Le recul en cours, s'il y en a un.
+    recoil: Option<Recoil>,
 }
 
 impl Monster {
@@ -346,6 +382,7 @@ impl Monster {
             motion: Motion::Idle,
             phase: 0.0,
             hindered: 0,
+            recoil: None,
         })
     }
 
@@ -400,6 +437,10 @@ impl Monster {
     /// la porte, et une créature gênée par une autre au bord d'un palier doit tomber
     /// comme les autres.
     fn walk(&mut self, map: &World, dt: f32, crowded: bool) {
+        if self.recoiling(map, dt) {
+            return;
+        }
+
         let step = self.step(dt);
         // **Le pas demandé reste celui du cap, même annulé**, et c'est ce qui fait
         // tomber le critère du bon côté : comparé à zéro, un pas nul paraîtrait
@@ -426,6 +467,73 @@ impl Monster {
         }
 
         self.advance(gone.dot(gone).sqrt(), dt);
+    }
+
+    /// Imprime un recul dans cette direction, et rend la main au coup suivant.
+    ///
+    /// **La direction est ramenée à l'horizontale**, et c'est une règle de jeu : un tir
+    /// en plongée soulèverait la créature ou l'enfoncerait dans le sol, là où ce qu'on
+    /// veut montrer est qu'elle encaisse. Une direction purement verticale n'imprime
+    /// donc rien, ce qui est la seule réponse sensée — il n'y a pas d'horizontale à en
+    /// tirer.
+    ///
+    /// **Un coup pendant un recul le relance**, il ne s'y ajoute pas : deux reculs
+    /// composés doubleraient la vitesse, et la créature partirait d'un bond au second
+    /// coup d'une rafale. C'est la même clause que la pose de tir de l'arme, qui se
+    /// relance plutôt que de s'accumuler.
+    pub fn knock(&mut self, push: Vec3) {
+        let flat = Vec3::new(push.x, push.y, 0.0);
+        let length = flat.dot(flat).sqrt();
+        if length == 0.0 {
+            return;
+        }
+
+        self.recoil = Some(Recoil {
+            speed: flat * (RECOIL_SPEED / length),
+            left: RECOIL_TIME,
+        });
+    }
+
+    /// Applique le recul en cours, et dit s'il a pris la main sur ce pas.
+    ///
+    /// **Ce qu'il court-circuite est le fond du sujet**, et chacun des trois pour une
+    /// raison mesurée :
+    ///
+    /// - **le cap**, parce qu'une créature poussée ne marche pas — elle est déplacée ;
+    /// - **le critère d'arrêt**, qui compare la distance franchie au pas demandé par le
+    ///   cap : un recul le satisferait largement et remettrait la patience à zéro, donc
+    ///   une créature reculée contre un mur cesserait de s'en détourner ; à l'inverse,
+    ///   un recul opposé au cap annulerait le pas franchi et l'épuiserait, et la
+    ///   créature pivoterait parce qu'on lui a tiré dessus ;
+    /// - **le cycle**, qui se choisit sur la distance parcourue : le recul en produit,
+    ///   donc la créature avancerait ses jambes en partant en arrière. La foulée valant
+    ///   de quarante-huit centimètres à un mètre selon la silhouette, les vingt-huit
+    ///   centimètres d'un recul feraient défiler une fraction de pas bien visible.
+    ///
+    /// **Ce qu'il garde, en revanche, c'est le décor** : le déplacement passe par le
+    /// corps, donc le balayage l'arrête et la glissade s'applique. Une créature reculée
+    /// contre une paroi s'y tasse au lieu de la traverser.
+    ///
+    /// **Et il ignore le voisinage**, là où la marche l'évite : le coup l'emporte sur la
+    /// politique d'évitement, et deux créatures qui se chevauchent le temps d'un recul
+    /// se séparent d'elles-mêmes au pas suivant.
+    fn recoiling(&mut self, map: &World, dt: f32) -> bool {
+        let Some(recoil) = self.recoil.as_mut() else {
+            return false;
+        };
+
+        // Le dernier pas est tronqué à ce qu'il reste, pour que la distance parcourue ne
+        // dépende pas de la cadence : à trente images par seconde comme à cent vingt, le
+        // recul vaut sa vitesse fois sa durée.
+        let step = dt.min(recoil.left);
+        let moved = recoil.speed * step;
+        recoil.left -= step;
+        if recoil.left <= 0.0 {
+            self.recoil = None;
+        }
+
+        self.body.advance(map, moved, dt);
+        true
     }
 
     /// Avance son cycle de ce qu'elle a parcouru, et du temps écoulé.
