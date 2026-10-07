@@ -9,8 +9,10 @@
 //! du `README`, et tout ce qui vivrait dans un rappel serait à en sortir ce
 //! jour-là.
 
+mod blot;
 mod body;
 mod game;
+mod mark;
 mod maze;
 mod monster;
 mod player;
@@ -161,6 +163,15 @@ fn main() -> Result<(), Error> {
             // capacité, et une arme qui disparaît de la main ou un démon qui
             // s'efface d'un couloir sont des symptômes qu'on chercherait longtemps
             // sans la ligne qui le dit.
+            // Les marques juste après le décor, et avant les créatures : une surface
+            // modulée n'assombrit que ce qui est déjà au tampon, donc elle doit suivre
+            // ce qu'elle marque. Elle n'a rien à voir avec les sprites, qui passent
+            // après parce qu'ils sont plus proches de l'œil.
+            let traces = mark::submit(context, session.game.marks());
+            session
+                .probe
+                .refusal(probe::Part::Marks, traces.is_err(), &session.game.aim());
+
             let seen = monster::submit(context, session.game.monsters(), &view.camera);
             session
                 .probe

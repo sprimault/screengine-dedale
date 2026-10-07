@@ -32,6 +32,7 @@ use screengine_play::{
     Vec3, VertexUv, World, load_png_masked,
 };
 
+use crate::blot::blot;
 use crate::body::Body;
 use crate::maze::grid::{Grid, Side};
 use crate::sheet::{self, FRAME, Motion};
@@ -582,33 +583,12 @@ pub fn stroll(monsters: &mut [Monster], map: &World, dt: f32) {
 
 /// La texture de la tache d'ombre : sombre au centre, **blanche au bord**.
 ///
-/// **Blanche et non transparente**, parce que 255 est le neutre de la modulation :
-/// un texel blanc laisse le sol intact, et la tache s'éteint d'elle-même sur son
-/// pourtour sans qu'on ait à la découper. La transparence binaire du moteur
-/// donnerait un bord franc, qui se lirait comme un disque posé.
-///
-/// **Engendrée et non chargée** : c'est une forme, et une forme s'écrit. Une
-/// planche de plus dans `assets/` demanderait à la chaîne de produire ce que
-/// quatre lignes décrivent exactement.
+/// **Le disque vient de [`crate::blot`] depuis que la marque d'impact en veut un
+/// aussi** : les deux ne diffèrent que par le côté et la densité, et ce module dit
+/// pourquoi il est blanc au bord plutôt que transparent, et pourquoi il s'engendre
+/// plutôt que de se charger. Ce qui reste ici est le choix des deux cotes.
 fn shadow_texture() -> Texture {
-    let side = SHADOW_SIDE;
-    let mut bytes = Vec::with_capacity((side * side) as usize * 4);
-    let half = side as f32 / 2.0;
-
-    for v in 0..side {
-        for u in 0..side {
-            let (dx, dy) = (u as f32 + 0.5 - half, v as f32 + 0.5 - half);
-            // Le carré du rayon normalisé : la racine ne servirait à rien, la
-            // courbe voulue étant justement quadratique — une ombre dense sous le
-            // corps et qui s'efface vite.
-            let fade = ((dx * dx + dy * dy) / (half * half)).min(1.0);
-            let level = (SHADOW_CORE + (255.0 - SHADOW_CORE) * fade) as u8;
-            bytes.extend_from_slice(&[level, level, level, 0xFF]);
-        }
-    }
-
-    Texture::load(side, side, &bytes)
-        .unwrap_or_else(|_| unreachable!("carrée, puissance de deux, et de la bonne longueur"))
+    blot(SHADOW_SIDE, SHADOW_CORE)
 }
 
 /// Les quatre coins de la tache d'une créature, dans le sens qui la rend visible.
