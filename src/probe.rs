@@ -22,7 +22,7 @@ use std::path::Path;
 
 use screengine_play::{FreeCamera, Output, Vec3, Visibility, World};
 
-use crate::shot::{RANGE, Shot};
+use crate::shot::{Outcome, RANGE, Struck};
 
 #[cfg(test)]
 mod tests;
@@ -374,11 +374,12 @@ impl Probe {
     /// **L'index est celui de la dernière image rendue**, et la ligne le dit : un tir
     /// se résout dans le pas de mise à jour, donc entre deux images. Le corriger d'un
     /// cran supposerait qu'une image suive, ce que rien ne garantit.
-    pub fn fired(&mut self, shot: &Shot, map: &World, aim: &Aim) {
+    pub fn fired(&mut self, outcome: &Outcome, map: &World, aim: &Aim) {
         let Some(file) = self.file.as_mut() else {
             return;
         };
 
+        let shot = &outcome.shot;
         let found = map.locate(shot.from);
         let what = match shot.hit {
             None => String::from("parti hors de tout volume"),
@@ -406,10 +407,25 @@ impl Probe {
             ),
         };
 
+        // Ce qui l'emporte se dit avant ce que le décor a opposé : c'est la réponse à
+        // la question qu'un tir pose, et le reste la documente.
+        let struck = match outcome.struck {
+            Struck::Nothing => String::from("rien"),
+            Struck::Decor => String::from("le décor"),
+            Struck::Volume(rank) => format!("le volume {rank}"),
+        };
+
+        // Le volume le plus proche se dit même quand il perd : c'est ce qui sépare un
+        // démon couvert par un mur d'un démon que le tir ne visait pas.
+        let volume = match outcome.nearest {
+            Some(reach) => format!("volume {} à {:.3} de portée", reach.rank, reach.at),
+            None => String::from("aucun volume sur le trajet"),
+        };
+
         let _ = writeln!(
             file,
             "après l'image {} : tir vers ({:.2} {:.2} {:.2}) depuis la cellule {}\
-             {} — {what}, {aim}",
+             {} — atteint {struck} ; {volume} ; décor : {what}, {aim}",
             self.frame,
             shot.to.x,
             shot.to.y,

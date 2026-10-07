@@ -89,6 +89,113 @@ impl Shot {
     }
 }
 
+/// Un volume que le jeu a placé, et contre lequel un tir se teste lui-même.
+///
+/// **Le moteur ne le connaît pas, et c'est la frontière du projet** : un monstre n'a
+/// pas de portail donc pas d'adjacence, et rien de ce que le balayage traverse ne
+/// s'applique à lui. Décider qu'un démon est touchable est une règle de jeu.
+///
+/// **Un centre et des demi-étendues, et rien de ce qui le porte** : ce module ne sait
+/// pas qu'il s'agit d'une créature, ce qui le rend éprouvable sans en construire une
+/// et laisse un objet posé ou une caisse passer par le même chemin.
+#[derive(Clone, Copy)]
+pub struct Volume {
+    /// Son centre, en coordonnées de monde.
+    pub centre: Vec3,
+    /// Ses demi-étendues, sur les trois axes.
+    pub half: Vec3,
+}
+
+/// Ce qu'un tir a finalement atteint, le décor et les volumes départagés.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Struck {
+    /// Rien à portée.
+    Nothing,
+    /// Le décor, au point que le rayon rend.
+    Decor,
+    /// Un volume, par son rang dans la tranche donnée.
+    Volume(usize),
+}
+
+/// Jusqu'où un volume répondait, et lequel.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub struct Reach {
+    /// Son rang dans la tranche donnée au tir.
+    pub rank: usize,
+    /// La fraction du trajet à laquelle il est entré.
+    pub at: f32,
+}
+
+/// Un tir résolu : ce que le décor a opposé, et ce qui a été atteint.
+pub struct Outcome {
+    /// Le rayon contre le décor, dont la marque d'impact aura besoin.
+    pub shot: Shot,
+    /// Ce qui a été touché.
+    pub struck: Struck,
+    /// Le volume le plus proche sur le trajet, qu'il ait gagné ou non.
+    ///
+    /// **Il est gardé même quand le décor l'emporte**, et c'est ce qui rend un tir
+    /// diagnosticable : sans lui, un démon couvert par un mur et un démon qu'aucun
+    /// tir ne visait donnent la même ligne de relevé, et il n'y a plus rien pour
+    /// distinguer une règle qui s'applique d'une cote qui est fausse.
+    pub nearest: Option<Reach>,
+}
+
+/// L'intervalle de paramètre où un segment reste entre deux plans parallèles.
+///
+/// **Le cas parallèle se traite avant de diviser**, parce qu'un segment dont la
+/// composante est nulle sur cet axe ne franchit jamais les deux plans : il est dedans
+/// pour tout le trajet, ou dehors pour tout le trajet.
+///
+/// **Ce n'est pas ce bras qui tient la correction, et il ne faut pas le croire.** Sans
+/// lui, une composante nulle donnerait `±∞` — ce qui est exact et que l'intersection
+/// absorbe —, et `0/0` donc un `NaN` dans le seul cas où le départ tombe
+/// **exactement** sur un des deux plans ; or `f32::max` et `f32::min` rendent l'autre
+/// opérande face à un `NaN`, si bien que le résultat resterait juste. Mesuré en
+/// débranchant ce bras : aucune épreuve ne bouge.
+///
+/// **Il est là pour que la correction ne dépende pas de cela**, qui est un détail de
+/// la bibliothèque et non une propriété de la méthode. Le jour où un `max` devient une
+/// comparaison écrite à la main, ce bras est ce qui évite d'avoir à le savoir.
+fn slab(from: f32, span: f32, centre: f32, half: f32) -> Option<(f32, f32)> {
+    let (low, high) = (centre - half, centre + half);
+    if span == 0.0 {
+        return (from >= low && from <= high).then_some((f32::NEG_INFINITY, f32::INFINITY));
+    }
+
+    let (entry, exit) = ((low - from) / span, (high - from) / span);
+    Some(match entry <= exit {
+        true => (entry, exit),
+        false => (exit, entry),
+    })
+}
+
+/// La fraction du segment à laquelle il entre dans ce volume, s'il y entre.
+///
+/// **La méthode des tranches, et rien de plus coûteux.** Trois intervalles de
+/// paramètre, leur intersection : neuf divisions au pire, aucune racine. Un cylindre
+/// demanderait une résolution quadratique — donc une racine, donc la table du noyau —
+/// pour ne gagner qu'une silhouette ronde vue de dessus, invisible avec des créatures
+/// dont le dessin fait le double de la boîte.
+///
+/// **La fraction porte sur le segment donné**, comme celle que le moteur rend d'un
+/// rayon : c'est à cette condition que les deux se comparent, et c'est tout l'enjeu du
+/// départage.
+///
+/// **Un départ à l'intérieur du volume rend zéro.** Le segment y est déjà, donc il y
+/// entre à l'instant où il part — ce qui est la réponse juste et non un cas limite :
+/// un tir à bout portant dans une créature la touche.
+fn enters(from: Vec3, to: Vec3, volume: &Volume) -> Option<f32> {
+    let span = to - from;
+    let x = slab(from.x, span.x, volume.centre.x, volume.half.x)?;
+    let y = slab(from.y, span.y, volume.centre.y, volume.half.y)?;
+    let z = slab(from.z, span.z, volume.centre.z, volume.half.z)?;
+
+    let near = x.0.max(y.0).max(z.0).max(0.0);
+    let far = x.1.min(y.1).min(z.1).min(1.0);
+    (near <= far).then_some(near)
+}
+
 /// Tire un rayon depuis l'œil, dans la direction du regard.
 ///
 /// `ahead` est attendu **unitaire** : il vient d'une orientation de caméra, qui en
@@ -115,5 +222,90 @@ pub fn fire(map: &World, from: Vec3, ahead: Vec3, cell: u32) -> Shot {
             0 => None,
             _ => map.pick(cell, from, to, Surfaces::Solid),
         },
+    }
+}
+
+/// Résout un tir en entier : le décor, les volumes, et lequel des deux l'emporte.
+///
+/// **Le départage n'est pas une optimisation, c'est la règle.** Sans lui, un tir
+/// traverse les murs : le test de tranches ne connaît rien du décor et déclare touché
+/// un démon derrière une paroi. Les deux fractions se comparent parce qu'elles portent
+/// sur le **même segment** — c'est ce que `fire` et `enters` ont en commun, et la
+/// seule raison pour laquelle la comparaison veut dire quelque chose.
+///
+/// **À égalité, le décor gagne.** Le sens conservateur est celui du moteur lui-même,
+/// qui préfère tronquer un trajet que le déclarer libre, et le cas ne se produit qu'au
+/// bit près : un démon exactement dans le plan d'un mur est de toute façon un démon
+/// qu'on ne devrait pas pouvoir toucher.
+///
+/// **Un départ dans le solide n'arrête rien**, et c'est le piège de la fonction. Le
+/// moteur rend alors une fraction nulle : lue comme un obstacle, elle ferait gagner le
+/// décor à distance zéro et **plus aucun volume ne serait jamais touchable**. Le tir
+/// l'écarte donc comme obstacle — l'œil est tenu hors du solide par le balayage du
+/// corps, mais rien dans le contrat ne le garantit, et perdre la touche serait un
+/// symptôme bien plus difficile à lire qu'un tir qui part d'un mur.
+///
+/// **Une troncature, elle, arrête bien.** Le trajet a été borné sans être examiné en
+/// entier, donc un volume au-delà n'est pas touché : c'est la réponse conservatrice,
+/// la même que celle du moteur. La portée rend ce cas inatteignable en jeu.
+pub fn resolve(map: &World, from: Vec3, ahead: Vec3, cell: u32, volumes: &[Volume]) -> Outcome {
+    let shot = fire(map, from, ahead, cell);
+
+    let decor = obstacle(shot.hit);
+    let nearest = volumes
+        .iter()
+        .enumerate()
+        .filter_map(|(rank, volume)| {
+            enters(shot.from, shot.to, volume).map(|at| Reach { rank, at })
+        })
+        .min_by(|here, there| here.at.total_cmp(&there.at));
+
+    let struck = arbitrate(nearest, decor);
+    Outcome {
+        shot,
+        struck,
+        nearest,
+    }
+}
+
+/// La fraction à laquelle le décor fait obstacle, s'il en fait un.
+///
+/// **Un départ dans le solide n'est pas un obstacle à distance nulle.** Le moteur rend
+/// alors une fraction nulle ; lue telle quelle, elle ferait gagner le décor contre tout
+/// volume et **plus rien ne serait jamais touchable** — un tir qui cesse de porter, sans
+/// que rien ne dise pourquoi. L'œil est tenu hors du solide par le balayage du corps,
+/// mais le contrat ne le garantit pas.
+///
+/// **Séparée parce que le cas ne s'obtient pas d'ici**, et c'est mesuré : un rayon n'a
+/// aucune dilatation, et l'espace compris dans l'épaisseur d'un mur n'appartient à
+/// aucune cellule d'un décor fermé, si bien qu'aucun départ pris dans une cloison ne
+/// lève ce statut. Le seul moyen d'éprouver la clause est donc de lui donner le contact
+/// que le moteur ne produira pas.
+///
+/// Une troncature, en revanche, fait bien obstacle : le trajet a été borné sans être
+/// examiné en entier, donc un volume au-delà n'est pas touché. C'est la réponse
+/// conservatrice, la même que celle du moteur.
+fn obstacle(hit: Option<Hit>) -> Option<f32> {
+    hit.filter(|hit| hit.fraction < 1.0 && !hit.start_solid)
+        .map(|hit| hit.fraction)
+}
+
+/// Lequel l'emporte, du décor et du volume le plus proche.
+///
+/// **Séparée pour être éprouvée à l'exactitude du bit.** La règle d'égalité ne se
+/// vérifie pas sur un décor engendré — il faudrait y placer un volume dont la face
+/// d'entrée tombe pile sur le plan d'un mur, ce qu'aucun flottant ne garantit. Ici
+/// les deux fractions sont des entrées.
+///
+/// Les deux sont des fractions du **même** segment, ou rien quand ce côté-là
+/// n'oppose pas d'obstacle.
+fn arbitrate(nearest: Option<Reach>, decor: Option<f32>) -> Struck {
+    match (nearest, decor) {
+        // À égalité le décor gagne, d'où le `<=` : c'est le sens conservateur, et
+        // c'est celui du moteur, qui préfère tronquer un trajet que le libérer.
+        (Some(reach), Some(wall)) if wall <= reach.at => Struck::Decor,
+        (Some(reach), _) => Struck::Volume(reach.rank),
+        (None, Some(_)) => Struck::Decor,
+        (None, None) => Struck::Nothing,
     }
 }

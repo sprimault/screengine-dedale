@@ -18,7 +18,7 @@ use crate::monster::{self, Monster};
 use crate::player::Player;
 use crate::probe::Aim;
 use crate::scene::View;
-use crate::shot::{self, Shot};
+use crate::shot::{self, Outcome};
 use crate::weapon::Weapon;
 
 #[cfg(test)]
@@ -135,7 +135,7 @@ impl Game {
     /// un tir est un événement d'un seul pas, là où la pose et la cellule sont des
     /// états. Le garder en champ obligerait à l'effacer, donc à décider quand — et
     /// le relevé, qui est son seul lecteur aujourd'hui, vit dans la boucle.
-    pub fn step(&mut self, tick: &mut Tick<'_>, map: &World) -> Option<Shot> {
+    pub fn step(&mut self, tick: &mut Tick<'_>, map: &World) -> Option<Outcome> {
         // La vue ne suit la souris que le curseur pris, et il ne l'est pas à
         // l'ouverture : une fenêtre qui s'en emparerait laisserait chercher
         // comment le récupérer. Le clic gauche le prend, celui du milieu le rend
@@ -173,13 +173,35 @@ impl Game {
         // l'image à venir montrera.
         fired.then(|| {
             self.weapon.shoot();
-            shot::fire(
+            shot::resolve(
                 map,
                 self.camera.position,
                 self.ahead(),
                 self.player.eye_cell(map),
+                &self.volumes(),
             )
         })
+    }
+
+    /// Les volumes que le tir doit tester, dans l'ordre des créatures.
+    ///
+    /// **Le rang est le lien, et il n'y en a pas d'autre** : le tir rend le rang du
+    /// volume atteint, et c'est celui de la créature dans la même tranche. Un
+    /// identifiant de créature serait un champ de plus à tenir pour une
+    /// correspondance que l'ordre donne déjà, et la population ne change pas en
+    /// cours d'image.
+    ///
+    /// **Le gabarit vient du module des créatures et non du corps** : toutes le
+    /// partagent, le volume tenant à ce qui doit passer dans un couloir et non au
+    /// dessin.
+    fn volumes(&self) -> Vec<shot::Volume> {
+        self.monsters
+            .iter()
+            .map(|monster| shot::Volume {
+                centre: monster.at(),
+                half: monster::HALF,
+            })
+            .collect()
     }
 
     /// La direction du regard, unitaire, en coordonnées de monde.
