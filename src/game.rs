@@ -175,6 +175,12 @@ impl Game {
         // une paroi, ou une autre créature.
         monster::stroll(&mut self.monsters, map, tick.dt());
 
+        // **Une créature dont la chute est jouée quitte la partie**, et il n'en reste
+        // rien : son ombre s'est éteinte au coup fatal, son sprite part avec elle. Le
+        // retrait se fait ici plutôt que dans la promenade, qui travaille sur une
+        // tranche et ne peut pas raccourcir la population.
+        self.monsters.retain(|monster| !monster.spent());
+
         // Les éclats s'éteignent d'eux-mêmes, et il faut donc leur donner le temps qui
         // passe — les marques, elles, n'en ont pas besoin : seul l'anneau les chasse.
         self.marks.advance(tick.dt());
@@ -186,12 +192,13 @@ impl Game {
         fired.then(|| {
             self.weapon.shoot();
             let ahead = self.ahead();
+            let (volumes, targets) = self.volumes();
             let outcome = shot::resolve(
                 map,
                 self.camera.position,
                 ahead,
                 self.player.eye_cell(map),
-                &self.volumes(),
+                &volumes,
             );
 
             // **Une marque ne se pose que si le décor a gagné**, et c'est une
@@ -209,7 +216,7 @@ impl Game {
                 // n'existe aucune surface de décor au point de contact, donc rien à
                 // plaquer, et c'est le sprite qui s'en charge.
                 shot::Struck::Volume(rank) => {
-                    self.monsters[rank].knock(ahead);
+                    self.monsters[targets[rank]].knock(ahead);
                     if let Some(reach) = outcome.nearest {
                         let span = outcome.shot.to - outcome.shot.from;
                         self.marks.flash(outcome.shot.from + span * reach.at);
@@ -222,25 +229,38 @@ impl Game {
         })
     }
 
-    /// Les volumes que le tir doit tester, dans l'ordre des créatures.
+    /// Les volumes que le tir doit tester, et à quelle créature chacun appartient.
     ///
-    /// **Le rang est le lien, et il n'y en a pas d'autre** : le tir rend le rang du
-    /// volume atteint, et c'est celui de la créature dans la même tranche. Un
-    /// identifiant de créature serait un champ de plus à tenir pour une
-    /// correspondance que l'ordre donne déjà, et la population ne change pas en
-    /// cours d'image.
+    /// **Les tombées n'en ont plus**, et c'est ainsi qu'elles cessent d'être
+    /// touchables : le tir ne connaît pas la vie d'une créature, et lui apprendre
+    /// serait lui faire franchir une frontière pour une règle qui se tient ici.
+    ///
+    /// **D'où la seconde tranche** : le tir rend un rang dans celle qu'on lui donne,
+    /// qui n'est plus celui de la créature dès qu'une manque. La correspondance se
+    /// porte à côté plutôt que par un identifiant dans `Monster`, qui serait un champ
+    /// de plus à tenir pour une durée d'une image.
     ///
     /// **Le gabarit vient du module des créatures et non du corps** : toutes le
     /// partagent, le volume tenant à ce qui doit passer dans un couloir et non au
     /// dessin.
-    fn volumes(&self) -> Vec<shot::Volume> {
-        self.monsters
+    fn volumes(&self) -> (Vec<shot::Volume>, Vec<usize>) {
+        let alive = self
+            .monsters
             .iter()
-            .map(|monster| shot::Volume {
-                centre: monster.at(),
-                half: monster::HALF,
+            .enumerate()
+            .filter(|(_, m)| !m.fallen());
+
+        alive
+            .map(|(rank, monster)| {
+                (
+                    shot::Volume {
+                        centre: monster.at(),
+                        half: monster::HALF,
+                    },
+                    rank,
+                )
             })
-            .collect()
+            .unzip()
     }
 
     /// La direction du regard, unitaire, en coordonnées de monde.

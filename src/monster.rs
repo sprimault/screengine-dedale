@@ -61,10 +61,18 @@ struct Figure {
     idle: &'static [u8],
     /// Ceux de sa planche de marche.
     walk: &'static [u8],
+    /// Ceux de sa planche de mort — seize trames qui ne se répètent pas.
+    dead: &'static [u8],
     /// Ce que son repos laisse de vide sous les pieds, en texels.
     idle_margin: f32,
     /// Ce que sa marche en laisse, en texels.
     walk_margin: f32,
+    /// Ce que sa mort en laisse, en texels.
+    ///
+    /// **Plus petite que les deux autres sur les trois silhouettes**, et c'est ce
+    /// qu'on attend d'une créature qui finit au sol : il reste moins de vide sous un
+    /// corps couché que sous des pieds.
+    dead_margin: f32,
     /// Ce qu'un cycle de marche complet avance, en texels de planche.
     ///
     /// **En texels parce que c'est l'unité de la mesure**, et la conversion en
@@ -91,9 +99,8 @@ impl Figure {
     fn margin(&self, motion: Motion) -> f32 {
         match motion {
             Motion::Walk => self.walk_margin,
-            // Le repos fait office de défaut pour la mort, dont la planche n'est pas
-            // chargée : sa marge se relèvera avec elle, à l'étape 4.
-            Motion::Idle | Motion::Dead => self.idle_margin,
+            Motion::Dead => self.dead_margin,
+            Motion::Idle => self.idle_margin,
         }
     }
 
@@ -139,24 +146,30 @@ static FIGURES: [Figure; 3] = [
         name: "d1",
         idle: include_bytes!("../assets/sprites/demon-d1-idle-8x8-64.png"),
         walk: include_bytes!("../assets/sprites/demon-d1-walk-8x8-64.png"),
+        dead: include_bytes!("../assets/sprites/demon-d1-mort-8x16-64.png"),
         idle_margin: 3.0,
         walk_margin: 4.0,
+        dead_margin: 2.0,
         stride: 36.0,
     },
     Figure {
         name: "d2",
         idle: include_bytes!("../assets/sprites/demon-d2-idle-8x8-64.png"),
         walk: include_bytes!("../assets/sprites/demon-d2-walk-8x8-64.png"),
+        dead: include_bytes!("../assets/sprites/demon-d2-mort-8x16-64.png"),
         idle_margin: 2.0,
         walk_margin: 3.0,
+        dead_margin: 2.0,
         stride: 16.0,
     },
     Figure {
         name: "d3",
         idle: include_bytes!("../assets/sprites/demon-d3-idle-8x8-64.png"),
         walk: include_bytes!("../assets/sprites/demon-d3-walk-8x8-64.png"),
+        dead: include_bytes!("../assets/sprites/demon-d3-mort-8x16-64.png"),
         idle_margin: 3.0,
         walk_margin: 2.0,
+        dead_margin: 3.0,
         stride: 22.0,
     },
 ];
@@ -279,6 +292,29 @@ const STALLED: f32 = 0.8;
 /// ne cesse pas tant qu'on ne s'en détourne pas.
 const PATIENCE: u32 = 12;
 
+/// Combien de coups une créature encaisse avant de tomber.
+///
+/// **Trois, et ce n'est pas un chiffre de goût** : au premier coup, le recul ne se
+/// verrait jamais puisqu'elle mourrait à l'impact — les points de vie et la
+/// rétroaction sont le même sujet. La cadence étant celle du doigt, le clic se lisant
+/// en front et non en maintien, trois coups se tirent en une demi-seconde.
+///
+/// **Une constante et non un champ par silhouette** : la table serait l'endroit
+/// naturel pour que les trois diffèrent, mais rien ne le demande encore, et un champ
+/// portant trois fois la même valeur est une abstraction bâtie sur aucun cas.
+const LIFE: u32 = 3;
+
+/// Combien de temps le cycle de mort met à se jouer, en secondes.
+///
+/// **Il avance avec l'horloge, comme le repos et non comme la marche** : un cadavre ne
+/// parcourt aucune distance, et un cycle indexé sur elle resterait figé sur sa première
+/// trame.
+///
+/// **Une seconde et deux dixièmes pour seize trames, réglé à l'écran** : à huit, la
+/// chute passait trop vite pour se lire — et c'est le seul moment où la silhouette se
+/// donne à voir en entier, puisque rien ne reste ensuite.
+const DEAD_PERIOD: f32 = 1.2;
+
 /// La vitesse d'un recul, en unités de monde par seconde.
 ///
 /// **Quatre fois la marche, et c'est ce qui le rend lisible** : à la vitesse de
@@ -325,6 +361,8 @@ pub struct Monster {
     idle: Arc<Texture>,
     /// Celle de sa marche.
     walk: Arc<Texture>,
+    /// Celle de sa mort.
+    dead: Arc<Texture>,
     /// La tache qu'elle pose au sol, partagée par toute la population.
     ///
     /// **Une seule pour les trois**, ce que la population a tranché comme prévu : le
@@ -350,6 +388,12 @@ pub struct Monster {
     hindered: u32,
     /// Le recul en cours, s'il y en a un.
     recoil: Option<Recoil>,
+    /// Ce qu'elle peut encore encaisser, ou zéro si elle est tombée.
+    ///
+    /// **Ici et non dans la table des silhouettes** : c'est un état de partie, jeté au
+    /// rechargement de la carte, là où la table porte des cotes de planche qui ne
+    /// changent jamais.
+    life: u32,
 }
 
 impl Monster {
@@ -376,6 +420,7 @@ impl Monster {
             figure,
             idle: Arc::new(load_png_masked(figure.idle)?),
             walk: Arc::new(load_png_masked(figure.walk)?),
+            dead: Arc::new(load_png_masked(figure.dead)?),
             shadow,
             body: Body::stand(HALF, grid, map, at),
             facing: rank as f32 * core::f32::consts::TAU / FIGURES.len() as f32,
@@ -383,6 +428,7 @@ impl Monster {
             phase: 0.0,
             hindered: 0,
             recoil: None,
+            life: LIFE,
         })
     }
 
@@ -401,7 +447,10 @@ impl Monster {
         let wanted = here + self.step(dt);
 
         crowd.iter().enumerate().any(|(other, monster)| {
-            if other == rank {
+            // **Une créature tombée n'encombre plus** : elle est au sol, et s'arrêter
+            // devant un cadavre resté debout en volume ferait buter les vivantes sur
+            // rien de visible.
+            if other == rank || monster.fallen() {
                 return false;
             }
             let there = monster.body.centre();
@@ -453,6 +502,17 @@ impl Monster {
     /// la porte, et une créature gênée par une autre au bord d'un palier doit tomber
     /// comme les autres.
     fn walk(&mut self, map: &World, dt: f32, crowded: bool) {
+        // **Une créature tombée ne marche plus, mais elle tombe encore** : le corps
+        // reçoit un pas nul, donc la pesanteur s'applique et un cadavre abattu au bord
+        // d'un palier rejoint le sol. Sa phase avance avec l'horloge, puisqu'il ne
+        // parcourt aucune distance, et le cycle de mort ne boucle pas — elle reste sur
+        // sa dernière trame.
+        if self.fallen() {
+            self.body.advance(map, Vec3::new(0.0, 0.0, 0.0), dt);
+            self.phase += dt / DEAD_PERIOD;
+            return;
+        }
+
         if self.recoiling(map, dt) {
             return;
         }
@@ -498,6 +558,21 @@ impl Monster {
     /// coup d'une rafale. C'est la même clause que la pose de tir de l'arme, qui se
     /// relance plutôt que de s'accumuler.
     pub fn knock(&mut self, push: Vec3) {
+        if self.fallen() {
+            return;
+        }
+
+        self.life -= 1;
+        if self.fallen() {
+            // **Le coup fatal ne recule pas**, et c'est ce qui le distingue des
+            // autres : la créature tombe là où elle est, et sa chute est la
+            // rétroaction. Un recul par-dessus la ferait glisser en tombant.
+            self.motion = Motion::Dead;
+            self.phase = 0.0;
+            self.recoil = None;
+            return;
+        }
+
         let flat = Vec3::new(push.x, push.y, 0.0);
         let length = flat.dot(flat).sqrt();
         if length == 0.0 {
@@ -586,11 +661,24 @@ impl Monster {
     fn sheet(&self) -> &Arc<Texture> {
         match self.motion {
             Motion::Walk => &self.walk,
-            // La planche de mort se charge avec ce qui tue, à l'étape 4 ; rien ne
-            // construit ce mouvement avant elle, et le bras n'est là que pour
-            // l'exhaustivité du filtrage.
-            Motion::Idle | Motion::Dead => &self.idle,
+            Motion::Dead => &self.dead,
+            Motion::Idle => &self.idle,
         }
+    }
+
+    /// Vrai si elle est tombée, donc si elle ne marche plus et n'est plus touchable.
+    pub fn fallen(&self) -> bool {
+        self.life == 0
+    }
+
+    /// Vrai quand sa chute est jouée en entier, donc qu'il n'y a plus rien à montrer.
+    ///
+    /// **Le cycle de mort ne boucle pas**, et c'est ce qui donne le repère : passé le
+    /// tour, la colonne reste sur la dernière trame, donc une phase qui l'atteint dit
+    /// que tout a été vu. La créature quitte alors la population — rien ne reste au
+    /// sol, pas même son ombre, qui s'est éteinte dès le coup fatal.
+    pub fn spent(&self) -> bool {
+        self.fallen() && self.phase >= 1.0
     }
 
     /// Où son centre se trouve, ce que le titre de la fenêtre affiche.
@@ -793,7 +881,11 @@ pub fn submit(
     monsters: &[Monster],
     camera: &Camera,
 ) -> Result<(), screengine_play::screengine::Error> {
-    for monster in monsters {
+    // **Une créature tombée ne pose plus d'ombre**, et dès le coup fatal : la tache est
+    // dimensionnée sur l'empreinte des pieds d'une silhouette debout, et un disque resté
+    // rond sous un corps qui s'affaisse se lit comme une marque au sol. Rien ne doit
+    // rester d'un démon abattu.
+    for monster in monsters.iter().filter(|monster| !monster.fallen()) {
         let corners = shadow_corners(monster.body.centre());
         let white = Color::new(0xFF, 0xFF, 0xFF, 0xFF);
         let vertices: Vec<VertexUv> = corners
