@@ -654,6 +654,63 @@ fn une_creature_reculee_ne_traverse_pas_le_decor() {
     );
 }
 
+/// Deux créatures enchevêtrées finissent par se séparer.
+///
+/// **Le corpus commence en recouvrement**, et c'est tout ce qui la distingue de
+/// `deux_demons_ne_se_marchent_pas_dessus` : celle-là part de poses qui ne se recouvrent
+/// jamais, donc elle ne voit pas l'état bloqué — elle vérifie qu'on n'y entre pas, pas
+/// qu'on en sort. Le recul, lui, y fait entrer, puisqu'il ignore l'évitement.
+///
+/// **Deux caps sont éprouvés, et le second est le cas dégénéré** : opposés, les pas
+/// éloignent donc le dégagement est immédiat ; identiques, aucun pas n'éloigne jamais —
+/// elles avancent du même écart — et ce qui les sépare est la patience, qui en retourne
+/// une. Sans ce second cas, un correctif qui ne traiterait que l'évident passerait.
+#[test]
+fn deux_creatures_enchevetrees_se_separent() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+    /// Combien d'images elles ont pour se dégager.
+    ///
+    /// Trois secondes : la patience en coûte douze au pire, et le reste est la marche
+    /// qui écarte. Ce qui est cherché est un blocage, pas une cadence.
+    const FRAMES: usize = 180;
+
+    for (seed, caps) in [
+        (SEEDS[0], [0.0, core::f32::consts::PI]),
+        (SEEDS[4], [0.0, 0.0]),
+    ] {
+        let (grid, map) = maze(seed);
+        let at = plain_case(&grid);
+
+        // Sur la même case, donc au même centre : le recouvrement est total, ce qui est
+        // pire que ce qu'un recul produit.
+        let mut crowd = vec![lone(&grid, &map, at), lone(&grid, &map, at)];
+        crowd[0].facing = caps[0];
+        crowd[1].facing = caps[1];
+        assert!(
+            meets(crowd[0].at(), crowd[1].at()),
+            "graine {seed:#x} : les deux créatures ne partent pas enchevêtrées"
+        );
+
+        let mut freed = None;
+        for frame in 0..FRAMES {
+            stroll(&mut crowd, &map, DT);
+            if !meets(crowd[0].at(), crowd[1].at()) {
+                freed = Some(frame);
+                break;
+            }
+        }
+
+        assert!(
+            freed.is_some(),
+            "graine {seed:#x}, caps {caps:?} : après {FRAMES} images, les deux \
+             créatures sont toujours enchevêtrées, en {:?} et {:?}",
+            crowd[0].at(),
+            crowd[1].at()
+        );
+    }
+}
+
 /// Deux créatures ne se marchent pas dessus.
 ///
 /// **Le moteur ne l'empêche pas et ne le peut pas** : il n'arrête que la géométrie

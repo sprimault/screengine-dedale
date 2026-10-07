@@ -397,12 +397,28 @@ impl Monster {
     /// recouvre toujours la sienne, et un écart nul ne se distingue pas du cas qu'on
     /// cherche.
     fn crowded(&self, crowd: &[Monster], rank: usize, dt: f32) -> bool {
-        let wanted = self.body.centre() + self.step(dt);
+        let here = self.body.centre();
+        let wanted = here + self.step(dt);
 
-        crowd
-            .iter()
-            .enumerate()
-            .any(|(other, monster)| other != rank && meets(wanted, monster.body.centre()))
+        crowd.iter().enumerate().any(|(other, monster)| {
+            if other == rank {
+                return false;
+            }
+            let there = monster.body.centre();
+
+            // **Un pas qui éloigne passe, même s'il laisse un recouvrement**, et c'est
+            // la clause qui empêche l'enchevêtrement définitif : refuser tout pas dont
+            // l'arrivée recouvre encore, c'est refuser aussi ceux qui en sortent —
+            // vingt-huit centimètres de recul s'évacuent par une douzaine de pas de
+            // deux centimètres et demi, dont pas un seul ne passerait. Deux créatures
+            // bloquées l'une dans l'autre ne repartaient jamais, et le demi-tour de la
+            // patience n'y changeait rien, le recouvrement étant le même des deux
+            // côtés.
+            //
+            // **Le cas courant ne bouge pas** : hors recouvrement, un pas qui en crée un
+            // rapproche forcément, donc il reste refusé.
+            meets(wanted, there) && !recedes(here, wanted, there)
+        })
     }
 
     /// Marche droit devant, et fait demi-tour quand le décor l'arrête.
@@ -515,8 +531,13 @@ impl Monster {
     /// contre une paroi s'y tasse au lieu de la traverser.
     ///
     /// **Et il ignore le voisinage**, là où la marche l'évite : le coup l'emporte sur la
-    /// politique d'évitement, et deux créatures qui se chevauchent le temps d'un recul
-    /// se séparent d'elles-mêmes au pas suivant.
+    /// politique d'évitement, donc un recul peut enfoncer une créature dans une autre.
+    ///
+    /// **Ce qu'elles font ensuite est l'affaire de [`Monster::crowded`]**, et ce n'était
+    /// pas gratuit : il refusait tout pas dont l'arrivée recouvrait encore, donc elles
+    /// restaient enchevêtrées pour toujours — vu à l'écran, et corrigé là-bas en
+    /// laissant passer ce qui éloigne. Ce texte affirmait qu'elles « se séparent
+    /// d'elles-mêmes au pas suivant » : c'était faux.
     fn recoiling(&mut self, map: &World, dt: f32) -> bool {
         let Some(recoil) = self.recoil.as_mut() else {
             return false;
@@ -581,6 +602,21 @@ impl Monster {
     pub fn name(&self) -> &'static str {
         self.figure.name
     }
+}
+
+/// Vrai si ce pas éloigne du point donné.
+///
+/// **Les carrés se comparent sans racine** : ce qui est demandé est un ordre, pas une
+/// distance, et la racine est monotone.
+///
+/// **Strictement, et c'est une prudence et non une mesure** : un pas qui garde l'écart
+/// ne sort de rien, donc il n'a pas de raison de passer. L'égalité à la place n'a fait
+/// bouger aucune épreuve — deux créatures de même cap se séparent par d'autres voies,
+/// le décor ne les arrêtant pas au même instant —, donc ce `>` ne se prévaut d'aucun cas
+/// qu'il serait seul à traiter.
+fn recedes(here: Vec3, wanted: Vec3, from: Vec3) -> bool {
+    let (before, after) = (here - from, wanted - from);
+    after.dot(after) > before.dot(before)
 }
 
 /// Vrai si deux corps centrés là se recouvrent.
