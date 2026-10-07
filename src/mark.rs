@@ -22,9 +22,11 @@
 
 use std::sync::Arc;
 
-use screengine_play::{Affine3, Color, Context, Texture, Triangle, Vec3, VertexUv};
+use screengine_play::{
+    Affine3, Angle, Color, Context, Sprite, SpriteOrientation, Texture, Triangle, Vec3, VertexUv,
+};
 
-use crate::blot::blot;
+use crate::blot::{blot, spark};
 
 #[cfg(test)]
 mod tests;
@@ -78,6 +80,36 @@ const KEEP: usize = 16;
 const _: () = assert!(LIFT > 0.0);
 const _: () = assert!(LIFT < RADIUS / 16.0);
 
+/// Le demi-côté d'un éclat, en unités de monde.
+///
+/// **Plus petit qu'une marque** : il se pose sur une silhouette d'un mètre quatre-vingt
+/// et doit dire où le coup a porté, pas la recouvrir. La cote se juge à l'écran.
+const SPARK_RADIUS: f32 = 0.16;
+
+/// Combien de temps un éclat reste visible, en secondes.
+///
+/// **Trois images, comme l'éclair de la pose de tir et comme le recul** : les trois se
+/// répondent dans le même instant, et c'est ce qui fait lire un coup plutôt qu'une
+/// succession d'événements. Plus long, l'éclat deviendrait une marque posée sur la
+/// créature et la suivrait mal, puisqu'il ne bouge pas avec elle.
+const SPARK_TIME: f32 = 0.12;
+
+/// Le côté de la texture d'un éclat, en texels.
+const SPARK_SIDE: u32 = 32;
+
+/// La couleur du cœur d'un éclat.
+///
+/// **Presque blanche, et c'est la clarté qui porte la lisibilité** : l'habillage du
+/// décor changera, donc un éclat accordé à la teinte des murs d'aujourd'hui serait à
+/// refaire. Un cœur clair se lit sur n'importe quel fond, et d'autant mieux que le
+/// registre visé est sombre.
+const SPARK_CORE: [u8; 3] = [0xFF, 0xF0, 0xC0];
+
+/// Celle de son bord.
+///
+/// L'orange qui donne sa teinte au coup, là où le cœur donne sa force.
+const SPARK_EDGE: [u8; 3] = [0xE0, 0x60, 0x10];
+
 /// Une marque posée : où, et contre quoi.
 #[derive(Clone, Copy)]
 struct Mark {
@@ -85,6 +117,19 @@ struct Mark {
     at: Vec3,
     /// La normale de cette surface, unitaire.
     normal: Vec3,
+}
+
+/// Un éclat vivant : où il brille, et ce qu'il lui reste à vivre.
+///
+/// **Il ne suit pas la créature**, et c'est assumé : il dure trois images, pendant
+/// lesquelles elle parcourt au plus quelques centimètres. L'accrocher à elle demanderait
+/// de la désigner, donc de tenir un identifiant pour trois images.
+#[derive(Clone, Copy)]
+struct Spark {
+    /// Le point où le rayon est entré dans le volume.
+    at: Vec3,
+    /// Ce qu'il lui reste à vivre, en secondes.
+    left: f32,
 }
 
 /// Les marques vivantes, et la texture qu'elles partagent.
@@ -100,6 +145,14 @@ pub struct Marks {
     /// Sous `Arc` parce que la soumission le veut ainsi : le moteur garde la texture
     /// le temps de l'image, et le compteur est ce qui le lui permet sans copie.
     texture: Arc<Texture>,
+    /// Les éclats encore vivants.
+    ///
+    /// **Aucune borne de compte, là où les marques en ont une** : ils s'éteignent seuls
+    /// en trois images, donc leur nombre est borné par la cadence de tir et non par une
+    /// constante — à un coup par clic, il y en a un ou deux.
+    sparks: Vec<Spark>,
+    /// Le disque clair des éclats, découpé.
+    flash: Arc<Texture>,
 }
 
 impl Default for Marks {
@@ -114,7 +167,33 @@ impl Marks {
         Self {
             ring: Vec::with_capacity(KEEP),
             texture: Arc::new(blot(SIDE, CORE)),
+            sparks: Vec::new(),
+            flash: Arc::new(spark(SPARK_SIDE, SPARK_CORE, SPARK_EDGE)),
         }
+    }
+
+    /// Pose un éclat là où le rayon est entré dans une créature.
+    ///
+    /// **C'est toute la rétroaction visuelle d'un coup porté**, avec le recul : il n'y
+    /// a aucune surface de décor au point de contact, donc rien à marquer — mais il y a
+    /// un point, que le départage a calculé sur le même segment que le rayon.
+    pub fn flash(&mut self, at: Vec3) {
+        self.sparks.push(Spark {
+            at,
+            left: SPARK_TIME,
+        });
+    }
+
+    /// Fait vieillir les éclats, et jette ceux qui ont fini.
+    ///
+    /// **Les marques, elles, ne vieillissent pas** : elles restent jusqu'à ce que
+    /// l'anneau les chasse. C'est la différence entre une trace laissée sur un mur et
+    /// l'instant d'un coup.
+    pub fn advance(&mut self, dt: f32) {
+        for spark in &mut self.sparks {
+            spark.left -= dt;
+        }
+        self.sparks.retain(|spark| spark.left > 0.0);
     }
 
     /// Pose une marque au point de contact, orientée par la normale.
@@ -221,5 +300,35 @@ pub fn submit(
         )?;
     }
 
-    Ok(())
+    // **Les éclats en sprites et non en quadrilatères plaqués**, et c'est la nuance qui
+    // décide : un impact sur une créature n'a aucune surface pour l'orienter, donc il
+    // fait face à la caméra. Un quadrilatère orienté caméra ne porte pas de normale et
+    // n'en prend pas — il garde l'atténuation par la distance seule, ce qui est
+    // exactement ce qu'un éclat veut.
+    //
+    // **Un lot unique, là où les marques en ont un chacune** : leur nombre est borné par
+    // la cadence de tir et non par un anneau, donc un refus pour dépassement de capacité
+    // ne peut pas venir d'eux.
+    let sparks: Vec<Sprite> = marks
+        .sparks
+        .iter()
+        .map(|spark| Sprite {
+            center: spark.at,
+            half_width: SPARK_RADIUS,
+            half_height: SPARK_RADIUS,
+            u0: 0.0,
+            v0: 0.0,
+            u1: SPARK_SIDE as f32,
+            v1: SPARK_SIDE as f32,
+            roll: Angle::from_radians(0.0),
+            color: white,
+        })
+        .collect();
+
+    context.submit_sprites(
+        Affine3::IDENTITY,
+        &sparks,
+        Some(&marks.flash),
+        SpriteOrientation::Facing,
+    )
 }
