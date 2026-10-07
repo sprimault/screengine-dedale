@@ -17,12 +17,16 @@ cela s'adresse à quelqu'un.
 ### Ajouté
 - **Les tirs laissent une marque sur les murs**, au point touché et dans le plan de la
   surface — sur un sol, un plafond, une rampe comme sur une cloison.
+- **Un réticule marque le centre de la vue**, là où le tir part — et l'arme s'aligne
+  dessus.
 
 ***
 
 ### Added
 - **Shots leave a mark on the walls**, at the point hit and in the plane of the surface
   — on a floor, a ceiling, a ramp as on a wall.
+- **A reticle marks the centre of the view**, where the shot starts — and the weapon
+  lines up with it.
 
 ## [0.3.0] — 2026-10-06 — Les monstres
 

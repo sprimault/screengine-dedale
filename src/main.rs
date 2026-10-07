@@ -12,6 +12,7 @@
 mod blot;
 mod body;
 mod game;
+mod hud;
 mod mark;
 mod maze;
 mod monster;
@@ -28,6 +29,7 @@ mod test_support;
 mod tests;
 
 use game::Game;
+use hud::block;
 use maze::export;
 use maze::grid::{Grid, Settings, Shape, Side};
 use probe::Probe;
@@ -209,7 +211,11 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
         .probe
         .look(output, &session.scenery.map, &aim, scene::BACKGROUND);
 
+    // Le réticule après le plan, et il ne le croise pas : l'un est au coin, l'autre au
+    // centre. L'ordre ne tient donc qu'à ce que le réticule soit le dernier mot de
+    // l'image, comme ce qu'on regarde en tirant.
     plot(output, &session.scenery.maze, aim.cell);
+    hud::reticle::draw(output);
 }
 
 /// Le labyrinthe dessiné à plat, un étage par plan, dans le tampon de l'hôte.
@@ -424,15 +430,4 @@ fn ring(output: &mut Output<'_>, x: u32, y: u32, side: u32, color: [u8; 4]) {
     block(output, x, y + side - 1, side, 1, color);
     block(output, x, y, 1, side, color);
     block(output, x + side - 1, y, 1, side, color);
-}
-
-/// Un rectangle plein, borné par le tampon.
-fn block(output: &mut Output<'_>, x: u32, y: u32, width: u32, height: u32, color: [u8; 4]) {
-    for row in 0..height {
-        for column in 0..width {
-            if let Some(pixel) = output.pixel(x + column, y + row) {
-                pixel.copy_from_slice(&color);
-            }
-        }
-    }
 }
