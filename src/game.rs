@@ -181,10 +181,11 @@ impl Game {
         // l'image à venir montrera.
         fired.then(|| {
             self.weapon.shoot();
+            let ahead = self.ahead();
             let outcome = shot::resolve(
                 map,
                 self.camera.position,
-                self.ahead(),
+                ahead,
                 self.player.eye_cell(map),
                 &self.volumes(),
             );
@@ -193,10 +194,17 @@ impl Game {
             // conséquence de la géométrie et non une règle de goût : quand le rayon
             // s'arrête sur une créature, il n'y a aucune surface de décor au point de
             // contact. Ce qui montrera un coup sur un démon est son recul.
-            if outcome.struck == shot::Struck::Decor {
-                if let (Some(at), Some(hit)) = (outcome.shot.impact(), outcome.shot.hit) {
-                    self.marks.add(at, hit.normal);
+            match outcome.struck {
+                shot::Struck::Decor => {
+                    if let (Some(at), Some(hit)) = (outcome.shot.impact(), outcome.shot.hit) {
+                        self.marks.add(at, hit.normal);
+                    }
                 }
+                // **Le recul est toute la rétroaction d'un coup sur une créature**, et
+                // il n'y a rien d'autre à montrer : il n'existe aucune surface de décor
+                // au point de contact, donc aucune marque à poser.
+                shot::Struck::Volume(rank) => self.monsters[rank].knock(ahead),
+                shot::Struck::Nothing => {}
             }
 
             outcome

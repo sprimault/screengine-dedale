@@ -21,6 +21,8 @@
 //!
 //! Chacune a été vérifiée en la faisant échouer une fois, sur un code falsifié.
 
+use std::sync::OnceLock;
+
 use super::*;
 use crate::maze::export;
 use crate::maze::grid::Settings;
@@ -288,6 +290,63 @@ fn le_sprite_pose_ses_pieds_au_sol() {
 /// **Un pas, et non une position** : le balayage ne se prononce que sur un
 /// mouvement, donc la sonde descend. Un départ solide se signale avant qu'elle
 /// serve.
+/// Une créature seule, de la première silhouette, posée sur cette case.
+///
+/// **La population ne sert pas ici** : elle place trois créatures près de l'entrée et
+/// leur donne des caps répartis, là où le recul se mesure sur une seule, à un endroit
+/// choisi et sans voisine pour la gêner.
+///
+/// Le cap est celui que le rang zéro donne, soit le `+X` ; les épreuves qui en veulent
+/// un autre l'écrivent.
+fn lone(grid: &Grid, map: &World, at: (u32, u32, u32)) -> Monster {
+    Monster {
+        figure: &FIGURES[0],
+        idle: stub(),
+        walk: stub(),
+        shadow: stub(),
+        body: Body::stand(HALF, grid, map, at),
+        facing: 0.0,
+        motion: Motion::Idle,
+        phase: 0.0,
+        hindered: 0,
+        recoil: None,
+    }
+}
+
+/// Une planche d'un texel, partagée par toutes les créatures d'épreuve.
+///
+/// **Le déplacement ne lit aucune planche** : la marche et le recul ne touchent qu'au
+/// corps, au cap et au cycle, et les cotes qui décident — la foulée, le gabarit —
+/// viennent de la table des silhouettes. Ce qui regarde les planches, ce sont la
+/// sélection de vue et le rendu, qui ont leurs propres épreuves et les vraies images.
+///
+/// **Mesuré : décoder deux images de cinq cent douze texels par créature coûtait
+/// cinquante-huit secondes** sur le corpus des cloisons, pour des octets que rien
+/// n'échantillonne. Une épreuve qu'on hésite à lancer est une épreuve qu'on ne lance
+/// pas.
+fn stub() -> Arc<Texture> {
+    static SHEET: OnceLock<Arc<Texture>> = OnceLock::new();
+    SHEET
+        .get_or_init(|| {
+            Arc::new(
+                Texture::load(1, 1, &[0xFF, 0xFF, 0xFF, 0xFF])
+                    .expect("un texel blanc est une texture tenable"),
+            )
+        })
+        .clone()
+}
+
+/// La première case plate de ce labyrinthe.
+///
+/// **Plate, donc sans cage** : le sol d'une cage monte, et une créature posée sur un
+/// palier y part d'un départ dans le solide que le balayage refuse de départager.
+fn plain_case(grid: &Grid) -> (u32, u32, u32) {
+    crate::test_support::cases(grid)
+        .into_iter()
+        .find(|at| crate::test_support::plain(grid, *at))
+        .expect("le labyrinthe a une case plate")
+}
+
 fn buried(map: &World, monster: &Monster) -> bool {
     let centre = monster.at();
     let below = Vec3::new(centre.x, centre.y, centre.z - 1.0);
@@ -337,6 +396,262 @@ fn un_demon_qui_marche_ne_traverse_pas_le_decor() {
             }
         }
     }
+}
+
+/// Un recul pousse la créature dans la direction du coup, sur la distance annoncée.
+///
+/// **La distance est ce qui se vérifie**, pas le fait de bouger : c'est elle qui décide
+/// qu'un coup se lit, et un recul d'un dixième de ce qu'il annonce passerait un test de
+/// présence sans rien montrer à l'écran.
+///
+/// **En terrain dégagé et sans marche**, pour que la mesure porte sur le recul seul : la
+/// créature est posée au centre d'une case plate et le coup la pousse vers une case
+/// voisine ouverte.
+#[test]
+fn un_recul_pousse_de_la_distance_annoncee() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+
+    let (grid, map) = maze(SEEDS[0]);
+    let open = crate::test_support::cases(&grid)
+        .into_iter()
+        .find(|at| {
+            crate::test_support::plain(&grid, *at)
+                && crate::test_support::sides()
+                    .iter()
+                    .any(|side| !grid.has_wall(*at, *side))
+        })
+        .expect("le labyrinthe a une case plate ouverte");
+    let side = crate::test_support::sides()
+        .into_iter()
+        .find(|side| !grid.has_wall(open, *side))
+        .expect("cette case est ouverte quelque part");
+
+    let mut monster = lone(&grid, &map, open);
+    let before = monster.at();
+    let push = crate::test_support::unit(side);
+    monster.knock(push);
+
+    // Le recul court sur sa durée, puis la marche reprend : on s'arrête à la dernière
+    // image qui lui appartient encore.
+    let frames = (RECOIL_TIME / DT).ceil() as usize;
+    for _ in 0..frames {
+        monster.walk(&map, DT, false);
+    }
+
+    let gone = monster.at() - before;
+    let flat = Vec3::new(gone.x, gone.y, 0.0);
+    let expected = RECOIL_SPEED * RECOIL_TIME;
+    assert!(
+        (flat.dot(flat).sqrt() - expected).abs() <= expected / 8.0,
+        "le recul vers {side:?} a parcouru {} et non {expected}",
+        flat.dot(flat).sqrt()
+    );
+    assert!(
+        flat.dot(push) > 0.0,
+        "le recul vers {side:?} est parti dans l'autre sens : {flat:?}"
+    );
+}
+
+/// La distance d'un recul ne dépend pas de la cadence.
+///
+/// **Sans la troncature du dernier pas, elle en dépendrait** : un recul compté en images
+/// parcourrait deux fois plus à cent vingt images par seconde qu'à soixante, et le coup
+/// serait plus fort sur une machine rapide. C'est le genre d'écart qu'on ne voit jamais
+/// sur son propre poste.
+#[test]
+fn la_distance_d_un_recul_ne_depend_pas_de_la_cadence() {
+    let (grid, map) = maze(SEEDS[0]);
+    let at = plain_case(&grid);
+
+    let push = Vec3::new(1.0, 0.0, 0.0);
+    let run = |dt: f32| {
+        let mut monster = lone(&grid, &map, at);
+        let before = monster.at();
+        monster.knock(push);
+        for _ in 0..(RECOIL_TIME / dt).ceil() as usize {
+            monster.walk(&map, dt, false);
+        }
+        let gone = monster.at() - before;
+        Vec3::new(gone.x, gone.y, 0.0).dot(push)
+    };
+
+    let (slow, quick) = (run(1.0 / 30.0), run(1.0 / 120.0));
+    assert!(
+        (slow - quick).abs() <= RECOIL_SPEED * RECOIL_TIME / 16.0,
+        "le recul vaut {slow} à trente images par seconde et {quick} à cent vingt"
+    );
+}
+
+/// Un recul ne touche ni la patience de la créature, ni son cycle de marche.
+///
+/// **Les deux couplages que le lot existe pour couper**, et aucun des deux ne se verrait
+/// en regardant : une patience remise à zéro fait qu'une créature reculée contre un mur
+/// cesse de s'en détourner — ce qui se lit comme un défaut de la marche, des secondes
+/// plus tard et ailleurs —, et une phase qui avance fait défiler les jambes d'une
+/// créature poussée en arrière, ce qu'on prend pour un cycle mal réglé.
+///
+/// **La patience est portée à une valeur franche avant le coup** : à zéro, un recul qui
+/// la remettrait à zéro ne se distinguerait pas d'un recul qui n'y touche pas.
+#[test]
+fn un_recul_ne_touche_ni_la_patience_ni_le_cycle() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+
+    let (grid, map) = maze(SEEDS[0]);
+    let at = plain_case(&grid);
+    let mut monster = lone(&grid, &map, at);
+
+    monster.hindered = PATIENCE / 2;
+    monster.motion = Motion::Walk;
+    monster.phase = 0.25;
+    let (patience, motion, phase) = (monster.hindered, monster.motion, monster.phase);
+
+    monster.knock(Vec3::new(1.0, 0.0, 0.0));
+    monster.walk(&map, DT, false);
+
+    assert_eq!(
+        monster.hindered, patience,
+        "le recul a touché la patience, donc la créature cessera de se détourner"
+    );
+    assert_eq!(monster.motion, motion, "le recul a changé le cycle");
+    assert_eq!(
+        monster.phase, phase,
+        "le recul a fait défiler le cycle, donc les jambes marchent en arrière"
+    );
+}
+
+/// Un coup vertical ne soulève pas la créature, et ne la pousse pas non plus.
+///
+/// **La direction est ramenée à l'horizontale**, donc un tir en plongée pousse par sa
+/// composante au sol — et un tir strictement vertical n'en a aucune. Soulever la
+/// créature ou l'enfoncer serait montrer autre chose que ce qu'on veut : qu'elle
+/// encaisse.
+#[test]
+fn un_coup_vertical_ne_souleve_rien() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+
+    let (grid, map) = maze(SEEDS[0]);
+    let at = plain_case(&grid);
+    let mut monster = lone(&grid, &map, at);
+
+    monster.knock(Vec3::new(0.0, 0.0, 1.0));
+    assert!(
+        monster.recoil.is_none(),
+        "un coup strictement vertical a imprimé un recul"
+    );
+
+    // Et un coup plongeant en imprime un, mais à plat : sans ce second cas, un refus
+    // de tout passerait.
+    let before = monster.at();
+    monster.knock(Vec3::new(1.0, 0.0, -1.0));
+    for _ in 0..(RECOIL_TIME / DT).ceil() as usize {
+        monster.walk(&map, DT, false);
+    }
+    let gone = monster.at() - before;
+    assert!(
+        gone.x > 0.0,
+        "un coup plongeant n'a pas poussé à l'horizontale : {gone:?}"
+    );
+}
+
+/// Un coup pendant un recul le relance au lieu de s'y ajouter.
+///
+/// **Sinon une rafale composerait les vitesses** et la créature partirait d'un bond au
+/// second coup. C'est la même clause que la pose de tir de l'arme, qui se relance.
+#[test]
+fn un_coup_pendant_un_recul_le_relance() {
+    let (grid, map) = maze(SEEDS[0]);
+    let at = plain_case(&grid);
+    let mut monster = lone(&grid, &map, at);
+
+    let push = Vec3::new(1.0, 0.0, 0.0);
+    monster.knock(push);
+    monster.walk(&map, 1.0 / 60.0, false);
+    monster.knock(push);
+
+    let recoil = monster.recoil.expect("le coup a relancé le recul");
+    assert_eq!(
+        recoil.left, RECOIL_TIME,
+        "le second coup n'a pas remis la durée à son plein"
+    );
+    let speed = recoil.speed.dot(recoil.speed).sqrt();
+    assert!(
+        (speed - RECOIL_SPEED).abs() <= RECOIL_SPEED / 1024.0,
+        "deux coups ont composé leur vitesse : {speed} au lieu de {RECOIL_SPEED}"
+    );
+}
+
+/// Une créature reculée ne traverse pas le décor.
+///
+/// **Elle part d'une pose au contact**, et c'est la clause du projet : le centre d'une
+/// case est à plus d'un mètre de toute paroi, donc un recul éprouvé de là ne verrait
+/// jamais une créature poussée **dans** un mur — qui est pourtant le cas normal, une
+/// créature longeant les parois.
+///
+/// **Ce qu'elle garde est que le recul passe par le corps**, et rien de plus : la
+/// propriété est tenue par le type tant qu'il est le seul chemin de déplacement — la
+/// pose du corps est privée, donc rien dans ce module ne peut la déplacer autrement.
+/// Vérifié en centuplant la vitesse du recul : le balayage l'arrête quand même. Elle
+/// attraperait un recul qu'on ferait un jour passer à côté du corps « pour que ça
+/// glisse mieux », et c'est sa seule raison d'être.
+///
+/// **Deux graines suffisent donc**, là où le corpus entier ne mesurerait que son
+/// propre temps : ce qui est éprouvé ne dépend pas de la forme du labyrinthe.
+#[test]
+fn une_creature_reculee_ne_traverse_pas_le_decor() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+
+    let mut walled = 0;
+    for seed in [SEEDS[0], SEEDS[4]] {
+        let (grid, map) = maze(seed);
+        for at in crate::test_support::cases(&grid) {
+            if !crate::test_support::plain(&grid, at) {
+                continue;
+            }
+            for side in crate::test_support::sides() {
+                if !grid.has_wall(at, side) {
+                    continue;
+                }
+                walled += 1;
+
+                let mut monster = lone(&grid, &map, at);
+                // Au contact : on marche d'abord vers la cloison, puis on y est poussé.
+                monster.facing = {
+                    let (dx, dy, _) = side.step();
+                    (dy as f32).atan2(dx as f32)
+                };
+                for _ in 0..60 {
+                    monster.walk(&map, DT, false);
+                }
+
+                monster.knock(crate::test_support::unit(side));
+                for _ in 0..(RECOIL_TIME / DT).ceil() as usize {
+                    monster.walk(&map, DT, false);
+                    assert_ne!(
+                        monster.body.cell(),
+                        0,
+                        "graine {seed:#x}, case {at:?} : reculé vers {side:?}, \
+                         le démon a quitté le décor en {:?}",
+                        monster.at()
+                    );
+                    assert!(
+                        !buried(&map, &monster),
+                        "graine {seed:#x}, case {at:?} : reculé vers {side:?}, \
+                         le démon est dans le solide en {:?}",
+                        monster.at()
+                    );
+                }
+            }
+        }
+    }
+
+    assert!(
+        walled > 500,
+        "seules {walled} cloisons ont été éprouvées, le corpus n'en est pas un"
+    );
 }
 
 /// Deux créatures ne se marchent pas dessus.
