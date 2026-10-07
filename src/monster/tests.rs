@@ -303,6 +303,7 @@ fn lone(grid: &Grid, map: &World, at: (u32, u32, u32)) -> Monster {
         figure: &FIGURES[0],
         idle: stub(),
         walk: stub(),
+        dead: stub(),
         shadow: stub(),
         body: Body::stand(HALF, grid, map, at),
         facing: 0.0,
@@ -310,6 +311,7 @@ fn lone(grid: &Grid, map: &World, at: (u32, u32, u32)) -> Monster {
         phase: 0.0,
         hindered: 0,
         recoil: None,
+        life: LIFE,
     }
 }
 
@@ -651,6 +653,152 @@ fn une_creature_reculee_ne_traverse_pas_le_decor() {
     assert!(
         walled > 500,
         "seules {walled} cloisons ont été éprouvées, le corpus n'en est pas un"
+    );
+}
+
+/// Trois coups abattent une créature, et le troisième ne la recule pas.
+///
+/// **Les deux ensemble, parce que le second découle du premier** : le coup fatal fait
+/// tomber là où on est, et un recul par-dessus ferait glisser le corps en tombant.
+///
+/// **Le compte se vérifie par en dessous aussi** : une créature encore debout au
+/// troisième coup dirait que la vie ne décroît pas, et une créature tombée au deuxième
+/// que le chiffre n'est pas celui qu'on croit.
+#[test]
+fn trois_coups_abattent_une_creature() {
+    let (grid, map) = maze(SEEDS[0]);
+    let mut monster = lone(&grid, &map, plain_case(&grid));
+    let push = Vec3::new(1.0, 0.0, 0.0);
+
+    for coup in 1..LIFE {
+        monster.knock(push);
+        assert!(
+            !monster.fallen(),
+            "la créature tombe au coup {coup} alors qu'elle en encaisse {LIFE}"
+        );
+        assert!(
+            monster.recoil.is_some(),
+            "le coup {coup} n'a pas reculé la créature"
+        );
+    }
+
+    monster.knock(push);
+    assert!(
+        monster.fallen(),
+        "la créature tient encore après {LIFE} coups"
+    );
+    assert_eq!(monster.motion, Motion::Dead, "elle ne joue pas sa mort");
+    assert_eq!(monster.phase, 0.0, "son cycle de mort ne part pas du début");
+    assert!(
+        monster.recoil.is_none(),
+        "le coup fatal recule la créature, donc elle glisse en tombant"
+    );
+}
+
+/// Une créature tombée ne marche plus, mais son cycle avance et elle tombe encore.
+///
+/// **Trois propriétés qui se tiennent** : sans la première, un cadavre se promène ;
+/// sans la deuxième, il reste figé sur sa première trame, puisque la phase de mort
+/// n'avance ni avec la distance — il n'en parcourt aucune — ni toute seule ; sans la
+/// troisième, un démon abattu au bord d'un palier resterait en l'air.
+#[test]
+fn une_creature_tombee_ne_marche_plus() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+
+    let (grid, map) = maze(SEEDS[0]);
+    let mut monster = lone(&grid, &map, plain_case(&grid));
+    for _ in 0..LIFE {
+        monster.knock(Vec3::new(1.0, 0.0, 0.0));
+    }
+
+    let before = monster.at();
+    for _ in 0..60 {
+        monster.walk(&map, DT, false);
+    }
+
+    let gone = monster.at() - before;
+    let flat = Vec3::new(gone.x, gone.y, 0.0);
+    assert!(
+        flat.dot(flat).sqrt() <= 0.01,
+        "la créature tombée a parcouru {} à l'horizontale",
+        flat.dot(flat).sqrt()
+    );
+    assert!(
+        monster.phase > 0.0,
+        "le cycle de mort n'a pas avancé en une seconde"
+    );
+    assert_eq!(monster.motion, Motion::Dead, "elle a changé de cycle");
+}
+
+/// Le cycle de mort s'arrête sur sa dernière trame et n'y revient pas.
+///
+/// **C'est ce qui distingue la mort des deux autres cycles**, et la planche le porte
+/// déjà : seize trames au lieu de huit, parce qu'elle doit tenir entière plutôt que de
+/// se boucler. Une mort qui recommencerait ferait se relever le démon.
+#[test]
+fn le_cycle_de_mort_garde_sa_derniere_trame() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+
+    let (grid, map) = maze(SEEDS[0]);
+    let mut monster = lone(&grid, &map, plain_case(&grid));
+    for _ in 0..LIFE {
+        monster.knock(Vec3::new(1.0, 0.0, 0.0));
+    }
+
+    // Dix fois la durée du cycle : largement de quoi reboucler si rien ne l'en
+    // empêchait.
+    let last = sheet::column(Motion::Dead, 1.0);
+    for _ in 0..(10.0 * DEAD_PERIOD / DT) as usize {
+        monster.walk(&map, DT, false);
+    }
+
+    assert_eq!(
+        sheet::column(Motion::Dead, monster.phase),
+        last,
+        "après dix cycles, la mort est revenue à la trame {} au lieu de rester \
+         sur la dernière",
+        sheet::column(Motion::Dead, monster.phase)
+    );
+}
+
+/// Une créature abattue finit par ne plus rien laisser.
+///
+/// **Deux temps, et le second est une conséquence du premier** : elle est consommée
+/// quand son cycle de mort est joué en entier — c'est le seul moment où la silhouette
+/// se donne à voir, et l'effacer avant perdrait la planche —, et elle ne l'est pas
+/// avant, sinon le corps disparaîtrait en pleine chute.
+#[test]
+fn une_creature_abattue_finit_par_s_effacer() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+
+    let (grid, map) = maze(SEEDS[0]);
+    let mut monster = lone(&grid, &map, plain_case(&grid));
+    for _ in 0..LIFE {
+        monster.knock(Vec3::new(1.0, 0.0, 0.0));
+    }
+    assert!(
+        !monster.spent(),
+        "la créature est effacée avant d'avoir joué sa chute"
+    );
+
+    // À une image de la fin du cycle, elle est encore là.
+    let frames = (DEAD_PERIOD / DT).ceil() as usize;
+    for _ in 0..frames - 1 {
+        monster.walk(&map, DT, false);
+    }
+    assert!(
+        !monster.spent(),
+        "la chute s'interrompt avant ses {DEAD_PERIOD} secondes"
+    );
+
+    monster.walk(&map, DT, false);
+    assert!(
+        monster.spent(),
+        "la chute est jouée et la créature reste, à la phase {}",
+        monster.phase
     );
 }
 
@@ -1128,7 +1276,14 @@ fn la_marge_annoncee_est_la_plus_frequente() {
     let side = FRAME as u32;
 
     for figure in &FIGURES {
-        for (bytes, motion) in [(figure.idle, Motion::Idle), (figure.walk, Motion::Walk)] {
+        // **Les trois cycles, et le second temps n'en couvre qu'un** : la mort y
+        // échapperait de toute façon, une créature qui tombe changeant de hauteur à
+        // chaque trame. C'est donc le mode seul qui l'ancre, comme pour la marche.
+        for (bytes, motion) in [
+            (figure.idle, Motion::Idle),
+            (figure.walk, Motion::Walk),
+            (figure.dead, Motion::Dead),
+        ] {
             let sheet = load_png_masked(bytes).expect("planche du dépôt valide");
             let (views, frames) = (sheet.height() / side, sheet.width() / side);
 
