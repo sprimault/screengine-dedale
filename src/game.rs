@@ -13,6 +13,7 @@
 
 use screengine_play::{Affine3, Error, FreeCamera, KeyCode, MouseButton, Tick, Vec3, World};
 
+use crate::mark::Marks;
 use crate::maze::grid::Grid;
 use crate::monster::{self, Monster};
 use crate::player::Player;
@@ -98,6 +99,12 @@ pub struct Game {
     camera: FreeCamera,
     /// L'arme qu'il tient, et où elle en est de son balancement.
     weapon: Weapon,
+    /// Les marques d'impact posées sur le décor, et leur disque.
+    ///
+    /// **Un état de partie, donc jeté au rechargement de la carte** : les identifiants
+    /// de surface y survivraient, mais un décor remplacé n'a pas à garder les impacts
+    /// du précédent.
+    marks: Marks,
     /// Les créatures qui parcourent le labyrinthe.
     ///
     /// **Une liste et non trois champs**, parce que rien ici ne distingue une
@@ -121,6 +128,7 @@ impl Game {
         Ok(Self {
             weapon: Weapon::new(camera.yaw)?,
             monsters: monster::population(grid, map)?,
+            marks: Marks::new(),
             camera,
             player,
         })
@@ -173,13 +181,25 @@ impl Game {
         // l'image à venir montrera.
         fired.then(|| {
             self.weapon.shoot();
-            shot::resolve(
+            let outcome = shot::resolve(
                 map,
                 self.camera.position,
                 self.ahead(),
                 self.player.eye_cell(map),
                 &self.volumes(),
-            )
+            );
+
+            // **Une marque ne se pose que si le décor a gagné**, et c'est une
+            // conséquence de la géométrie et non une règle de goût : quand le rayon
+            // s'arrête sur une créature, il n'y a aucune surface de décor au point de
+            // contact. Ce qui montrera un coup sur un démon est son recul.
+            if outcome.struck == shot::Struck::Decor {
+                if let (Some(at), Some(hit)) = (outcome.shot.impact(), outcome.shot.hit) {
+                    self.marks.add(at, hit.normal);
+                }
+            }
+
+            outcome
         })
     }
 
@@ -272,6 +292,11 @@ impl Game {
     /// Les créatures, que le rendu soumet entre le décor et l'arme.
     pub fn monsters(&self) -> &[Monster] {
         &self.monsters
+    }
+
+    /// Les marques d'impact, que le rendu soumet juste après le décor.
+    pub fn marks(&self) -> &Marks {
+        &self.marks
     }
 
     /// La créature la plus proche de l'œil : sa silhouette et sa distance.

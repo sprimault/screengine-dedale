@@ -14,6 +14,16 @@ cela s'adresse à quelqu'un.
 
 ## [Non publié]
 
+### Ajouté
+- **Les tirs laissent une marque sur les murs**, au point touché et dans le plan de la
+  surface — sur un sol, un plafond, une rampe comme sur une cloison.
+
+***
+
+### Added
+- **Shots leave a mark on the walls**, at the point hit and in the plane of the surface
+  — on a floor, a ceiling, a ramp as on a wall.
+
 ## [0.3.0] — 2026-10-06 — Les monstres
 
 ### Ajouté
