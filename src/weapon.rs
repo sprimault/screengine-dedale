@@ -72,7 +72,14 @@ const EXTENT: (f32, f32) = (0.09, 0.09);
 /// **Assez bas pour que le quadrilatère sorte de l'image par le bas** : centré, il
 /// donne des mains qui flottent au milieu de l'écran et paraissent lointaines. Ce
 /// qui les met devant l'œil, c'est qu'on n'en voie pas le bas.
-const OFFSET: (f32, f32) = (0.032, -0.094);
+///
+/// **Le latéral n'est plus un cadrage mais un alignement**, et c'est le réticule qui
+/// l'a imposé : il marque le centre de la vue, d'où le rayon part, et une arme posée
+/// ailleurs désigne un autre point que celui qu'on touche — on tire à côté de ce qu'on
+/// pointe. La bouche du canon est dessinée à deux millièmes à gauche du centre de sa
+/// planche, donc le quadrilatère se décale d'autant à droite pour l'amener dans l'axe.
+/// `le_canon_tombe_dans_l_axe_du_regard` tient les deux ensemble.
+const OFFSET: (f32, f32) = (0.0026, -0.094);
 
 /// Le débattement du balancement, latéral puis vertical.
 const SWAY: (f32, f32) = (0.016, 0.010);

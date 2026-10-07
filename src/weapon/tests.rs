@@ -12,6 +12,54 @@
 
 use super::*;
 
+/// La colonne de la bouche du canon dans la planche, en texels.
+///
+/// **C'est le texel opaque le plus haut**, et c'est ce qui rend le repère exact plutôt
+/// qu'estimé à l'œil sur une capture : le revolver pointe vers le haut, donc rien du
+/// dessin ne le dépasse. À égalité de hauteur, la moyenne des colonnes — la bouche est
+/// large de quelques texels.
+fn muzzle(sheet: &Texture) -> f32 {
+    let side = SIDE as u32;
+    for v in 0..side {
+        let row: Vec<u32> = (0..side)
+            .filter(|u| sheet.texel(0, *u as i32, v as i32) >> 24 != 0)
+            .collect();
+        if !row.is_empty() {
+            return row.iter().sum::<u32>() as f32 / row.len() as f32;
+        }
+    }
+    unreachable!("la planche de l'arme n'est pas vide")
+}
+
+/// Le canon tombe dans l'axe du regard, là où le réticule marque le centre.
+///
+/// **Sans elle, l'alignement se perd en silence** : il tient à deux choses qui ne se
+/// voient pas ensemble — le décalage latéral de l'arme, et l'endroit où la bouche est
+/// dessinée dans sa planche. Une planche refaite d'un geste un peu différent décalerait
+/// la visée sans qu'aucune autre épreuve ne bouge, et le symptôme serait qu'on tire à
+/// côté de ce qu'on pointe.
+///
+/// **La tolérance est de deux texels de planche**, soit moins d'un pixel à la résolution
+/// interne : c'est le grain du dessin, et viser plus fin n'aurait pas de sens.
+#[test]
+fn le_canon_tombe_dans_l_axe_du_regard() {
+    let weapon = Weapon::new(0.0).expect("planche du dépôt valide");
+
+    // La colonne, ramenée en unités de monde depuis le centre du quadrilatère : les
+    // coordonnées de texture vont de zéro à `SIDE` sur une largeur de deux `EXTENT`.
+    let from_centre = EXTENT.0 * (2.0 * muzzle(&weapon.rest) / SIDE - 1.0);
+    let aside = OFFSET.0 + from_centre;
+
+    // Deux texels de planche, convertis dans la même unité.
+    let slack = EXTENT.0 * 2.0 * 2.0 / SIDE;
+    assert!(
+        aside.abs() <= slack,
+        "la bouche du canon est à {aside} de l'axe du regard, soit {} texels : \
+         le réticule ne désigne pas ce que l'arme pointe",
+        aside * SIDE / (2.0 * EXTENT.0)
+    );
+}
+
 /// La phase avance avec la distance, et pas avec le temps.
 ///
 /// **C'est l'instrument de mesure du déplacement**, et c'est ce qui en fait une
