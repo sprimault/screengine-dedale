@@ -47,3 +47,50 @@ pub fn blot(side: u32, core: f32) -> Texture {
     Texture::load(side, side, &bytes)
         .unwrap_or_else(|_| unreachable!("carrée, puissance de deux, et de la bonne longueur"))
 }
+
+/// Un disque **clair et découpé**, du cœur au bord, à transparence binaire.
+///
+/// **L'inverse du précédent, et pour l'inverse des raisons** : une surface modulée ne
+/// peut qu'assombrir, donc elle ne sert pas un éclat qui doit se détacher d'une
+/// silhouette sombre. Celui-ci se peint, donc il éclaircit — au prix d'un bord franc,
+/// la transparence du moteur étant binaire, et c'est ce que le dégradé de couleur fait
+/// oublier à cette taille.
+///
+/// **La clarté porte la lisibilité, la teinte ne fait que la colorer.** C'est ce qui le
+/// rend indépendant du décor : l'habillage de ce labyrinthe changera, et un éclat accordé
+/// à la teinte des murs d'aujourd'hui serait à refaire.
+///
+/// `core` et `edge` sont les deux couleurs interpolées du centre vers le rayon ; au-delà,
+/// le texel est transparent, donc ni peint ni inscrit dans la profondeur.
+pub fn spark(side: u32, core: [u8; 3], edge: [u8; 3]) -> Texture {
+    let mut bytes = Vec::with_capacity((side * side) as usize * 4);
+    let half = side as f32 / 2.0;
+
+    for v in 0..side {
+        for u in 0..side {
+            let (dx, dy) = (u as f32 + 0.5 - half, v as f32 + 0.5 - half);
+            // La racine sert ici, là où le disque modulant s'en passe : la couleur
+            // s'interpole sur le **rayon** et non sur son carré, sinon l'orange
+            // n'occuperait qu'un anneau mince contre le bord.
+            let fade = ((dx * dx + dy * dy).sqrt() / half).min(1.0);
+            let blend = |from: u8, to: u8| {
+                (f32::from(from) + (f32::from(to) - f32::from(from)) * fade) as u8
+            };
+
+            bytes.extend_from_slice(&[
+                blend(core[0], edge[0]),
+                blend(core[1], edge[1]),
+                blend(core[2], edge[2]),
+                // Hors du disque inscrit dans le carré, rien n'est peint : c'est la
+                // découpe, et le seuil du moteur est à 128.
+                match fade < 1.0 {
+                    true => 0xFF,
+                    false => 0x00,
+                },
+            ]);
+        }
+    }
+
+    Texture::load_masked(side, side, &bytes)
+        .unwrap_or_else(|_| unreachable!("carrée, puissance de deux, et de la bonne longueur"))
+}

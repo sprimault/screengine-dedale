@@ -175,6 +175,10 @@ impl Game {
         // une paroi, ou une autre créature.
         monster::stroll(&mut self.monsters, map, tick.dt());
 
+        // Les éclats s'éteignent d'eux-mêmes, et il faut donc leur donner le temps qui
+        // passe — les marques, elles, n'en ont pas besoin : seul l'anneau les chasse.
+        self.marks.advance(tick.dt());
+
         // **Le tir vient après le regard et après le pas**, et l'ordre compte : lu
         // avant, il serait parti de l'orientation de l'image précédente, soit un
         // cran derrière ce que la souris vient de faire. Il part donc de la pose que
@@ -200,10 +204,17 @@ impl Game {
                         self.marks.add(at, hit.normal);
                     }
                 }
-                // **Le recul est toute la rétroaction d'un coup sur une créature**, et
-                // il n'y a rien d'autre à montrer : il n'existe aucune surface de décor
-                // au point de contact, donc aucune marque à poser.
-                shot::Struck::Volume(rank) => self.monsters[rank].knock(ahead),
+                // **Un recul et un éclat, et les deux se compensent** : le premier dit
+                // que le coup a porté, le second où. Aucune marque en revanche — il
+                // n'existe aucune surface de décor au point de contact, donc rien à
+                // plaquer, et c'est le sprite qui s'en charge.
+                shot::Struck::Volume(rank) => {
+                    self.monsters[rank].knock(ahead);
+                    if let Some(reach) = outcome.nearest {
+                        let span = outcome.shot.to - outcome.shot.from;
+                        self.marks.flash(outcome.shot.from + span * reach.at);
+                    }
+                }
                 shot::Struck::Nothing => {}
             }
 

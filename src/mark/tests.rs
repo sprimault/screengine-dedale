@@ -199,6 +199,63 @@ fn l_anneau_garde_les_dernieres_marques() {
     );
 }
 
+/// Un éclat s'éteint de lui-même, et au bout du temps annoncé.
+///
+/// **C'est ce qui le sépare d'une marque** : l'une est une trace sur un mur, l'autre
+/// l'instant d'un coup. Un éclat qui resterait suivrait mal sa créature, puisqu'il ne
+/// bouge pas avec elle — et il finirait par en constellier le couloir.
+#[test]
+fn un_eclat_s_eteint_au_bout_de_son_temps() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+
+    let mut marks = Marks::new();
+    marks.flash(Vec3::new(1.0, 2.0, 3.0));
+    assert_eq!(marks.sparks.len(), 1);
+
+    // À une image de la fin, il brille encore.
+    let frames = (SPARK_TIME / DT).ceil() as usize;
+    for _ in 0..frames - 1 {
+        marks.advance(DT);
+    }
+    assert_eq!(
+        marks.sparks.len(),
+        1,
+        "l'éclat s'est éteint avant ses {SPARK_TIME} secondes"
+    );
+
+    marks.advance(DT);
+    assert_eq!(
+        marks.sparks.len(),
+        0,
+        "l'éclat survit à son temps, donc il restera sur le décor"
+    );
+}
+
+/// Les éclats s'éteignent sans toucher aux marques.
+///
+/// **Les deux anneaux ne se gouvernent pas de la même façon**, et c'est tout l'objet de
+/// les séparer : les marques attendent que l'anneau les chasse, les éclats comptent leur
+/// temps. Un vieillissement qui emporterait les marques effacerait les impacts du décor
+/// trois images après les avoir posés.
+#[test]
+fn le_temps_n_efface_pas_les_marques() {
+    let mut marks = Marks::new();
+    marks.add(Vec3::new(1.0, 2.0, 3.0), Vec3::new(0.0, 0.0, 1.0));
+    marks.flash(Vec3::new(1.0, 2.0, 3.0));
+
+    for _ in 0..600 {
+        marks.advance(1.0 / 60.0);
+    }
+
+    assert_eq!(marks.sparks.len(), 0, "les éclats n'ont pas tous fini");
+    assert_eq!(
+        marks.ring.len(),
+        1,
+        "dix secondes ont effacé une marque que seul l'anneau devait chasser"
+    );
+}
+
 /// Une normale nulle ne pose aucune marque.
 ///
 /// **Le moteur rend une normale nulle dans deux cas** — rien n'a été touché, et le

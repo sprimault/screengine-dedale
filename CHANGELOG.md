@@ -19,6 +19,8 @@ cela s'adresse à quelqu'un.
   surface — sur un sol, un plafond, une rampe comme sur une cloison.
 - **Un réticule marque le centre de la vue**, là où le tir part — et l'arme s'aligne
   dessus.
+- **Les démons encaissent les coups** : ils reculent sous l'impact, et un éclat marque le
+  point touché.
 
 ***
 
@@ -27,6 +29,8 @@ cela s'adresse à quelqu'un.
   — on a floor, a ceiling, a ramp as on a wall.
 - **A reticle marks the centre of the view**, where the shot starts — and the weapon
   lines up with it.
+- **Demons take the hits**: they are knocked back by the impact, and a spark marks the
+  point that was hit.
 
 ## [0.3.0] — 2026-10-06 — Les monstres
 

@@ -83,6 +83,82 @@ fn le_disque_s_eclaircit_du_centre_au_bord() {
     assert_eq!(previous, 0xFF, "la diagonale n'atteint pas le blanc");
 }
 
+/// Les composantes d'un texel, dans l'ordre que le moteur assemble.
+///
+/// Il lit les octets d'entrée en petit-boutien, donc le rouge est de poids faible et
+/// l'alpha de poids fort — ce dernier étant le seul qui décide, pour une texture
+/// masquée, si le texel est peint.
+fn rgba(texture: &Texture, u: u32, v: u32) -> [u8; 4] {
+    let texel = texture.texel(0, u as i32, v as i32);
+    [
+        texel as u8,
+        (texel >> 8) as u8,
+        (texel >> 16) as u8,
+        (texel >> 24) as u8,
+    ]
+}
+
+/// L'éclat porte sa couleur de cœur au centre et celle de bord au rayon.
+///
+/// **Les deux ensemble, parce qu'une seule ne dit rien** : un éclat uniformément clair
+/// passerait le premier point, un éclat uniformément orange le second. C'est le dégradé
+/// qui fait lire un impact plutôt qu'une pastille.
+#[test]
+fn l_eclat_va_du_coeur_au_bord() {
+    const CORE: [u8; 3] = [0xFF, 0xF0, 0xC0];
+    const EDGE: [u8; 3] = [0xE0, 0x60, 0x10];
+
+    let disc = spark(SIDE, CORE, EDGE);
+    let middle = SIDE / 2;
+
+    // Au centre, la couleur du cœur — à un texel près, le centre exact tombant entre
+    // quatre texels.
+    let core = rgba(&disc, middle, middle);
+    for axis in 0..3 {
+        assert!(
+            core[axis].abs_diff(CORE[axis]) <= 8,
+            "au centre, la composante {axis} vaut {} et non {}",
+            core[axis],
+            CORE[axis]
+        );
+    }
+
+    // Au bord du disque, sur l'axe horizontal, la couleur de bord : le dernier texel
+    // encore peint avant la découpe.
+    let rim = rgba(&disc, SIDE - 1, middle);
+    assert_eq!(rim[3], 0xFF, "le bord du disque n'est pas peint");
+    assert!(
+        rim[1] < core[1],
+        "le bord est aussi clair que le cœur : {} contre {}",
+        rim[1],
+        core[1]
+    );
+}
+
+/// L'éclat est découpé en disque, donc ses coins ne sont pas peints.
+///
+/// **Sans la découpe, l'impact serait un carré** — et un carré clair sur une silhouette
+/// sombre se lit comme un défaut, pas comme un coup. La transparence du moteur étant
+/// binaire, c'est l'alpha nul qui découpe, et un texel transparent n'est ni peint ni
+/// inscrit dans la profondeur.
+#[test]
+fn l_eclat_est_decoupe_en_disque() {
+    let disc = spark(SIDE, [0xFF, 0xF0, 0xC0], [0xE0, 0x60, 0x10]);
+    let last = SIDE - 1;
+
+    for (u, v) in [(0, 0), (last, 0), (0, last), (last, last)] {
+        assert_eq!(
+            rgba(&disc, u, v)[3],
+            0x00,
+            "le coin ({u}, {v}) est peint, donc l'éclat est un carré"
+        );
+    }
+
+    // Et le centre l'est : sans ce second cas, une texture entièrement transparente
+    // passerait.
+    assert_eq!(rgba(&disc, SIDE / 2, SIDE / 2)[3], 0xFF);
+}
+
 /// La densité du centre est ce qui sépare deux disques, à côté égal.
 ///
 /// **Sans elle, le paramètre serait ignoré en silence** : les deux appelants du module
