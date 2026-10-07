@@ -11,13 +11,14 @@
 //! La partie **lit** le monde, en revanche, et c'est normal : suivre sa cellule
 //! demande d'interroger la carte.
 
-use screengine_play::{Error, FreeCamera, KeyCode, MouseButton, Tick, Vec3, World};
+use screengine_play::{Affine3, Error, FreeCamera, KeyCode, MouseButton, Tick, Vec3, World};
 
 use crate::maze::grid::Grid;
 use crate::monster::{self, Monster};
 use crate::player::Player;
 use crate::probe::Aim;
 use crate::scene::View;
+use crate::shot::{self, Shot};
 use crate::weapon::Weapon;
 
 #[cfg(test)]
@@ -125,11 +126,16 @@ impl Game {
         })
     }
 
-    /// Avance d'un pas : la caméra bouge, et sa cellule la suit.
+    /// Avance d'un pas : la caméra bouge, sa cellule la suit, et rend le tir du pas.
     ///
     /// **Le suivi se fait ici et pas au rendu**, parce qu'il dépend de deux poses
     /// successives et qu'une image peut ne pas être dessinée à chaque pas.
-    pub fn step(&mut self, tick: &mut Tick<'_>, map: &World) {
+    ///
+    /// **Le tir est rendu plutôt que gardé**, et c'est ce qui le distingue du reste :
+    /// un tir est un événement d'un seul pas, là où la pose et la cellule sont des
+    /// états. Le garder en champ obligerait à l'effacer, donc à décider quand — et
+    /// le relevé, qui est son seul lecteur aujourd'hui, vit dans la boucle.
+    pub fn step(&mut self, tick: &mut Tick<'_>, map: &World) -> Option<Shot> {
         // La vue ne suit la souris que le curseur pris, et il ne l'est pas à
         // l'ouverture : une fenêtre qui s'en emparerait laisserait chercher
         // comment le récupérer. Le clic gauche le prend, celui du milieu le rend
@@ -140,11 +146,7 @@ impl Game {
         if tick.input().button_pressed(MouseButton::Middle) {
             tick.capture_cursor(false);
         }
-        // Le clic droit tire, et pour l'instant cela ne fait que montrer la pose :
-        // le rayon contre le décor et le test contre une créature sont l'étape 4.
-        if tick.input().button_pressed(MouseButton::Right) {
-            self.weapon.shoot();
-        }
+        let fired = tick.input().button_pressed(MouseButton::Right);
 
         self.camera.look(tick);
         let moved = self.wanted(tick) * (WALK * tick.dt());
@@ -164,6 +166,36 @@ impl Game {
         // donne pas. Chacune avance droit et fait demi-tour sur ce qui l'arrête —
         // une paroi, ou une autre créature.
         monster::stroll(&mut self.monsters, map, tick.dt());
+
+        // **Le tir vient après le regard et après le pas**, et l'ordre compte : lu
+        // avant, il serait parti de l'orientation de l'image précédente, soit un
+        // cran derrière ce que la souris vient de faire. Il part donc de la pose que
+        // l'image à venir montrera.
+        fired.then(|| {
+            self.weapon.shoot();
+            shot::fire(
+                map,
+                self.camera.position,
+                self.ahead(),
+                self.player.eye_cell(map),
+            )
+        })
+    }
+
+    /// La direction du regard, unitaire, en coordonnées de monde.
+    ///
+    /// **Le tangage en fait partie, là où la marche l'ignore** : on tire où l'on
+    /// regarde, et `walk` ne prend que le lacet parce qu'avancer en regardant le
+    /// plafond doit avancer et non monter.
+    ///
+    /// Le repère du projet : la caméra neutre regarde le `+X`. La même composition
+    /// vit dans la soumission de l'arme, qui a besoin en plus de sa droite et de son
+    /// haut ; à une troisième occurrence elle sera à extraire, et ce qui l'imposera
+    /// est qu'elles doivent s'accorder — l'arme est posée le long de la direction où
+    /// le rayon part.
+    fn ahead(&self) -> Vec3 {
+        Affine3::from_rotation_translation(self.camera.camera().orientation, Vec3::ZERO)
+            .transform_vector(Vec3::new(1.0, 0.0, 0.0))
     }
 
     /// Le pas que les touches demandent, en direction seule.

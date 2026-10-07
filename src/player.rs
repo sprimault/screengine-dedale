@@ -111,4 +111,29 @@ impl Player {
     pub fn cell(&self) -> u32 {
         self.body.cell()
     }
+
+    /// La cellule qui contient l'œil, suivie depuis celle du corps.
+    ///
+    /// **Ce n'est pas celle du corps, et rien ne garantit que ce soit la même.** Un
+    /// rayon de tir reçoit une cellule de départ dont le moteur ne vérifie pas
+    /// qu'elle contienne le point — ce serait un test d'appartenance par requête pour
+    /// un appelant qui le sait déjà —, et lui passer celle du corps serait faux dès
+    /// que l'œil et le centre tombent de part et d'autre d'un portail.
+    ///
+    /// **Mesuré, l'écart est nul sur ce décor** : `l_oeil_et_le_corps_sont_dans_la_meme_cellule`
+    /// le relève sur toutes les cases de toutes les graines. C'est une coïncidence de
+    /// cotes — soixante centimètres d'œil au-dessus du centre, sous un plafond de
+    /// trois mètres vingt-cinq — et non une propriété du modèle : elle cesserait de
+    /// tenir à la première cellule basse, et ce suivi est ce qui n'aurait alors rien à
+    /// reprendre.
+    ///
+    /// **Le suivi plutôt que la localisation**, et c'est ce qui le rend gratuit : il
+    /// enchaîne les portails depuis une cellule connue, là où localiser parcourt
+    /// toutes les cellules et toutes leurs faces.
+    pub fn eye_cell(&self, map: &World) -> u32 {
+        match self.body.cell() {
+            0 => 0,
+            cell => map.track(cell, self.body.centre(), self.eye()),
+        }
+    }
 }

@@ -17,6 +17,7 @@ mod player;
 mod probe;
 mod scene;
 mod sheet;
+mod shot;
 mod weapon;
 
 #[cfg(test)]
@@ -96,7 +97,10 @@ fn main() -> Result<(), Error> {
             if tick.input().pressed(KeyCode::Escape) {
                 tick.exit();
             }
-            session.game.step(tick, &session.scenery.map);
+            if let Some(shot) = session.game.step(tick, &session.scenery.map) {
+                let aim = session.game.aim();
+                session.probe.fired(&shot, &session.scenery.map, &aim);
+            }
 
             // **La cote de l'œil dans le titre, et c'est ce qui rend les cotes
             // réglables** : elles ne se jugent qu'à l'écran, et on ne juge pas

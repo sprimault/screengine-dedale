@@ -22,6 +22,8 @@ use std::path::Path;
 
 use screengine_play::{FreeCamera, Output, Vec3, Visibility, World};
 
+use crate::shot::{RANGE, Shot};
+
 #[cfg(test)]
 mod tests;
 
@@ -353,6 +355,71 @@ impl Probe {
             "image {} : {} après {since} image(s) — {aim}",
             self.frame,
             seen.label()
+        );
+    }
+
+    /// Note ce qu'un tir a rendu, et ce qu'il a visé.
+    ///
+    /// **Le seul chemin écrit sur appel, et non au changement.** Les trois autres
+    /// relèvent des états qui durent des dizaines d'images, donc une ligne par image
+    /// les noierait ; un tir est un événement d'un seul pas, et le taire parce qu'il
+    /// ressemble au précédent le rendrait invisible.
+    ///
+    /// **La cellule de départ se relève à côté de celle que la localisation trouve**,
+    /// et c'est la raison d'être de la ligne. Le moteur ne vérifie pas que la cellule
+    /// donnée contienne le point de départ : lui en passer une fausse rend un
+    /// résultat faux **sans aucune erreur**, et rien d'autre ne le dirait. La
+    /// localisation parcourt toutes les cellules, mais un tir ne part qu'au clic.
+    ///
+    /// **L'index est celui de la dernière image rendue**, et la ligne le dit : un tir
+    /// se résout dans le pas de mise à jour, donc entre deux images. Le corriger d'un
+    /// cran supposerait qu'une image suive, ce que rien ne garantit.
+    pub fn fired(&mut self, shot: &Shot, map: &World, aim: &Aim) {
+        let Some(file) = self.file.as_mut() else {
+            return;
+        };
+
+        let found = map.locate(shot.from);
+        let what = match shot.hit {
+            None => String::from("parti hors de tout volume"),
+            _ if !shot.blocked() => format!("rien à {RANGE} de portée"),
+            Some(hit) => format!(
+                "surface {} dans la cellule {} à {:.3} de portée, normale \
+                 ({:.2} {:.2} {:.2}), {}{}",
+                hit.surface,
+                hit.cell,
+                hit.fraction,
+                hit.normal.x,
+                hit.normal.y,
+                hit.normal.z,
+                // Le point passe par la méthode qui le refuse sur un trajet tronqué,
+                // et non par le champ : c'est là qu'est écrite la raison.
+                match shot.impact() {
+                    Some(at) => format!("point ({:.2} {:.2} {:.2})", at.x, at.y, at.z),
+                    None => String::from("TRONQUÉ, point indisponible"),
+                },
+                if hit.start_solid {
+                    " — DÉPART DANS LE SOLIDE"
+                } else {
+                    ""
+                }
+            ),
+        };
+
+        let _ = writeln!(
+            file,
+            "après l'image {} : tir vers ({:.2} {:.2} {:.2}) depuis la cellule {}\
+             {} — {what}, {aim}",
+            self.frame,
+            shot.to.x,
+            shot.to.y,
+            shot.to.z,
+            shot.cell,
+            if found == shot.cell {
+                String::new()
+            } else {
+                format!(" — DIVERGENCE, l'œil est dans {found}")
+            }
         );
     }
 
