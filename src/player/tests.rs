@@ -122,6 +122,50 @@ fn l_oeil_est_au_dessus_du_corps() {
     );
 }
 
+/// L'œil et le centre du corps tombent dans la même cellule, partout.
+///
+/// **C'est la précondition du tir, et elle n'est garantie par rien** : le rayon part
+/// de l'œil, et le balayage prend une cellule de départ dont il ne vérifie pas
+/// qu'elle contienne le point — ce serait un test d'appartenance par requête pour un
+/// appelant qui le sait déjà. Or la cellule suivie est celle du **centre**, soixante
+/// centimètres plus bas.
+///
+/// Mesurée sur toutes les cases de toutes les graines, cages comprises : ce sont
+/// elles qui empileraient deux cellules dans la hauteur d'un corps si quelque chose
+/// le faisait.
+#[test]
+fn l_oeil_et_le_corps_sont_dans_la_meme_cellule() {
+    let mut posed = 0;
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+        for at in crate::test_support::cases(&grid) {
+            let player = Player::stand(&grid, &map, at);
+            let cell = player.cell();
+            if cell == 0 {
+                continue;
+            }
+            posed += 1;
+            assert_eq!(
+                map.locate(player.eye()),
+                cell,
+                "graine {seed:#x}, case {at:?} : l'œil en {:?} sort de la cellule \
+                 du corps, posé en {:?}",
+                player.eye(),
+                player.body.centre()
+            );
+        }
+    }
+
+    // **Sans ce compte, l'épreuve est verte sur un corpus vide** : une pose hors du
+    // décor se saute, et rien ne dirait que toutes se sautent. Le seuil est celui
+    // d'une grille de seize sur seize sur deux étages, dont les cases pleines sont
+    // la moitié environ, fois six graines.
+    assert!(
+        posed > 2000,
+        "seules {posed} poses ont été éprouvées, le corpus n'en est pas un"
+    );
+}
+
 /// Le décor joué tient là où la boîte du joueur garde son jeu de collision.
 ///
 /// **Une épreuve de dimensionnement, et elle est verte d'avance** : le balayage
