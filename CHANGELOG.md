@@ -14,23 +14,21 @@ cela s'adresse à quelqu'un.
 
 ## [Non publié]
 
+## [0.4.0] — 2026-10-07 — Le tir et le contact
+
 ### Ajouté
-- **Les tirs laissent une marque sur les murs**, au point touché et dans le plan de la
-  surface — sur un sol, un plafond, une rampe comme sur une cloison.
+- **On tire, et ça porte** : les murs gardent la marque des impacts, et les démons
+  encaissent les coups avant de tomber au troisième sans rien laisser.
 - **Un réticule marque le centre de la vue**, là où le tir part — et l'arme s'aligne
   dessus.
-- **Les démons encaissent les coups et tombent au troisième** : recul, éclat au point
-  touché, puis une chute qui ne laisse rien.
 
 ***
 
 ### Added
-- **Shots leave a mark on the walls**, at the point hit and in the plane of the surface
-  — on a floor, a ceiling, a ramp as on a wall.
+- **Shots land**: walls keep the mark of each impact, and demons take the hits before
+  going down on the third, leaving nothing behind.
 - **A reticle marks the centre of the view**, where the shot starts — and the weapon
   lines up with it.
-- **Demons take the hits and go down on the third**: knockback, a spark at the point
-  that was hit, then a fall that leaves nothing behind.
 
 ## [0.3.0] — 2026-10-06 — Les monstres
 
