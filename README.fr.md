@@ -25,11 +25,12 @@ police en CC0, dont [`THIRD-PARTY-NOTICES`](THIRD-PARTY-NOTICES) rend compte.
 
 ## État
 
-**Étape 3 : les monstres.** Un labyrinthe engendré qu'on parcourt à la première
-personne, des étages reliés par des cages — à marches, ou en rampe. Le décor
+**Étape 4 : le tir et le contact.** Un labyrinthe engendré qu'on parcourt à la
+première personne, des étages reliés par des cages — à marches, ou en rampe. Le décor
 arrête : on longe les murs, on gravit les marches et les rampes, et la pesanteur
-ramène au sol. Trois démons le parcourent aussi, chacun sa silhouette, et posent
-leur ombre au sol. Pas encore un jeu : ni tir, ni ramassages.
+ramène au sol. Trois démons le parcourent, chacun sa silhouette. On tire : les murs
+gardent la marque, les démons encaissent et tombent. Pas encore un jeu : ni vie, ni
+score, ni ramassages.
 
 - [`ROADMAP.md`](ROADMAP.md) — les étapes et ce qui est hors périmètre
 - [`CHANGELOG.md`](CHANGELOG.md) — ce que chaque version a apporté, daté
@@ -75,9 +76,13 @@ Clic gauche prend le curseur, clic du milieu le rend, `Échap` quitte.
 | `Q` `D`, ou flèches gauche et droite | pivoter sur place |
 | `A` `E` | pas de côté |
 | souris | orienter la vue, le curseur pris — jamais nécessaire |
+| clic droit | tirer, au centre du réticule |
 
 **On marche, on longe et on tombe** : les murs, le sol et le plafond retiennent, un pas
 de biais suit la paroi au lieu de s'y coller, et la pesanteur ramène au sol.
 
 **Les étages se parcourent** : une marche se monte sans sauter, une rampe se gravit
 sans se redescendre, et un mur reste un mur.
+
+**Et on tire** : le rayon s'arrête sur le décor ou sur un démon, selon ce qui vient en
+premier. Un mur garde sa marque, un démon encaisse puis tombe au troisième coup.

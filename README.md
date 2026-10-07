@@ -24,10 +24,11 @@ font, recorded in [`THIRD-PARTY-NOTICES`](THIRD-PARTY-NOTICES).
 
 ## Status
 
-**Step 3: the monsters.** A generated maze walked in first person, floors linked by
-shafts — stepped, or ramped. The map stops you: you hug walls, you climb steps and
-ramps, and gravity brings you back down. Three demons roam it too, each with its own
-figure, casting their shadow on the floor. Not a game yet: no shooting, no pickups.
+**Step 4: shooting and contact.** A generated maze walked in first person, floors
+linked by shafts — stepped, or ramped. The map stops you: you hug walls, you climb
+steps and ramps, and gravity brings you back down. Three demons roam it, each with its
+own figure. You shoot: walls keep the mark, demons take the hits and go down. Not a
+game yet: no health, no score, no pickups.
 
 - [`ROADMAP.md`](ROADMAP.md) — the steps and what is out of scope (French)
 - [`CHANGELOG.md`](CHANGELOG.md) — what each version brought, dated
@@ -72,9 +73,13 @@ Left click grabs the cursor, middle click releases it, `Esc` quits.
 | `A` `D`, or left and right arrows | turn in place |
 | `Q` `E` | strafe |
 | mouse | aim the view, once the cursor is grabbed — never required |
+| right click | shoot, at the centre of the reticle |
 
 **You walk, you hug walls and you fall**: walls, floor and ceiling hold, an angled step
 follows the wall instead of sticking to it, and gravity brings you back down.
 
 **Upper floors are yours to walk**: a step is climbed without jumping, a ramp is walked
 up without sliding back, and a wall stays a wall.
+
+**And you shoot**: the ray stops on the level or on a demon, whichever comes first. A
+wall keeps its mark, a demon takes the hit and goes down on the third.
