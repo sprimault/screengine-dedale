@@ -86,4 +86,5 @@ up without sliding back, and a wall stays a wall.
 wall keeps its mark, a demon takes the hit and goes down on the third.
 
 **Demons hurt on contact**: staying against one costs health, one bite a second, and
-the bar at the bottom of the screen shows what is left. At zero, everything freezes.
+the bar at the bottom of the screen shows what is left. At zero, everything freezes and
+a line in the middle of the screen says which key starts again.

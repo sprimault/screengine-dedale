@@ -90,4 +90,4 @@ premier. Un mur garde sa marque, un démon encaisse puis tombe au troisième cou
 
 **Les démons blessent au contact** : rester contre l'un d'eux coûte de la vie, une
 morsure par seconde, et la barre en bas de l'écran dit ce qu'il reste. À zéro, tout se
-fige.
+fige et un texte au milieu de l'écran dit quelle touche relance.

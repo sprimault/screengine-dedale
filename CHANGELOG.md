@@ -16,13 +16,13 @@ cela s'adresse à quelqu'un.
 
 ### Ajouté
 - **Les démons blessent au contact**, et une barre de vie en bas de l'écran dit ce
-  qu'il reste. À zéro la partie se fige, et `R` en relance une.
+  qu'il reste. À zéro la partie se fige, et un texte dit que `R` en relance une.
 
 ***
 
 ### Added
 - **Demons hurt on contact**, and a health bar at the bottom of the screen shows what
-  is left. At zero the game freezes, and `R` starts a new one.
+  is left. At zero the game freezes, and a line says `R` starts a new one.
 
 ## [0.4.0] — 2026-10-07 — Le tir et le contact
 
