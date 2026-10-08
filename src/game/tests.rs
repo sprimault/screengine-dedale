@@ -1,13 +1,17 @@
 // Copyright 2026 Stéphane Primault <sprimault@users.noreply.github.com>
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Les épreuves des commandes de marche.
+//! Les épreuves des commandes de marche, et du rythme des morsures.
 //!
 //! **Tout le reste de ce module se regarde.** La vitesse, le confort dans un coude,
-//! la sensibilité de la souris : rien de cela ne se tranche en raisonnant, et aucune
-//! épreuve ne dira qu'un couloir est agréable à parcourir. Ce qui est éprouvé ici est
-//! la seule part qui soit une fonction d'entrées vers des sorties — la direction d'un
-//! pas.
+//! la sensibilité de la souris, et si une morsure à dix de vie se sent : rien de cela
+//! ne se tranche en raisonnant, et aucune épreuve ne dira qu'un couloir est agréable à
+//! parcourir. Ce qui est éprouvé ici est ce qui est une fonction d'entrées vers des
+//! sorties — la direction d'un pas, et ce qu'un pas de contact fait d'une course.
+//!
+//! **Le recouvrement qui décide du contact est éprouvé auprès de la boîte**, où il
+//! vit : c'est une règle de volume et non de partie, et les deux gabarits inégaux y
+//! sont le corpus qui la fait mordre.
 //!
 //! Chacune a été vérifiée en la faisant échouer une fois, sur un code falsifié.
 
@@ -120,4 +124,128 @@ fn deux_touches_opposees_s_annulent() {
     assert_eq!(axis(false, false), 0.0);
     assert_eq!(axis(true, false), 1.0);
     assert_eq!(axis(false, true), -1.0);
+}
+
+/// Le pas d'une image, à soixante par seconde.
+const DT: f32 = 1.0 / 60.0;
+
+/// Une morsure coûte sa part et ouvre un répit.
+#[test]
+fn une_morsure_coute_sa_part_et_ouvre_un_repit() {
+    let mut run = Run::new();
+    let left = bite(0.0, DT, true, &mut run);
+
+    assert_eq!(run.life, LIFE - BITE);
+    assert_eq!(left, RESPITE, "une morsure n'a pas rouvert son répit");
+}
+
+/// Le répit sépare deux morsures, et il court même hors contact.
+///
+/// **La seconde moitié est ce qui empêche un aller-retour de mordre deux fois** : un
+/// répit qui ne s'épuiserait qu'au contact rendrait le coût d'une créature dépendant
+/// de la façon dont on s'en éloigne, ce qui ne se devinerait pas en jouant.
+#[test]
+fn le_repit_separe_deux_morsures() {
+    let mut run = Run::new();
+    let left = bite(RESPITE, DT, true, &mut run);
+
+    assert_eq!(run.life, LIFE, "une morsure a porté pendant le répit");
+    assert!(left < RESPITE, "le répit n'a pas avancé");
+
+    let mut run = Run::new();
+    let away = bite(RESPITE, DT, false, &mut run);
+    assert_eq!(
+        away, left,
+        "le répit n'avance pas de la même façon hors contact"
+    );
+}
+
+/// Hors contact, rien ne mord et le répit reste à zéro.
+#[test]
+fn sans_contact_rien_ne_mord() {
+    let mut run = Run::new();
+    let left = bite(0.0, DT, false, &mut run);
+
+    assert_eq!(run.life, LIFE);
+    assert_eq!(left, 0.0, "le répit s'est rouvert sans morsure");
+}
+
+/// Le rythme des morsures ne dépend pas de la cadence d'image.
+///
+/// **C'est l'épreuve que ce lot devait écrire**, et le défaut qu'elle garde existe
+/// ailleurs dans ce jeu : le rappel de l'inertie du lacet de l'arme s'applique sans
+/// multiplier par le pas de temps, et il amortit vingt-trois fois plus vite à cent
+/// vingt images par seconde qu'à trente. Un répit qui compterait des images au lieu
+/// de secondes rendrait une créature quatre fois plus dangereuse sur une machine
+/// rapide.
+///
+/// **Quatre secondes et demie de contact tenu**, soit cinq morsures : une au premier
+/// pas, puis une par seconde. La durée ne tombe pas sur un multiple du répit, pour
+/// qu'un résidu d'accumulation ne décide pas du compte — les flottants ne reviennent
+/// pas exactement à zéro après soixante soustractions d'un soixantième.
+#[test]
+fn le_rythme_des_morsures_ne_depend_pas_de_la_cadence() {
+    for dt in [1.0 / 30.0, 1.0 / 60.0, 1.0 / 120.0, 1.0 / 144.0] {
+        let mut run = Run::new();
+        let mut respite = 0.0;
+
+        let steps = (4.5 / dt) as u32;
+        for _ in 0..steps {
+            respite = bite(respite, dt, true, &mut run);
+        }
+
+        assert_eq!(
+            run.life,
+            LIFE - 5 * BITE,
+            "à {:.0} images par seconde, {steps} pas de contact ont coûté {} de vie",
+            1.0 / dt,
+            LIFE - run.life
+        );
+    }
+}
+
+/// La vie tombe à zéro, la course est finie, et rien ne fait le tour.
+///
+/// **Les morsures en trop sont le vrai sujet** : la course est perdue avant qu'on
+/// cesse de toucher la créature, donc le cas où l'on mord un mort arrive à chaque
+/// partie. Une soustraction simple y rendrait la vie pleine.
+#[test]
+fn la_vie_ne_fait_pas_le_tour() {
+    let mut run = Run::new();
+    assert!(!run.over(), "une course commence perdue");
+
+    for _ in 0..LIFE / BITE {
+        run.hurt();
+    }
+    assert!(run.over(), "dix morsures n'ont pas eu la vie entière");
+    assert_eq!(run.share(), 0.0);
+
+    for _ in 0..3 {
+        run.hurt();
+    }
+    assert!(run.over(), "une morsure de trop a rendu de la vie");
+    assert_eq!(run.share(), 0.0);
+}
+
+/// La part décroît avec la vie, du plein au vide.
+///
+/// **La part et non deux entiers**, parce que c'est elle que la jauge reçoit : une
+/// part qui ne tomberait pas à zéro laisserait un reste de remplissage devant un
+/// joueur mort.
+#[test]
+fn la_part_decroit_avec_la_vie() {
+    let mut run = Run::new();
+    assert_eq!(run.share(), 1.0);
+
+    let mut before = run.share();
+    for _ in 0..LIFE / BITE {
+        run.hurt();
+        assert!(
+            run.share() < before,
+            "la part n'a pas baissé en passant à {} de vie",
+            run.life
+        );
+        before = run.share();
+    }
+    assert_eq!(before, 0.0);
 }

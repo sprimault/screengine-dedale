@@ -77,6 +77,7 @@ Clic gauche prend le curseur, clic du milieu le rend, `Échap` quitte.
 | `A` `E` | pas de côté |
 | souris | orienter la vue, le curseur pris — jamais nécessaire |
 | clic droit | tirer, au centre du réticule |
+| `R` | relancer une partie, après la mort |
 
 **On marche, on longe et on tombe** : les murs, le sol et le plafond retiennent, un pas
 de biais suit la paroi au lieu de s'y coller, et la pesanteur ramène au sol.
@@ -86,3 +87,7 @@ sans se redescendre, et un mur reste un mur.
 
 **Et on tire** : le rayon s'arrête sur le décor ou sur un démon, selon ce qui vient en
 premier. Un mur garde sa marque, un démon encaisse puis tombe au troisième coup.
+
+**Les démons blessent au contact** : rester contre l'un d'eux coûte de la vie, une
+morsure par seconde, et la barre en bas de l'écran dit ce qu'il reste. À zéro, tout se
+fige.

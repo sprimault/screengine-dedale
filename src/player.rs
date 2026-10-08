@@ -101,6 +101,16 @@ impl Player {
         self.body.advance(map, moved, dt)
     }
 
+    /// Le centre du corps, qui est la pose du joueur.
+    ///
+    /// **Ce n'est pas l'œil, et c'est ce qui rend cet accesseur nécessaire** : un
+    /// recouvrement de volumes se mesure sur le corps, et le reconstruire depuis
+    /// l'œil demanderait de retrancher le décalage — l'inverse du sens que ce module
+    /// tient, où l'œil se déduit du corps et jamais le contraire.
+    pub fn centre(&self) -> Vec3 {
+        self.body.centre()
+    }
+
     /// Où l'œil se trouve, pose de la caméra.
     pub fn eye(&self) -> Vec3 {
         let centre = self.body.centre();

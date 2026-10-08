@@ -74,6 +74,7 @@ Left click grabs the cursor, middle click releases it, `Esc` quits.
 | `Q` `E` | strafe |
 | mouse | aim the view, once the cursor is grabbed — never required |
 | right click | shoot, at the centre of the reticle |
+| `R` | start a new game, after death |
 
 **You walk, you hug walls and you fall**: walls, floor and ceiling hold, an angled step
 follows the wall instead of sticking to it, and gravity brings you back down.
@@ -83,3 +84,6 @@ up without sliding back, and a wall stays a wall.
 
 **And you shoot**: the ray stops on the level or on a demon, whichever comes first. A
 wall keeps its mark, a demon takes the hit and goes down on the third.
+
+**Demons hurt on contact**: staying against one costs health, one bite a second, and
+the bar at the bottom of the screen shows what is left. At zero, everything freezes.

@@ -33,7 +33,7 @@ use screengine_play::{
 };
 
 use crate::blot::blot;
-use crate::body::Body;
+use crate::body::{self, Body};
 use crate::maze::grid::{Grid, Side};
 use crate::sheet::{self, FRAME, Motion};
 
@@ -713,10 +713,11 @@ fn recedes(here: Vec3, wanted: Vec3, from: Vec3) -> bool {
 /// créatures le partagent, et une boîte par silhouette n'aurait pas de mesure pour
 /// la justifier — le volume tient à ce qui doit passer dans un couloir, pas au
 /// dessin.
+///
+/// **Ce qui reste ici est donc le gabarit, pas le test** : l'inégalité vit auprès de
+/// la boîte depuis que le joueur en demande une seconde avec des gabarits inégaux.
 fn meets(here: Vec3, there: Vec3) -> bool {
-    (here.x - there.x).abs() < 2.0 * HALF.x
-        && (here.y - there.y).abs() < 2.0 * HALF.y
-        && (here.z - there.z).abs() < 2.0 * HALF.z
+    body::overlaps(here, HALF, there, HALF)
 }
 
 /// Les cases où les créatures naissent : les plus proches de l'entrée par les

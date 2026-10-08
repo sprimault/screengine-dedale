@@ -30,6 +30,17 @@ mod tests;
 /// Où le relevé s'écrit.
 const LOG: &str = ".tmp/visibilite.log";
 
+/// En deçà de ce pourcentage de points peints, l'image est amputée.
+///
+/// **Quatre-vingt-dix et non cent** : une image de couloir laisse légitimement
+/// quelques sondes sur le fond — un angle sombre, une embrasure. Une coupure franche,
+/// elle, en emporte des dizaines.
+///
+/// **Au module et non dans le relevé**, depuis qu'une épreuve mesure de combien
+/// l'interface s'en approche : le recopier là-bas en ferait une seconde source, et
+/// c'est le genre de nombre qui se règle une fois et se retrouve à deux endroits.
+const THRESHOLD: u32 = 90;
+
 /// La proportion de points d'une image qui diffèrent du fond, en pourcentage.
 ///
 /// **Ce qui diffère du fond a été peint, et le fond n'est pas forcément noir** : le
@@ -182,8 +193,11 @@ impl Part {
 
 /// Ce que le relevé garde entre deux images.
 ///
-/// **Un état de partie**, comme le reste : il est jeté au rechargement de la
-/// carte, et il ne regarde que ce que le rendu vient de rendre.
+/// **Ni du monde, ni de la partie, et c'est le troisième cas que la boucle tient** :
+/// un instrument ne décide de rien et survit à tout — au rechargement de la carte
+/// comme à une course perdue —, son fichier étant ouvert une fois pour la durée du
+/// lancement. Le ranger dans l'un des deux ferait passer un journal pour un état de
+/// jeu, et déciderait au passage qu'il se jette avec ce qu'il observe.
 pub struct Probe {
     /// Le fichier, ou rien si on n'a pas pu l'ouvrir.
     ///
@@ -244,13 +258,6 @@ impl Probe {
     /// contrôle n'est pas encore dessiné quand on mesure, donc il ne compte pas
     /// comme un pixel peint.
     pub fn look(&mut self, output: &mut Output<'_>, map: &World, aim: &Aim, background: [u8; 3]) {
-        /// En deçà de ce pourcentage de points peints, l'image est amputée.
-        ///
-        /// **Quatre-vingt-dix et non cent** : une image de couloir laisse
-        /// légitimement quelques sondes sur le fond — un angle sombre, une
-        /// embrasure. Une coupure franche, elle, en emporte des dizaines.
-        const THRESHOLD: u32 = 90;
-
         let (width, height) = (output.width(), output.height());
         if width == 0 || height == 0 {
             return;
