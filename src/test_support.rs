@@ -1,7 +1,8 @@
 // Copyright 2026 Stéphane Primault <sprimault@users.noreply.github.com>
 // SPDX-License-Identifier: MIT OR Apache-2.0
 
-//! Le décor et les directions dont plusieurs fichiers d'épreuves ont besoin.
+//! Le décor, les directions et le tampon d'écran dont plusieurs fichiers d'épreuves
+//! ont besoin.
 //!
 //! **Il naît du partage du corps et du joueur**, qui éprouvent désormais deux
 //! sujets dans deux fichiers alors qu'un seul labyrinthe de référence les sert :
@@ -14,6 +15,10 @@
 //! elle ne peut pas vivre ici et reste auprès du module qu'elle éprouve. Ce qui
 //! monte ici est ce qui s'écrit avec l'API publique seule — une grille, une carte
 //! chargée, un jeu de directions.
+
+mod canvas;
+
+pub use canvas::Canvas;
 
 use std::fs::File;
 use std::io::BufWriter;
