@@ -13,21 +13,8 @@
 //! d'ici n'a besoin d'un contexte de rendu.
 
 use super::*;
+use crate::test_support::{Canvas, HEIGHT, WIDTH};
 use maze::grid::Grid;
-
-/// La largeur de l'image d'épreuve, assez pour les deux plans côte à côte.
-const WIDTH: u32 = 320;
-
-/// Sa hauteur.
-const HEIGHT: u32 = 180;
-
-/// Le pas d'une ligne du tampon d'épreuve.
-///
-/// **Plus large que l'image exprès.** C'est le régime du contrat C, où le tampon
-/// est dimensionné sur le plafond de résolution et non sur la résolution courante :
-/// un dessin qui confond les deux se décale d'une ligne à l'autre, et aucune
-/// épreuve ne le verrait si le pas valait la largeur.
-const STRIDE: u32 = 384;
 
 /// Une zone du tampon, bornes incluses.
 struct Area {
@@ -61,23 +48,11 @@ fn maze() -> Grid {
     Grid::generate(MAZE)
 }
 
-/// Un tampon neuf, ce qu'on y dessine, et les octets qui en sortent.
-///
-/// **Une ligne de plus que l'image**, pour qu'un dessin qui déborde par le bas se
-/// relise au lieu de sortir du vecteur.
-fn draw(paint: impl FnOnce(&mut Output<'_>)) -> Vec<u8> {
-    let mut buffer = vec![0; (STRIDE * (HEIGHT + 1)) as usize * 4];
-    {
-        let mut output = Output::new(&mut buffer, WIDTH, HEIGHT, STRIDE);
-        paint(&mut output);
-    }
-    buffer
-}
-
-/// Les quatre octets d'un pixel du tampon, adressés par le pas de ligne.
-fn pixel(buffer: &[u8], x: u32, y: u32) -> [u8; 4] {
-    let base = (y as usize * STRIDE as usize + x as usize) * 4;
-    buffer[base..base + 4].try_into().expect("quatre octets")
+/// Un tampon neuf, et ce qu'on y dessine.
+fn draw(paint: impl FnOnce(&mut Output<'_>)) -> Canvas {
+    let mut canvas = Canvas::new(WIDTH, HEIGHT);
+    paint(&mut canvas.output());
+    canvas
 }
 
 /// La zone qu'occupe une teinte entre deux abscisses, ou `None` si aucun pixel ne
@@ -86,11 +61,11 @@ fn pixel(buffer: &[u8], x: u32, y: u32) -> [u8; 4] {
 /// **La fenêtre en abscisse sert à isoler un plan de son voisin** : deux cases
 /// d'une même volée portent la même teinte sur deux étages, et une zone qui les
 /// engloberait n'aurait plus de bord plein à montrer.
-fn bounds(buffer: &[u8], colour: [u8; 4], left: u32, right: u32) -> Option<Area> {
+fn bounds(canvas: &Canvas, colour: [u8; 4], left: u32, right: u32) -> Option<Area> {
     let mut found: Option<Area> = None;
-    for y in 0..HEIGHT {
+    for y in 0..canvas.height() {
         for x in left..=right {
-            if pixel(buffer, x, y) != colour {
+            if canvas.pixel(x, y) != colour {
                 continue;
             }
             found = Some(match found {
@@ -117,9 +92,9 @@ fn bounds(buffer: &[u8], colour: [u8; 4], left: u32, right: u32) -> Option<Area>
 /// **C'est la base d'un triangle qu'on cherche**, et elle est son seul bord plein :
 /// les rangées suivantes raccourcissent vers la pointe. Un carré plein en aurait
 /// quatre, et la fonction rend alors `None` plutôt que d'en élire un.
-fn base(buffer: &[u8], area: &Area, colour: [u8; 4]) -> Option<Side> {
-    let column = |x: u32| (area.top..=area.bottom).all(|y| pixel(buffer, x, y) == colour);
-    let row = |y: u32| (area.left..=area.right).all(|x| pixel(buffer, x, y) == colour);
+fn base(canvas: &Canvas, area: &Area, colour: [u8; 4]) -> Option<Side> {
+    let column = |x: u32| (area.top..=area.bottom).all(|y| canvas.pixel(x, y) == colour);
+    let row = |y: u32| (area.left..=area.right).all(|x| canvas.pixel(x, y) == colour);
 
     // Le nord est en haut de l'écran, donc son bord est celui des ordonnées
     // faibles.
@@ -149,8 +124,8 @@ fn base(buffer: &[u8], area: &Area, colour: [u8; 4]) -> Option<Side> {
 /// zone ne situe plus rien. Une case ordinaire rend un carré du côté de la case,
 /// moins ses deux bords.
 fn here(grid: &Grid, cell: (u32, u32, u32)) -> Option<Area> {
-    let buffer = draw(|output| plot(output, grid, export::cover(grid, cell)));
-    let area = bounds(&buffer, HERE, 0, WIDTH - 1)?;
+    let canvas = draw(|output| plot(output, grid, export::cover(grid, cell)));
+    let area = bounds(&canvas, HERE, 0, canvas.width() - 1)?;
     let side = CELL - 4;
     (area.width() == side && area.height() == side).then_some(area)
 }
@@ -177,10 +152,10 @@ fn plane(grid: &Grid, level: u32) -> u32 {
 fn une_rampe_pointe_vers_sa_montee() {
     let side = CELL - 2;
     for towards in [Side::East, Side::West, Side::North, Side::South] {
-        let buffer = draw(|output| wedge(output, 4, 4, side, towards, WALL));
-        let area = bounds(&buffer, WALL, 0, WIDTH - 1).expect("le triangle est peint");
+        let canvas = draw(|output| wedge(output, 4, 4, side, towards, WALL));
+        let area = bounds(&canvas, WALL, 0, canvas.width() - 1).expect("le triangle est peint");
         assert_eq!(
-            base(&buffer, &area, WALL),
+            base(&canvas, &area, WALL),
             Some(towards.facing()),
             "la base d'une pointe vers {towards:?} occupe le bord opposé"
         );
@@ -205,8 +180,8 @@ fn les_deux_bouts_d_une_rampe_s_opposent() {
     let colour = LINKS[rank % LINKS.len()];
 
     // Aucune case ne porte la marque « ici », qui recouvrirait un triangle.
-    let buffer = draw(|output| plot(output, &grid, u32::MAX));
-    let whole = bounds(&buffer, colour, 0, WIDTH - 1).expect("la volée est marquée");
+    let canvas = draw(|output| plot(output, &grid, u32::MAX));
+    let whole = bounds(&canvas, colour, 0, canvas.width() - 1).expect("la volée est marquée");
 
     // Les deux cases d'une cage ont le même rang dans leurs étages, donc leurs
     // triangles sont symétriques de part et d'autre de l'écart entre plans : la
@@ -221,9 +196,9 @@ fn les_deux_bouts_d_une_rampe_s_opposent() {
         } else {
             (split + 1, whole.right)
         };
-        let area = bounds(&buffer, colour, left, right).expect("le triangle de l'étage est peint");
+        let area = bounds(&canvas, colour, left, right).expect("le triangle de l'étage est peint");
         assert_eq!(
-            base(&buffer, &area, colour),
+            base(&canvas, &area, colour),
             Some(climb.facing()),
             "la case de l'étage {level} pointe vers {climb:?}"
         );
@@ -271,10 +246,10 @@ fn l_etage_le_plus_haut_est_a_gauche() {
 /// substitue au pas.
 #[test]
 fn un_rectangle_s_adresse_par_le_pas_de_ligne() {
-    let buffer = draw(|output| block(output, 0, 1, 1, 1, WALL));
-    assert_eq!(pixel(&buffer, 0, 1), WALL);
+    let canvas = draw(|output| block(output, 0, 1, 1, 1, WALL));
+    assert_eq!(canvas.pixel(0, 1), WALL);
     assert_eq!(
-        pixel(&buffer, WIDTH, 0),
+        canvas.pixel(WIDTH, 0),
         [0; 4],
         "un adressage par la largeur aurait écrit là"
     );
@@ -287,10 +262,10 @@ fn un_rectangle_s_adresse_par_le_pas_de_ligne() {
 /// de partie.
 #[test]
 fn un_rectangle_se_borne_au_tampon() {
-    let buffer = draw(|output| block(output, WIDTH - 1, HEIGHT - 1, 8, 8, WALL));
-    assert_eq!(pixel(&buffer, WIDTH - 1, HEIGHT - 1), WALL);
-    assert_eq!(pixel(&buffer, WIDTH - 1, HEIGHT), [0; 4]);
-    assert_eq!(pixel(&buffer, WIDTH, HEIGHT - 1), [0; 4]);
+    let canvas = draw(|output| block(output, WIDTH - 1, HEIGHT - 1, 8, 8, WALL));
+    assert_eq!(canvas.pixel(WIDTH - 1, HEIGHT - 1), WALL);
+    assert_eq!(canvas.pixel(WIDTH - 1, HEIGHT), [0; 4]);
+    assert_eq!(canvas.pixel(WIDTH, HEIGHT - 1), [0; 4]);
 }
 
 /// Un anneau est creux.
@@ -301,12 +276,12 @@ fn un_rectangle_se_borne_au_tampon() {
 #[test]
 fn un_anneau_est_creux() {
     let side = CELL - 2;
-    let buffer = draw(|output| ring(output, 4, 4, side, START));
-    let area = bounds(&buffer, START, 0, WIDTH - 1).expect("l'anneau est peint");
+    let canvas = draw(|output| ring(output, 4, 4, side, START));
+    let area = bounds(&canvas, START, 0, canvas.width() - 1).expect("l'anneau est peint");
     assert_eq!((area.width(), area.height()), (side, side));
     for y in 5..4 + side - 1 {
         for x in 5..4 + side - 1 {
-            assert_eq!(pixel(&buffer, x, y), [0; 4], "l'intérieur reste vide");
+            assert_eq!(canvas.pixel(x, y), [0; 4], "l'intérieur reste vide");
         }
     }
 }

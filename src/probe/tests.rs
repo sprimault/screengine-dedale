@@ -4,6 +4,7 @@
 //! Les épreuves du relevé.
 
 use super::*;
+use crate::test_support::{Canvas, HEIGHT, WIDTH};
 
 /// Une caméra libre posée et orientée de travers, comme une marche la laisse.
 ///
@@ -56,27 +57,20 @@ fn la_ligne_donne_les_angles_en_degres() {
     );
 }
 
-/// La largeur des images d'épreuve.
-const WIDTH: u32 = 320;
-
-/// Leur hauteur.
-const HEIGHT: u32 = 180;
+/// Une teinte, complétée de son octet d'alpha.
+///
+/// Le relevé ne compare que les trois premiers octets ; celui-ci est le bourrage que la
+/// recopie vers la fenêtre jette, et il est posé pour que le tampon d'épreuve ressemble
+/// à ce que le moteur laisse derrière lui.
+fn opaque(colour: [u8; 3]) -> [u8; 4] {
+    [colour[0], colour[1], colour[2], 0xFF]
+}
 
 /// Un tampon peint d'une seule teinte, et ce que le relevé y compte.
-///
-/// Le pas de ligne dépasse la largeur, comme celui d'un tampon dimensionné sur le
-/// plafond de résolution : le compte adresse par le pas, et une image qui s'y
-/// décalerait ne tomberait pas sur les points attendus.
 fn tally(fill: [u8; 3], background: [u8; 3]) -> u32 {
-    const STRIDE: u32 = 384;
-
-    let mut buffer = vec![0u8; (STRIDE * HEIGHT) as usize * 4];
-    for pixel in buffer.chunks_exact_mut(4) {
-        pixel[..3].copy_from_slice(&fill);
-        pixel[3] = 0xFF;
-    }
-    let mut output = Output::new(&mut buffer, WIDTH, HEIGHT, STRIDE);
-    painted(&mut output, background)
+    let mut canvas = Canvas::new(WIDTH, HEIGHT);
+    canvas.fill(opaque(fill));
+    painted(&mut canvas.output(), background)
 }
 
 /// Une image entièrement au fond ne compte aucun point peint, quelle que soit la
@@ -111,23 +105,15 @@ fn une_image_pleine_compte_tout() {
 /// entièrement vide » ne verrait jamais.
 #[test]
 fn une_image_coupee_en_compte_la_moitie() {
-    const STRIDE: u32 = 384;
     let background = [0x30, 0x34, 0x3C];
 
-    let mut buffer = vec![0u8; (STRIDE * HEIGHT) as usize * 4];
+    let mut canvas = Canvas::new(WIDTH, HEIGHT);
+    canvas.fill(opaque(background));
     for y in 0..HEIGHT {
-        for x in 0..STRIDE {
-            let base = (y as usize * STRIDE as usize + x as usize) * 4;
-            let fill = if x < WIDTH / 2 {
-                [0x80, 0x40, 0x20]
-            } else {
-                background
-            };
-            buffer[base..base + 3].copy_from_slice(&fill);
-            buffer[base + 3] = 0xFF;
+        for x in 0..WIDTH / 2 {
+            canvas.set(x, y, opaque([0x80, 0x40, 0x20]));
         }
     }
 
-    let mut output = Output::new(&mut buffer, WIDTH, HEIGHT, STRIDE);
-    assert_eq!(painted(&mut output, background), 50);
+    assert_eq!(painted(&mut canvas.output(), background), 50);
 }

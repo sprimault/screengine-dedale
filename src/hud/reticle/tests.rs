@@ -15,32 +15,15 @@
 //! Chacune a été vérifiée en la faisant échouer une fois, sur un code falsifié.
 
 use super::*;
-
-/// Le pas de ligne d'un tampon d'épreuve, **en pixels**, et plus large que l'image.
-///
-/// **Délibérément différent de la largeur, et c'est ce qui donne son mordant à ce
-/// fichier** : le moteur ne reçoit jamais la longueur du tampon, seulement son pas, et
-/// confondre les deux est le piège qu'il nomme lui-même. Un adressage écrit sur la
-/// largeur passerait inaperçu sur un tampon serré et dériverait d'une ligne par ligne
-/// sur celui-ci.
-fn stride(width: u32) -> u32 {
-    width + 16
-}
+use crate::test_support::Canvas;
 
 /// Un tampon noir, et le réticule dessiné dedans.
 ///
-/// Rend les octets, que les épreuves relisent par leurs coordonnées.
-fn drawn(width: u32, height: u32) -> Vec<u8> {
-    let mut buffer = vec![0u8; (stride(width) * height) as usize * 4];
-    let mut output = Output::new(&mut buffer, width, height, stride(width));
-    draw(&mut output);
-    buffer
-}
-
-/// Le pixel relu dans un tampon d'épreuve, adressé par le **pas** et non la largeur.
-fn pixel(buffer: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
-    let at = ((y * stride(width) + x) * 4) as usize;
-    [buffer[at], buffer[at + 1], buffer[at + 2], buffer[at + 3]]
+/// Rend le tampon, que les épreuves relisent par leurs coordonnées.
+fn drawn(width: u32, height: u32) -> Canvas {
+    let mut canvas = Canvas::new(width, height);
+    draw(&mut canvas.output());
+    canvas
 }
 
 /// Le centre reste vide, et les quatre bras l'entourent.
@@ -52,11 +35,11 @@ fn pixel(buffer: &[u8], width: u32, x: u32, y: u32) -> [u8; 4] {
 #[test]
 fn le_centre_reste_vide_entre_quatre_bras() {
     let (width, height) = (64, 48);
-    let buffer = drawn(width, height);
+    let canvas = drawn(width, height);
     let (cx, cy) = (width / 2, height / 2);
 
     assert_eq!(
-        pixel(&buffer, width, cx, cy),
+        canvas.pixel(cx, cy),
         [0, 0, 0, 0],
         "le centre du réticule est peint, donc il cache ce qu'on vise"
     );
@@ -69,7 +52,7 @@ fn le_centre_reste_vide_entre_quatre_bras() {
         (cx, cy + GAP + 1, "en dessous"),
     ] {
         assert_eq!(
-            pixel(&buffer, width, x, y),
+            canvas.pixel(x, y),
             INK,
             "le bras {side} ne commence pas à {GAP} pixels du centre"
         );
@@ -86,16 +69,16 @@ fn le_centre_reste_vide_entre_quatre_bras() {
 #[test]
 fn le_centre_vient_du_tampon() {
     for (width, height) in [(64, 48), (128, 72), (40, 200)] {
-        let buffer = drawn(width, height);
+        let canvas = drawn(width, height);
         let (cx, cy) = (width / 2, height / 2);
 
         assert_eq!(
-            pixel(&buffer, width, cx + GAP + 1, cy),
+            canvas.pixel(cx + GAP + 1, cy),
             INK,
             "sur un tampon de {width}×{height}, le bras droit n'est pas au centre"
         );
         assert_eq!(
-            pixel(&buffer, width, cx, cy + GAP + 1),
+            canvas.pixel(cx, cy + GAP + 1),
             INK,
             "sur un tampon de {width}×{height}, le bras du bas n'est pas au centre"
         );
@@ -111,18 +94,18 @@ fn le_centre_vient_du_tampon() {
 #[test]
 fn un_lisere_borde_chaque_bras() {
     let (width, height) = (64, 48);
-    let buffer = drawn(width, height);
+    let canvas = drawn(width, height);
     let (cx, cy) = (width / 2, height / 2);
 
     let arm = cx + GAP + 1;
-    assert_eq!(pixel(&buffer, width, arm, cy), INK);
+    assert_eq!(canvas.pixel(arm, cy), INK);
     assert_eq!(
-        pixel(&buffer, width, arm, cy - 1),
+        canvas.pixel(arm, cy - 1),
         EDGE,
         "le bras droit n'a pas de liseré au-dessus"
     );
     assert_eq!(
-        pixel(&buffer, width, arm, cy + 1),
+        canvas.pixel(arm, cy + 1),
         EDGE,
         "le bras droit n'a pas de liseré en dessous"
     );
@@ -137,17 +120,17 @@ fn un_lisere_borde_chaque_bras() {
 #[test]
 fn un_tampon_trop_petit_ne_recoit_rien() {
     let side = SPAN - 1;
-    let buffer = drawn(side, side);
+    let canvas = drawn(side, side);
     assert!(
-        buffer.iter().all(|byte| *byte == 0),
+        canvas.pixels().iter().all(|byte| *byte == 0),
         "un tampon de {side}×{side} a reçu des pixels alors qu'il faut {SPAN}"
     );
 
     // Et le premier qui passe en reçoit : sans ce second cas, un refus de tout
     // passerait.
-    let buffer = drawn(SPAN, SPAN);
+    let canvas = drawn(SPAN, SPAN);
     assert!(
-        buffer.iter().any(|byte| *byte != 0),
+        canvas.pixels().iter().any(|byte| *byte != 0),
         "un tampon de {SPAN}×{SPAN} n'a rien reçu alors qu'il est à la taille"
     );
 }
