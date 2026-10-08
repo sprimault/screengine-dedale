@@ -27,16 +27,25 @@ PixelOperator8
   itself** rather than copied from a catalogue: that is the only provenance that
   travels with the bytes, and the only one verifiable without a network.
 
-  **La planche de glyphes qui en sera cuite porte cette attribution avec elle**,
-  en plus de celle du projet : elle est une œuvre dérivée, et la mention d'un
-  asset produit ici ne suffit pas à la couvrir. CC0 n'exige rien, mais une image
-  dont on ne sait plus d'où vient le dessin des lettres est précisément ce que ce
-  fichier existe pour éviter.
+  **La planche de glyphes qui en sera cuite porte cette attribution seule**, et
+  non celle du projet : le dessin des lettres n'est pas de lui, et lui apposer la
+  mention d'un asset produit ici serait s'attribuer l'œuvre d'un autre. CC0
+  n'exige rien, mais une image dont on ne sait plus d'où vient le dessin des
+  lettres est précisément ce que ce fichier existe pour éviter — d'où une mention
+  plutôt qu'aucune.
 
-  **The glyph sheet baked from it carries this attribution too**, alongside the
-  project's own: it is a derived work, and the notice carried by an asset produced
-  here does not cover it. CC0 requires nothing, but an image whose letterforms
-  have lost their origin is exactly what this file exists to prevent.
+  Les trois champs qu'elle porte, relus dans la table de noms de la police :
+
+    Author     Jayvee Enaguas (HarvettFox96)
+    Copyright  (c) 2009-2018 Jayvee Enaguas (HarvettFox96)
+    License    Creative Commons Zero (CC0) 1.0
+
+  **The glyph sheet baked from it carries that attribution alone**, not the
+  project's: the letterforms are not its work, and putting the notice of an asset
+  produced here on them would be claiming someone else's work. CC0 requires
+  nothing, but an image whose letterforms have lost their origin is exactly what
+  this file exists to prevent — hence a notice rather than none. The three fields
+  it carries are the ones listed above, read back from the font's name table.
 
   **Le seul asset de ce dépôt qui ne sort pas de sa propre chaîne**, et sa licence
   est la raison pour laquelle c'est admis : CC0 place l'œuvre dans le domaine
