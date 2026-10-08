@@ -117,3 +117,42 @@ fn une_image_coupee_en_compte_la_moitie() {
 
     assert_eq!(painted(&mut canvas.output(), background), 50);
 }
+
+/// Le relevé voit l'interface, donc l'ordre du rappel de sortie n'est pas indifférent.
+///
+/// **Ce qui est éprouvé est la conséquence, parce que l'ordre lui-même ne s'éprouve
+/// pas d'ici** : il vit dans le rappel de sortie, dont l'argument est une session que
+/// rien ne fabrique sans ouvrir le fichier de relevé. Ce qui se mesure est que
+/// l'interface compte comme un pixel peint — donc que la dessiner avant le relevé le
+/// rendrait aveugle à une image amputée d'autant.
+///
+/// **Et le coût est figé plutôt que borné** : un plafond au seuil du relevé ne se
+/// falsifierait pas — la jauge ne peut pas l'atteindre, sa marge l'empêchant de couvrir
+/// toute la largeur quelles que soient ses cotes. Ce qui est figé est donc ce qu'elle
+/// coûte vraiment, un point de pourcentage, et l'épreuve rougit le jour où l'interface
+/// grandit. C'est le moment où il faut relire l'ordre du rappel, pas avant.
+#[test]
+fn le_releve_voit_l_interface() {
+    let background = [0x30, 0x34, 0x3C];
+    let mut canvas = Canvas::new(WIDTH, HEIGHT);
+    canvas.fill(opaque(background));
+
+    assert_eq!(
+        painted(&mut canvas.output(), background),
+        0,
+        "le fond seul compte des points peints"
+    );
+
+    crate::hud::gauge::draw(&mut canvas.output(), 1.0);
+    let after = painted(&mut canvas.output(), background);
+
+    assert!(
+        after > 0,
+        "le relevé ne voit pas la jauge, donc l'ordre du rappel serait indifférent"
+    );
+    assert_eq!(
+        after, 1,
+        "la jauge coûte {after} points au relevé et non un : l'interface a grandi, \
+         donc l'ordre du rappel de sortie est à relire contre le seuil de {THRESHOLD}"
+    );
+}

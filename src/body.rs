@@ -107,6 +107,30 @@ fn walkable(normal: Vec3) -> bool {
     normal.z > 0.0 && normal.z * normal.z * (1.0 + SLOPE * SLOPE) >= 1.0
 }
 
+/// Vrai si deux boîtes centrées là se recouvrent.
+///
+/// **C'est la forme générale d'un test que le module des créatures avait déjà**, et
+/// la seule différence tient aux gabarits : deux boîtes identiques se recouvrent
+/// quand leurs centres sont à moins du double d'une demi-étendue, ce qui est cette
+/// inégalité avec la même valeur deux fois. L'écrire ici évite qu'un second
+/// recouvrement — le joueur contre une créature, dont les gabarits diffèrent —
+/// reparte d'une arithmétique à lui.
+///
+/// **Sa place est ici parce que le moteur ne la donne pas, et ne peut pas** : ni une
+/// créature ni un objet posé n'a de portail, donc pas d'adjacence, et rien de ce que
+/// le balayage traverse ne s'applique à eux. Un recouvrement de volumes mobiles est
+/// une règle de jeu, et ce module est celui qui porte les règles d'une boîte.
+///
+/// **Strictement, et c'est la même prudence que pour les créatures** : deux boîtes
+/// qui se touchent exactement ne se pénètrent pas, et ce qui s'en déduit — une
+/// séparation, un contact qui blesse — n'a pas de raison de se déclencher sur une
+/// tangence que le binaire ne reproduit pas deux fois de suite.
+pub fn overlaps(here: Vec3, half_here: Vec3, there: Vec3, half_there: Vec3) -> bool {
+    (here.x - there.x).abs() < half_here.x + half_there.x
+        && (here.y - there.y).abs() < half_here.y + half_there.y
+        && (here.z - there.z).abs() < half_here.z + half_there.z
+}
+
 /// Ce qu'une glissade a donné.
 ///
 /// **Trois champs dont deux ne servent qu'une fois**, et c'est pourquoi ils ne sont

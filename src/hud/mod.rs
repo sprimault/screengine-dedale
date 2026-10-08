@@ -12,6 +12,7 @@
 //! coordonnées de monde par le moteur, donc elle aura son propre module. Les ranger
 //! ensemble ferait oublier la frontière qui les sépare.
 
+pub mod gauge;
 pub mod reticle;
 
 use screengine_play::Output;

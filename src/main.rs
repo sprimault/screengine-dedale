@@ -28,7 +28,7 @@ mod test_support;
 #[cfg(test)]
 mod tests;
 
-use game::Game;
+use game::{Game, Run};
 use hud::block;
 use maze::export;
 use maze::grid::{Grid, Settings, Shape, Side};
@@ -60,12 +60,18 @@ const MAZE: Settings = Settings {
 /// Ce que la boucle garde : le monde d'un côté, la partie de l'autre.
 ///
 /// La frontière est ici et nulle part ailleurs. Le monde se recharge à chaud,
-/// la partie est jetée avec lui, et rien de l'une n'entre dans l'autre.
+/// la traversée est jetée avec lui, et rien de l'une n'entre dans l'autre.
+///
+/// **Et la partie se tient en deux morceaux**, depuis que la vie existe : la
+/// traversée d'une carte, qui se refait au labyrinthe suivant, et la course, qui le
+/// franchit. Les ranger ensemble remettrait le cumul au plein à chaque niveau.
 struct Session {
     /// L'état du monde.
     scenery: Scenery,
-    /// L'état de la partie.
+    /// La traversée de la carte chargée.
     game: Game,
+    /// Ce que la course garde d'un labyrinthe au suivant.
+    run: Run,
     /// Le relevé de ce que la traversée rend.
     ///
     /// **Ni du monde ni de la partie** : c'est un instrument, qui ne décide de
@@ -95,13 +101,37 @@ fn main() -> Result<(), Error> {
         Session {
             scenery,
             game,
+            run: Run::new(),
             probe: Probe::new(),
         },
         |session, tick| {
             if tick.input().pressed(KeyCode::Escape) {
                 tick.exit();
             }
-            if let Some(shot) = session.game.step(tick, &session.scenery.map) {
+
+            // **La relance est une course neuve sur la même carte** : le monde ne
+            // bouge pas, donc seules la traversée et la course se refont — la
+            // population comprise, ce qui est la sémantique d'une partie qui
+            // recommence et non d'une résurrection sur place.
+            //
+            // **Un échec ne peut venir que d'une planche intégrée au binaire**, donc
+            // déjà décodée au lancement. Le rappel ne sait pas porter une erreur :
+            // fermer est la seule réponse franche, et paniquer sur un chemin que rien
+            // ne rend atteignable n'en est pas une.
+            if session.run.over() && tick.input().pressed(KeyCode::KeyR) {
+                match Game::new(&session.scenery.maze, &session.scenery.map) {
+                    Ok(game) => {
+                        session.game = game;
+                        session.run = Run::new();
+                    }
+                    Err(_) => tick.exit(),
+                }
+            }
+
+            if let Some(shot) = session
+                .game
+                .step(tick, &session.scenery.map, &mut session.run)
+            {
                 let aim = session.game.aim();
                 session.probe.fired(&shot, &session.scenery.map, &aim);
             }
@@ -123,9 +153,17 @@ fn main() -> Result<(), Error> {
             // difficile à lire autrement.
             let eye = session.game.view().camera.position.z;
             let (figure, reach) = session.game.nearest();
+            // **La mort se dit dans le titre, faute d'une police** : la jauge à vide
+            // la montre, mais rien à l'écran ne dirait quelle touche relance. C'est le
+            // même palliatif que le compte de cellules, et il part avec la planche de
+            // glyphes.
+            let state = match session.run.over() {
+                true => " — mort, R relance",
+                false => "",
+            };
             tick.set_title(&format!(
                 "{title} — œil {:.2} sur {:.2} d'étage, plafond {:.2}, \
-                 démon {figure} à {reach:.2}, cellule {}, vue {:?}",
+                 démon {figure} à {reach:.2}, cellule {}, vue {:?}{state}",
                 eye.rem_euclid(export::LEVEL),
                 export::LEVEL,
                 export::CEILING,
@@ -197,11 +235,18 @@ const INSET: u32 = 8;
 /// L'écart entre deux étages voisins, en pixels.
 const GAP: u32 = 10;
 
-/// Le rappel de sortie : le relevé de l'image finie, puis le plan par-dessus.
+/// Le rappel de sortie : le relevé de l'image finie, puis l'interface par-dessus.
 ///
-/// **Dans cet ordre et pas l'autre.** Le relevé échantillonne le tampon pour dire
-/// si l'image est noire ; les pixels du plan compteraient sinon comme des pixels
-/// peints par la soumission.
+/// **Dans cet ordre et pas l'autre.** Le relevé échantillonne deux cent cinquante-six
+/// points du tampon et les compare au fond de la scène : tout ce qui se dessine avant
+/// lui compte comme un pixel peint par la soumission, et l'instrument devient d'autant
+/// aveugle à une image amputée.
+///
+/// **Rien ne tient cet ordre, et c'est à savoir en ajoutant à l'interface.** Il ne
+/// s'éprouve pas d'ici — le rappel reçoit une session que rien ne fabrique sans ouvrir
+/// le fichier de relevé —, donc ce qui est mesuré est sa conséquence :
+/// `le_releve_voit_l_interface` vérifie que la jauge compte, et qu'elle reste seule
+/// sous le seuil. Ce que le HUD recevra ensuite s'ajoute à ce compte.
 fn overview(session: &mut Session, output: &mut Output<'_>) {
     // Un échantillon du tampon dit si l'image est amputée, ce qu'aucune valeur
     // rendue par la soumission ne dit. La couleur du fond vient de la scène, qui
@@ -215,6 +260,7 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
     // centre. L'ordre ne tient donc qu'à ce que le réticule soit le dernier mot de
     // l'image, comme ce qu'on regarde en tirant.
     plot(output, &session.scenery.maze, aim.cell);
+    hud::gauge::draw(output, session.run.share());
     hud::reticle::draw(output);
 }
 

@@ -1165,3 +1165,79 @@ fn un_autre_gabarit_emprunte_le_meme_chemin() {
     }
     assert!(seen > 0, "aucun mur éprouvé : la graine n'en porte pas");
 }
+
+/// Le décalage d'un seul axe, les deux autres laissés confondus.
+fn along(axis: usize, gap: f32) -> Vec3 {
+    match axis {
+        0 => Vec3::new(gap, 0.0, 0.0),
+        1 => Vec3::new(0.0, gap, 0.0),
+        _ => Vec3::new(0.0, 0.0, gap),
+    }
+}
+
+/// La portée d'un axe : la somme des deux demi-étendues qui s'y opposent.
+fn reach(axis: usize, here: Vec3, there: Vec3) -> f32 {
+    match axis {
+        0 => here.x + there.x,
+        1 => here.y + there.y,
+        _ => here.z + there.z,
+    }
+}
+
+/// Deux boîtes se recouvrent sous la somme de leurs demi-étendues, et pas au-delà.
+///
+/// **Les deux gabarits sont inégaux, et c'est tout ce qui donne son mordant à cette
+/// épreuve** : le test que celui-ci généralise comparait au double d'une seule
+/// demi-étendue, ce qui est juste pour deux boîtes identiques et faux des deux côtés
+/// dès qu'elles diffèrent — cinq centièmes trop court contre un corps de joueur, cinq
+/// trop long contre une créature. Un corpus de boîtes égales laisserait passer les
+/// deux.
+///
+/// **Un seul axe est décalé à la fois**, les deux autres restant confondus : c'est ce
+/// qui éprouve que les trois se recoupent, et c'est la propriété qui empêche une
+/// créature de mordre à travers un plancher. Un `||` à la place du `&&` la casse.
+///
+/// **La borne est stricte, et le cas d'égalité est éprouvé pour lui-même** : deux
+/// boîtes qui se touchent exactement ne se pénètrent pas.
+#[test]
+fn la_somme_des_demi_etendues_decide_du_recouvrement() {
+    for axis in 0..3 {
+        let span = reach(axis, HALF, monster::HALF);
+        for (gap, met) in [
+            (0.0, true),
+            (span * 0.5, true),
+            (span - 1e-4, true),
+            (span, false),
+            (span + 1e-4, false),
+            (span * 2.0, false),
+        ] {
+            assert_eq!(
+                overlaps(Vec3::ZERO, HALF, along(axis, gap), monster::HALF),
+                met,
+                "axe {axis} : un écart de {gap} sur une portée de {span}"
+            );
+        }
+    }
+}
+
+/// Le recouvrement ne dépend pas de l'ordre des deux boîtes.
+///
+/// **C'est l'épreuve qui attrape le défaut le plus probable**, et elle le fait sans
+/// rien savoir des cotes : un test écrit sur le double de la **première**
+/// demi-étendue reste juste quand les deux gabarits sont égaux, et devient
+/// asymétrique dès qu'ils diffèrent — il recouvre d'un côté et pas de l'autre, sur
+/// exactement les écarts qui séparent les deux doubles.
+#[test]
+fn le_recouvrement_est_symetrique() {
+    for axis in 0..3 {
+        let span = reach(axis, HALF, monster::HALF);
+        for part in [0.0, 0.5, 0.9, 0.95, 1.0, 1.1, 2.0] {
+            let gap = along(axis, span * part);
+            assert_eq!(
+                overlaps(Vec3::ZERO, HALF, gap, monster::HALF),
+                overlaps(gap, monster::HALF, Vec3::ZERO, HALF),
+                "axe {axis} : à {part} de la portée, le recouvrement dépend de l'ordre"
+            );
+        }
+    }
+}
