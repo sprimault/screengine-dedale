@@ -115,6 +115,22 @@ impl Aim {
     }
 }
 
+/// Le cap d'un lacet, en degrés ramenés dans le tour.
+///
+/// **Le lacet d'une caméra libre s'accumule sans borne**, et un tour complet dans
+/// un sens suffit à l'en sortir : le relevé du 2026-10-08 finissait sur
+/// `-318.14°`, qui est le cap de `41.86°` et se relit par une soustraction
+/// mentale. C'est exactement ce que la conversion en degrés existe pour éviter.
+///
+/// **Le tour choisi est `[0, 360)`**, celui des trois quarts des lignes déjà
+/// écrites, et non `[-180, 180]` : un cap se compare aux quatre directions
+/// d'axe, et les lire à 90, 180 et 270 est plus direct qu'à 90, 180 et −90. Un
+/// cap qui tombe dans le dernier centième du tour s'arrondit à `360.00`, qui est
+/// la borne et se lit comme zéro — pas la peine d'un cas pour cela.
+fn heading(yaw: f32) -> f32 {
+    yaw.to_degrees().rem_euclid(360.0)
+}
+
 impl fmt::Display for Aim {
     /// La queue commune des trois sortes de lignes.
     ///
@@ -122,6 +138,11 @@ impl fmt::Display for Aim {
     /// couloir, et un quart de tour en radians ne se reconnaît pas. La précision
     /// au centième suffit à reposer la pose — le défaut qu'on traque tient à des
     /// centièmes d'unité, pas à des millièmes de degré.
+    ///
+    /// **Le cap passe par [`heading`], le tangage non** : celui-ci est borné au
+    /// quart de tour par la caméra libre, et son signe porte le sens — un
+    /// tangage négatif regarde vers le bas. Le ramener dans un tour positif
+    /// rendrait `-10°` en `350°`, ce qui ne se lit plus.
     fn fmt(&self, out: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             out,
@@ -129,7 +150,7 @@ impl fmt::Display for Aim {
             self.eye.x,
             self.eye.y,
             self.eye.z,
-            self.yaw.to_degrees(),
+            heading(self.yaw),
             self.pitch.to_degrees(),
             self.cell
         )
