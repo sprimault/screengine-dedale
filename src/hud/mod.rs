@@ -13,6 +13,7 @@
 //! ensemble ferait oublier la frontière qui les sépare.
 
 pub mod gauge;
+pub mod glyph;
 pub mod reticle;
 
 use screengine_play::Output;

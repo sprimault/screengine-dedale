@@ -30,6 +30,7 @@ mod tests;
 
 use game::{Game, Run};
 use hud::block;
+use hud::glyph::Glyphs;
 use maze::export;
 use maze::grid::{Grid, Settings, Shape, Side};
 use probe::Probe;
@@ -78,6 +79,11 @@ struct Session {
     /// rien et que le rendu seul alimente. Le ranger dans l'un des deux ferait
     /// passer un journal pour un état de jeu.
     probe: Probe,
+    /// La planche de glyphes, chargée une fois.
+    ///
+    /// Ni du monde ni de la partie non plus : une ressource, que rien ne modifie
+    /// et dont la relance n'a aucune raison de refaire le décodage.
+    glyphs: Glyphs,
 }
 
 /// Ouvre la fenêtre ; Échap ferme.
@@ -103,6 +109,7 @@ fn main() -> Result<(), Error> {
             game,
             run: Run::new(),
             probe: Probe::new(),
+            glyphs: Glyphs::new(),
         },
         |session, tick| {
             if tick.input().pressed(KeyCode::Escape) {
@@ -153,17 +160,12 @@ fn main() -> Result<(), Error> {
             // difficile à lire autrement.
             let eye = session.game.view().camera.position.z;
             let (figure, reach) = session.game.nearest();
-            // **La mort se dit dans le titre, faute d'une police** : la jauge à vide
-            // la montre, mais rien à l'écran ne dirait quelle touche relance. C'est le
-            // même palliatif que le compte de cellules, et il part avec la planche de
-            // glyphes.
-            let state = match session.run.over() {
-                true => " — mort, R relance",
-                false => "",
-            };
+            // Le titre ne dit plus la mort : elle s'écrit à l'écran, là où on la lit
+            // en jouant. Ce qui reste ici est un relevé de développement, que
+            // personne ne consulte en jouant.
             tick.set_title(&format!(
                 "{title} — œil {:.2} sur {:.2} d'étage, plafond {:.2}, \
-                 démon {figure} à {reach:.2}, cellule {}, vue {:?}{state}",
+                 démon {figure} à {reach:.2}, cellule {}, vue {:?}",
                 eye.rem_euclid(export::LEVEL),
                 export::LEVEL,
                 export::CEILING,
@@ -261,8 +263,63 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
     // l'image, comme ce qu'on regarde en tirant.
     plot(output, &session.scenery.maze, aim.cell);
     hud::gauge::draw(output, session.run.share());
+    if session.run.over() {
+        epitaph(output, &session.glyphs);
+    }
     hud::reticle::draw(output);
 }
+
+/// Les deux lignes de la mort, et l'échelle de chacune.
+///
+/// Deux tailles plutôt qu'une : l'état se lit d'un coup d'œil, la touche se lit
+/// quand on la cherche. Réglées à l'écran, comme toute cote d'interface.
+const EPITAPH: [(&str, u32); 2] = [("MORT", 4), ("R RELANCE", 2)];
+
+/// L'écart entre les deux lignes, en pixels.
+const LINE_GAP: u32 = 8;
+
+/// Ce qui s'écrit quand la course est finie, au milieu de l'écran.
+///
+/// **Avant le réticule et après la jauge** : il reste le dernier mot de l'image, et
+/// un texte posé par-dessus lui ferait croire qu'on vise encore.
+///
+/// Le centrage se prend du tampon à chaque image, comme le reste du HUD : la
+/// résolution interne n'est pas celle de la fenêtre et peut changer en jouant.
+///
+/// **Il gonfle le compte du relevé, et c'est sans conséquence** : le relevé passe
+/// avant lui et compte les points peints, donc ce texte ne peut que **masquer** une
+/// image amputée, jamais en inventer une. Et il ne s'écrit que la course finie, c'est-à-dire
+/// quand plus rien ne bouge et qu'il n'y a plus d'épisode à relever.
+fn epitaph(output: &mut Output<'_>, glyphs: &Glyphs) {
+    let height: u32 = EPITAPH.iter().map(|&(_, scale)| 8 * scale).sum::<u32>() + LINE_GAP;
+    let mut top = output.height().saturating_sub(height) / 2;
+    for (text, scale) in EPITAPH {
+        let left = output.width().saturating_sub(glyphs.width(text, scale)) / 2;
+        let shadow = (left + scale, top + scale);
+        glyphs.draw(output, shadow, text, scale, EPITAPH_SHADOW);
+        glyphs.draw(output, (left, top), text, scale, EPITAPH_INK);
+        top += 8 * scale + LINE_GAP;
+    }
+}
+
+/// La teinte des deux lignes.
+///
+/// **Claire, et non accordée au décor.** Le rouge de la jauge a été essayé et rejeté
+/// à l'écran le 2026-10-08 : sur un mur de brique, du rouge sur du rouge ne se lit
+/// pas. Les planches d'aujourd'hui étant provisoires, une teinte prise sur elles
+/// serait de toute façon à refaire avec l'éclairage ; ce qui tient quel que soit
+/// l'habillage est la clarté, et c'est le registre sombre du jeu qui la garantit.
+const EPITAPH_INK: [u8; 4] = [0xF0, 0xEC, 0xE4, 0xFF];
+
+/// L'ombre portée sous les deux lignes, décalée d'un pixel de glyphe.
+///
+/// **C'est elle qui rend le texte lisible sur n'importe quel fond, et non sa teinte** :
+/// une encre claire se perdrait sur un mur clair comme la rouge se perdait sur la
+/// brique. Le décalage vaut l'échelle, pour qu'une ligne deux fois plus grande porte
+/// une ombre deux fois plus épaisse — en bas à droite seulement, comme une police
+/// d'écran de cette époque, parce qu'un contour complet triplerait le dessin pour
+/// gagner deux côtés que rien n'éclaire.
+const EPITAPH_SHADOW: [u8; 4] = [0x10, 0x0C, 0x0C, 0xFF];
 
 /// Le labyrinthe dessiné à plat, un étage par plan, dans le tampon de l'hôte.
 ///
