@@ -57,6 +57,62 @@ fn la_ligne_donne_les_angles_en_degres() {
     );
 }
 
+/// Un cap accumulé hors du tour s'imprime dedans, et la pose rangée n'y revient
+/// pas.
+///
+/// **Le cas est relevé, non construit** : la marche du 2026-10-08 a fini sur
+/// `lacet -318.14°`, qui est le cap de 41,86° et se relit par une soustraction
+/// mentale de 360. Le lacet d'une caméra libre s'accumule sans borne, donc un
+/// tour complet dans un sens suffit à l'en sortir.
+///
+/// **Les deux assertions sont les deux moitiés de l'arbitrage** : ce qui se ramène
+/// est l'impression, jamais la pose.
+///
+/// **Et la seconde ne fait pas double emploi avec
+/// [`une_pose_relevee_se_rejoue_a_l_identique`]** : celle-ci reste verte quand on
+/// normalise le lacet rangé, mesuré en la falsifiant. Un angle décalé d'un tour
+/// entier recompose la même orientation, donc une comparaison d'orientations ne
+/// peut pas voir la normalisation — seule l'égalité du champ la voit.
+#[test]
+fn un_cap_hors_du_tour_s_imprime_dedans() {
+    let turned = (-318.14_f32).to_radians();
+    let aim = Aim::new(
+        &FreeCamera {
+            yaw: turned,
+            ..camera()
+        },
+        1147,
+    );
+
+    let ligne = aim.to_string();
+    assert!(
+        ligne.contains("lacet 41.86°"),
+        "le cap ne revient pas dans le tour : {ligne}"
+    );
+    assert_eq!(
+        aim.yaw, turned,
+        "la pose rangée a été normalisée, donc elle ne se rejoue plus au bit"
+    );
+}
+
+/// Le nombre de tours accumulés ne change pas la ligne.
+///
+/// **C'est la propriété, et non le seul cas relevé** : un relevé qui dépendrait du
+/// nombre de tours donnerait deux lignes différentes pour le même cap, ce qui est
+/// précisément ce qu'on ne peut pas voir en relisant quatre-vingts lignes. Trois
+/// tours de part et d'autre suffisent — au-delà, c'est la précision du `f32` qui
+/// se mesurerait, pas la conversion.
+#[test]
+fn le_cap_ne_depend_pas_du_nombre_de_tours() {
+    let attendue = Aim::new(&camera(), 1147).to_string();
+
+    for turns in -3..=3 {
+        let yaw = camera().yaw + turns as f32 * core::f32::consts::TAU;
+        let ligne = Aim::new(&FreeCamera { yaw, ..camera() }, 1147).to_string();
+        assert_eq!(ligne, attendue, "{turns} tours changent la ligne");
+    }
+}
+
 /// Une teinte, complétée de son octet d'alpha.
 ///
 /// Le relevé ne compare que les trois premiers octets ; celui-ci est le bourrage que la
