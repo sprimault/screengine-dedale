@@ -40,7 +40,7 @@ illisible ou qu'un démon apparaît dans un mur.
 `Cargo.toml` épingle `screengine-play` par **version et par commit** :
 
 ```toml
-screengine-play = { version = "0.8", git = "…/screengine", rev = "…" }
+screengine-play = { version = "0.9", git = "…/screengine", rev = "…" }
 ```
 
 **Par git et non par chemin** : un chemin ne vaudrait que sur un poste où les deux

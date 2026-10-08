@@ -33,7 +33,7 @@ publish = false
 # quelle version de l'API ce jeu est écrit. Les deux se vérifient : le commit dit
 # d'où vient le code, la version dit ce qu'il promet.
 [dependencies]
-screengine-play = { version = "0.8", git = "https://github.com/sprimault/screengine", rev = "cce3ece8d1a3771f4084d51c9a781ab9ad29e6d6" }
+screengine-play = { version = "0.9", git = "https://github.com/sprimault/screengine", rev = "4d8ed96b29c8629ec873df37d6b5e47899a568f3" }
 
 # Pour écrire les images de contrôle que les épreuves rendent hors fenêtre. Déjà
 # dans l'arbre par le moteur, qui décode les planches avec : la déclarer en direct
