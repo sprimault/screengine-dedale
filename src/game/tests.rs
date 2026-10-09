@@ -227,6 +227,55 @@ fn la_vie_ne_fait_pas_le_tour() {
     assert_eq!(run.share(), 0.0);
 }
 
+/// Le compteur part de zéro et cumule les primes qu'on lui porte.
+///
+/// **Des primes différentes, et c'est ce qui le fait mordre** : un compteur qui
+/// remplacerait au lieu d'ajouter resterait sur la dernière, et trois fois la même
+/// valeur ne distinguerait pas un cumul d'une multiplication.
+///
+/// **La jonction au coup fatal ne s'éprouve pas d'ici**, et c'est une limite assumée :
+/// elle vit dans le pas de la partie, qui reçoit un `Tick` que la boucle du moteur
+/// seule fabrique. Ce qui la tient de chaque côté est `knock`, dont une épreuve mesure
+/// qu'il ne rend sa prime qu'une fois, et cette ligne de crédit, qui se juge en
+/// tirant.
+#[test]
+fn le_compteur_cumule_les_primes() {
+    let mut run = Run::new();
+    assert_eq!(run.score(), 0, "une course commence avec des points");
+
+    let mut total = 0;
+    for bounty in [100, 150, 200, 150] {
+        run.credit(bounty);
+        total += bounty;
+        assert_eq!(
+            run.score(),
+            total,
+            "le compteur n'a pas cumulé la prime de {bounty}"
+        );
+    }
+}
+
+/// La mort ne touche pas au compteur, et le compteur ne touche pas à la vie.
+///
+/// **Les deux champs de la course sont indépendants**, et c'est ce qui se vérifie :
+/// un score qui s'effacerait à la mort retirerait son sujet à l'écran de fin, et une
+/// vie entamée par un crédit serait le genre d'échange qu'on ne cherche pas.
+#[test]
+fn la_mort_garde_le_compteur() {
+    let mut run = Run::new();
+    run.credit(150);
+
+    for _ in 0..LIFE / BITE {
+        run.hurt();
+    }
+
+    assert!(run.over());
+    assert_eq!(run.score(), 150, "la mort a effacé le compteur");
+
+    run.credit(100);
+    assert_eq!(run.share(), 0.0, "un crédit a rendu de la vie");
+}
+
 /// La part décroît avec la vie, du plein au vide.
 ///
 /// **La part et non deux entiers**, parce que c'est elle que la jauge reçoit : une

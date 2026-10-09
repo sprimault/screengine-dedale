@@ -695,6 +695,82 @@ fn trois_coups_abattent_une_creature() {
     );
 }
 
+/// Un seul coup est payé, c'est celui qui abat, et il rend la prime de la silhouette.
+///
+/// **C'est la clause dont le score dépend entièrement** : un coup qui paierait deux
+/// fois paierait un démon deux fois, et un coup qui paierait avant le dernier paierait
+/// des créatures encore debout. Les trois régimes y sont — les coups qui entament,
+/// celui qui abat, et ceux qui tombent sur une morte.
+///
+/// **Les coups d'après comptent dans le cas réel** : une créature joue sa chute une
+/// seconde et deux dixièmes avant de quitter la population, et une rafale la traverse.
+/// Son volume est retiré du tir pendant ce temps, mais c'est une règle de la partie,
+/// et celle-ci ne doit pas être la seule garde.
+///
+/// **Les trois silhouettes y passent**, et la prime rendue se compare à celle de leur
+/// ligne : un retour pris dans la mauvaise ligne de la table paierait toujours la
+/// même, ce qu'un corpus d'une seule créature ne verrait pas.
+#[test]
+fn un_seul_coup_est_paye() {
+    let (grid, map) = maze(SEEDS[0]);
+    let push = Vec3::new(1.0, 0.0, 0.0);
+
+    for figure in &FIGURES {
+        let mut monster = lone(&grid, &map, plain_case(&grid));
+        monster.figure = figure;
+
+        for coup in 1..LIFE {
+            assert_eq!(
+                monster.knock(push),
+                None,
+                "{} : le coup {coup} a payé une créature qui encaisse {LIFE} coups",
+                figure.name
+            );
+        }
+
+        assert_eq!(
+            monster.knock(push),
+            Some(figure.bounty),
+            "{} : le coup fatal n'a pas rendu sa prime",
+            figure.name
+        );
+
+        for coup in 1..=3 {
+            assert_eq!(
+                monster.knock(push),
+                None,
+                "{} : le coup {coup} après la chute l'a payée une seconde fois",
+                figure.name
+            );
+        }
+    }
+}
+
+/// Les trois primes sont distinctes.
+///
+/// **Sans quoi le compteur ne dirait pas laquelle on a abattue**, et c'est la seule
+/// raison pour laquelle elles diffèrent aujourd'hui : rien ne rend encore une
+/// silhouette plus difficile qu'une autre, et l'ordre des trois valeurs se reprendra
+/// quand leur résistance divergera. Ce qui ne doit pas se perdre dans cette reprise
+/// est qu'elles restent trois.
+#[test]
+fn les_trois_primes_sont_distinctes() {
+    let mut bounties: Vec<u32> = FIGURES.iter().map(|figure| figure.bounty).collect();
+    let before = bounties.len();
+    bounties.sort_unstable();
+    bounties.dedup();
+
+    assert_eq!(
+        bounties.len(),
+        before,
+        "deux silhouettes partagent une prime : {:?}",
+        FIGURES
+            .iter()
+            .map(|figure| (figure.name, figure.bounty))
+            .collect::<Vec<_>>()
+    );
+}
+
 /// Une créature tombée ne marche plus, mais son cycle avance et elle tombe encore.
 ///
 /// **Trois propriétés qui se tiennent** : sans la première, un cadavre se promène ;

@@ -30,7 +30,7 @@ mod tests;
 
 use game::{Game, Run};
 use hud::block;
-use hud::glyph::Glyphs;
+use hud::glyph::{self, Glyphs};
 use maze::export;
 use maze::grid::{Grid, Settings, Shape, Side};
 use probe::Probe;
@@ -263,6 +263,7 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
     // l'image, comme ce qu'on regarde en tirant.
     plot(output, &session.scenery.maze, aim.cell);
     hud::gauge::draw(output, session.run.share());
+    hud::score::draw(output, &session.glyphs, session.run.score());
     if session.run.over() {
         epitaph(output, &session.glyphs);
     }
@@ -290,36 +291,25 @@ const LINE_GAP: u32 = 8;
 /// avant lui et compte les points peints, donc ce texte ne peut que **masquer** une
 /// image amputée, jamais en inventer une. Et il ne s'écrit que la course finie, c'est-à-dire
 /// quand plus rien ne bouge et qu'il n'y a plus d'épisode à relever.
+///
+/// Le décalage de l'ombre vaut l'échelle, pour qu'une ligne deux fois plus grande
+/// porte une ombre deux fois plus épaisse ; les deux teintes viennent du module du
+/// texte, qui les partage avec le compteur.
 fn epitaph(output: &mut Output<'_>, glyphs: &Glyphs) {
-    let height: u32 = EPITAPH.iter().map(|&(_, scale)| 8 * scale).sum::<u32>() + LINE_GAP;
+    let height: u32 = EPITAPH
+        .iter()
+        .map(|&(_, scale)| glyphs.height(scale))
+        .sum::<u32>()
+        + LINE_GAP;
     let mut top = output.height().saturating_sub(height) / 2;
     for (text, scale) in EPITAPH {
         let left = output.width().saturating_sub(glyphs.width(text, scale)) / 2;
         let shadow = (left + scale, top + scale);
-        glyphs.draw(output, shadow, text, scale, EPITAPH_SHADOW);
-        glyphs.draw(output, (left, top), text, scale, EPITAPH_INK);
-        top += 8 * scale + LINE_GAP;
+        glyphs.draw(output, shadow, text, scale, glyph::SHADOW);
+        glyphs.draw(output, (left, top), text, scale, glyph::INK);
+        top += glyphs.height(scale) + LINE_GAP;
     }
 }
-
-/// La teinte des deux lignes.
-///
-/// **Claire, et non accordée au décor.** Le rouge de la jauge a été essayé et rejeté
-/// à l'écran le 2026-10-08 : sur un mur de brique, du rouge sur du rouge ne se lit
-/// pas. Les planches d'aujourd'hui étant provisoires, une teinte prise sur elles
-/// serait de toute façon à refaire avec l'éclairage ; ce qui tient quel que soit
-/// l'habillage est la clarté, et c'est le registre sombre du jeu qui la garantit.
-const EPITAPH_INK: [u8; 4] = [0xF0, 0xEC, 0xE4, 0xFF];
-
-/// L'ombre portée sous les deux lignes, décalée d'un pixel de glyphe.
-///
-/// **C'est elle qui rend le texte lisible sur n'importe quel fond, et non sa teinte** :
-/// une encre claire se perdrait sur un mur clair comme la rouge se perdait sur la
-/// brique. Le décalage vaut l'échelle, pour qu'une ligne deux fois plus grande porte
-/// une ombre deux fois plus épaisse — en bas à droite seulement, comme une police
-/// d'écran de cette époque, parce qu'un contour complet triplerait le dessin pour
-/// gagner deux côtés que rien n'éclaire.
-const EPITAPH_SHADOW: [u8; 4] = [0x10, 0x0C, 0x0C, 0xFF];
 
 /// Le labyrinthe dessiné à plat, un étage par plan, dans le tampon de l'hôte.
 ///

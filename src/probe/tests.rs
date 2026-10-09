@@ -183,10 +183,21 @@ fn une_image_coupee_en_compte_la_moitie() {
 /// rendrait aveugle à une image amputée d'autant.
 ///
 /// **Et le coût est figé plutôt que borné** : un plafond au seuil du relevé ne se
-/// falsifierait pas — la jauge ne peut pas l'atteindre, sa marge l'empêchant de couvrir
-/// toute la largeur quelles que soient ses cotes. Ce qui est figé est donc ce qu'elle
-/// coûte vraiment, un point de pourcentage, et l'épreuve rougit le jour où l'interface
-/// grandit. C'est le moment où il faut relire l'ordre du rappel, pas avant.
+/// falsifierait pas — l'interface ne peut pas l'atteindre, ses marges l'empêchant de
+/// couvrir toute la largeur quelles que soient ses cotes. Ce qui est figé est donc ce
+/// qu'elle coûte vraiment, et l'épreuve rougit le jour où l'interface grandit. C'est
+/// le moment où il faut relire l'ordre du rappel, pas avant.
+///
+/// **Les deux éléments permanents du bas de l'écran y sont**, et non la jauge seule :
+/// ce qui intéresse l'ordre du rappel est le total, et un élément ajouté sans entrer
+/// ici ferait croire que le coût n'a pas bougé. L'épitaphe, elle, n'en fait pas partie
+/// — elle ne s'écrit que la course finie, quand il n'y a plus d'épisode à relever.
+///
+/// **Quatre points, dont trois pour le compteur**, mesuré en lui donnant sa plaque : il
+/// est trois fois plus coûteux que la jauge alors qu'il couvre moins de pixels, parce
+/// que les deux cent cinquante-six points du relevé sont répartis en grille et qu'un
+/// bandeau de sept pixels de haut en traverse moins de rangées qu'une plaque de vingt.
+/// Reste très loin du seuil, et c'est ce que l'écart dit.
 #[test]
 fn le_releve_voit_l_interface() {
     let background = [0x30, 0x34, 0x3C];
@@ -200,15 +211,23 @@ fn le_releve_voit_l_interface() {
     );
 
     crate::hud::gauge::draw(&mut canvas.output(), 1.0);
+    let gauge = painted(&mut canvas.output(), background);
+    assert!(
+        gauge > 0,
+        "le relevé ne voit pas la jauge, donc l'ordre du rappel serait indifférent"
+    );
+
+    let glyphs = crate::hud::glyph::Glyphs::new();
+    crate::hud::score::draw(&mut canvas.output(), &glyphs, 0);
     let after = painted(&mut canvas.output(), background);
 
     assert!(
-        after > 0,
-        "le relevé ne voit pas la jauge, donc l'ordre du rappel serait indifférent"
+        after > gauge,
+        "le relevé ne voit pas le compteur, qu'il compte pourtant comme peint"
     );
     assert_eq!(
-        after, 1,
-        "la jauge coûte {after} points au relevé et non un : l'interface a grandi, \
+        after, 4,
+        "l'interface coûte {after} points au relevé et non quatre : elle a grandi, \
          donc l'ordre du rappel de sortie est à relire contre le seuil de {THRESHOLD}"
     );
 }
