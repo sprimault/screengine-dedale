@@ -74,7 +74,7 @@ fn une_part_se_traduit_en_largeur() {
         if filled < span {
             assert_eq!(
                 canvas.pixel(INSET + filled, row),
-                BACKDROP,
+                PLATE,
                 "à la part {share}, le remplissage dépasse sa largeur"
             );
         }

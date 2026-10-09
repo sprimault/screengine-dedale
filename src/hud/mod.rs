@@ -15,8 +15,24 @@
 pub mod gauge;
 pub mod glyph;
 pub mod reticle;
+pub mod score;
 
 use screengine_play::Output;
+
+/// Le fond d'un élément d'interface, sous ce qu'il montre.
+///
+/// **Une seule teinte pour la jauge et le compteur, et c'est la raison de sa place
+/// ici** : les deux reposent sur la même ligne au bas de l'écran, à chaque bout, donc
+/// un écart entre leurs fonds se lirait comme un défaut. Deux constantes de même
+/// valeur divergent au premier réglage.
+pub const PLATE: [u8; 4] = [0x20, 0x1C, 0x1C, 0xFF];
+
+/// Le liseré qui détache un élément d'interface du décor.
+///
+/// **Sans lui, un fond sombre disparaît sur un mur sombre** — et c'est l'ambiance que
+/// ce jeu vise. Ce qu'il tient n'est pas le contraste du contenu mais la frontière de
+/// l'élément : on doit voir où une jauge vide s'arrête.
+pub const EDGE: [u8; 4] = [0x00, 0x00, 0x00, 0xFF];
 
 /// Peint un rectangle plein dans le tampon de sortie.
 ///

@@ -80,6 +80,25 @@ struct Figure {
     /// texels, et un chiffre converti à la main dans une table est un chiffre qu'on
     /// ne peut plus comparer à ce qu'on remesure.
     stride: f32,
+    /// Ce qu'elle vaut au compteur, abattue.
+    ///
+    /// **Une prime par silhouette et non un barème unique**, parce que ce qui la
+    /// justifiera est déjà prévu : elles ne mourront pas de la même façon, et il
+    /// faudra plus de coups pour certaines. Un barème commun serait à défaire ce
+    /// jour-là, et la table est l'endroit où il s'écrit — tout ce qui sépare les
+    /// trois y est déjà.
+    ///
+    /// **`d2` vaut le plus parce qu'elle est la plus dure à abattre**, jugé à l'écran
+    /// le 2026-10-10. Ce n'est pas une cote qui le dit — les trois ont la même vie, la
+    /// même vitesse et le même volume —, c'est la créature telle qu'on la vise ; et
+    /// c'est bien de l'écran qu'un barème doit venir, puisque ce qu'il récompense est
+    /// la difficulté ressentie.
+    ///
+    /// **Rien ne sépare `d1` de `d3`**, qui gardent donc l'ordre de la table, et les
+    /// trois valeurs se reprendront quand leur résistance divergera. Distinctes dès
+    /// maintenant pour que le compteur dise **laquelle** on a abattue, ce qu'un chiffre
+    /// commun ne dirait jamais.
+    bounty: u32,
 }
 
 impl Figure {
@@ -151,6 +170,7 @@ static FIGURES: [Figure; 3] = [
         walk_margin: 4.0,
         dead_margin: 2.0,
         stride: 36.0,
+        bounty: 100,
     },
     Figure {
         name: "d2",
@@ -161,6 +181,7 @@ static FIGURES: [Figure; 3] = [
         walk_margin: 3.0,
         dead_margin: 2.0,
         stride: 16.0,
+        bounty: 200,
     },
     Figure {
         name: "d3",
@@ -171,6 +192,7 @@ static FIGURES: [Figure; 3] = [
         walk_margin: 2.0,
         dead_margin: 3.0,
         stride: 22.0,
+        bounty: 150,
     },
 ];
 
@@ -557,9 +579,20 @@ impl Monster {
     /// composés doubleraient la vitesse, et la créature partirait d'un bond au second
     /// coup d'une rafale. C'est la même clause que la pose de tir de l'arme, qui se
     /// relance plutôt que de s'accumuler.
-    pub fn knock(&mut self, push: Vec3) {
+    ///
+    /// **Rend sa prime pour le seul coup qui l'abat**, et c'est ce que le score
+    /// compte : la vie n'atteint zéro qu'ici, une fois, et les coups sur une tombée ne
+    /// rendent rien comme ils ne font rien. Compter au retrait des mortes, par
+    /// différence de longueur, arriverait une seconde et deux dixièmes plus tard — le
+    /// temps de sa chute — et serait faux le jour où une créature part pour une autre
+    /// raison.
+    ///
+    /// **La prime et non un simple oui**, parce qu'elle appartient à la silhouette :
+    /// la faire lire au tir par un second appel laisserait à l'appelant le soin de
+    /// savoir quand la lire, ce que seul ce retour sait.
+    pub fn knock(&mut self, push: Vec3) -> Option<u32> {
         if self.fallen() {
-            return;
+            return None;
         }
 
         self.life -= 1;
@@ -570,19 +603,20 @@ impl Monster {
             self.motion = Motion::Dead;
             self.phase = 0.0;
             self.recoil = None;
-            return;
+            return Some(self.figure.bounty);
         }
 
         let flat = Vec3::new(push.x, push.y, 0.0);
         let length = flat.dot(flat).sqrt();
         if length == 0.0 {
-            return;
+            return None;
         }
 
         self.recoil = Some(Recoil {
             speed: flat * (RECOIL_SPEED / length),
             left: RECOIL_TIME,
         });
+        None
     }
 
     /// Applique le recul en cours, et dit s'il a pris la main sur ce pas.

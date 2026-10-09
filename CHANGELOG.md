@@ -17,12 +17,16 @@ cela s'adresse à quelqu'un.
 ### Ajouté
 - **Les démons blessent au contact**, et une barre de vie en bas de l'écran dit ce
   qu'il reste. À zéro la partie se fige, et un texte dit que `R` en relance une.
+- **Un démon abattu compte**, chaque silhouette pour sa valeur, et le score se lit en
+  bas à droite.
 
 ***
 
 ### Added
 - **Demons hurt on contact**, and a health bar at the bottom of the screen shows what
   is left. At zero the game freezes, and a line says `R` starts a new one.
+- **Downing a demon scores**, each figure for its own value, and the count reads at the
+  bottom right.
 
 ## [0.4.0] — 2026-10-07 — Le tir et le contact
 

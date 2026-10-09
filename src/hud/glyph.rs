@@ -49,6 +49,28 @@ const COLUMNS: u32 = 8;
 /// tout ou rien : il est le pochoir, et le reste du texel ne sert pas ici.
 const ALPHA: u32 = 24;
 
+/// L'encre de tout texte à l'écran.
+///
+/// **Claire, et non accordée au décor.** Le rouge de la jauge a été essayé et rejeté à
+/// l'écran le 2026-10-08 : sur un mur de brique, du rouge sur du rouge ne se lit pas.
+/// Les planches d'aujourd'hui étant provisoires, une teinte prise sur elles serait de
+/// toute façon à refaire avec l'éclairage ; ce qui tient quel que soit l'habillage est
+/// la clarté, et c'est le registre sombre du jeu qui la garantit.
+///
+/// **Une seule pour tous les libellés, et c'est la raison de sa place ici** : le texte
+/// de la mort et le compteur l'ont tous deux prise, et deux constantes de même valeur
+/// à deux endroits divergent au premier réglage.
+pub const INK: [u8; 4] = [0xF0, 0xEC, 0xE4, 0xFF];
+
+/// L'ombre portée sous un texte, à décaler de l'échelle.
+///
+/// **C'est elle qui rend le texte lisible sur n'importe quel fond, et non l'encre** :
+/// une encre claire se perdrait sur un mur clair comme la rouge se perdait sur la
+/// brique. En bas à droite seulement, comme une police d'écran de cette époque, parce
+/// qu'un contour complet triplerait le dessin pour gagner deux côtés que rien
+/// n'éclaire.
+pub const SHADOW: [u8; 4] = [0x10, 0x0C, 0x0C, 0xFF];
+
 /// L'avance de chaque glyphe, en pixels, dans l'ordre du répertoire.
 ///
 /// **Relevée dans la police, pas choisie** : la chaîne la tire de la table de
@@ -120,6 +142,17 @@ impl Glyphs {
             .filter_map(rank)
             .map(|rank| ADVANCE[rank] as u32 * scale)
             .sum()
+    }
+
+    /// La hauteur d'une ligne, en pixels.
+    ///
+    /// **Elle ne dépend pas du texte**, là où [`Glyphs::width`] en dépend tout entier :
+    /// la planche est une grille, et l'ascendante comme la descendante tiennent dans la
+    /// case. Ce qu'elle épargne est le facteur écrit à la main — un `8 * scale` recopié
+    /// chez chaque appelant serait faux le jour où la planche cuirait à une autre
+    /// taille, et c'est le genre de nombre qu'on ne retrouve pas en cherchant.
+    pub fn height(&self, scale: u32) -> u32 {
+        CELL * scale
     }
 
     /// Écrit un texte, son coin haut gauche en `at`.

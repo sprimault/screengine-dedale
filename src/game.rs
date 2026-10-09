@@ -125,6 +125,12 @@ fn walk(yaw: f32, ahead: f32, side: f32) -> Vec3 {
 pub struct Run {
     /// Ce qui reste de vie, sur [`LIFE`].
     life: u32,
+    /// Ce que les démons abattus ont valu.
+    ///
+    /// **C'est le champ pour lequel la course existe** : la vie se refait au plein à
+    /// chaque labyrinthe sans que cela surprenne, mais un score remis à zéro en
+    /// franchissant une sortie retirerait tout sens à l'écran de fin.
+    score: u32,
 }
 
 impl Default for Run {
@@ -134,9 +140,12 @@ impl Default for Run {
 }
 
 impl Run {
-    /// Une course qui commence, la vie au plein.
+    /// Une course qui commence, la vie au plein et le compteur à zéro.
     pub fn new() -> Self {
-        Self { life: LIFE }
+        Self {
+            life: LIFE,
+            score: 0,
+        }
     }
 
     /// La part de vie qui reste, de zéro à un.
@@ -151,6 +160,28 @@ impl Run {
     /// Vrai si le joueur est mort, donc si la course est finie.
     pub fn over(&self) -> bool {
         self.life == 0
+    }
+
+    /// Le compteur, tel que l'écran l'écrit.
+    ///
+    /// **Un entier et non une part, à l'inverse de la vie** : un score n'a pas de
+    /// total contre lequel se rapporter, et c'est ce qui décide — la jauge montre une
+    /// proportion, le compteur montre le nombre lui-même.
+    pub fn score(&self) -> u32 {
+        self.score
+    }
+
+    /// Porte au compteur la prime d'un démon abattu.
+    ///
+    /// **La prime vient de la silhouette et non d'ici**, et c'est ce qui décide de la
+    /// signature : les trois ne mourront pas de la même façon, donc le barème vit
+    /// dans leur table. La course ne fait que cumuler.
+    ///
+    /// **Elle ne garde pas le cas de la course finie**, et c'est voulu : la mort gèle
+    /// la traversée avant tout tir, donc aucun coup ne peut porter après. Un garde ici
+    /// serait une vérification autour de ce qui ne peut pas arriver.
+    fn credit(&mut self, bounty: u32) {
+        self.score += bounty;
     }
 
     /// Retire ce qu'une morsure coûte.
@@ -359,7 +390,13 @@ impl Game {
                 // n'existe aucune surface de décor au point de contact, donc rien à
                 // plaquer, et c'est le sprite qui s'en charge.
                 shot::Struck::Volume(rank) => {
-                    self.monsters[targets[rank]].knock(ahead);
+                    // **Le compte se fait là où la créature tombe**, et le coup rend ce
+                    // qu'il a fait : c'est le seul instant où sa vie atteint zéro, donc
+                    // le seul où un démon peut être payé une fois et une seule. La
+                    // prime vient avec, parce qu'elle est de la silhouette.
+                    if let Some(bounty) = self.monsters[targets[rank]].knock(ahead) {
+                        run.credit(bounty);
+                    }
                     if let Some(reach) = outcome.nearest {
                         let span = outcome.shot.to - outcome.shot.from;
                         self.marks.flash(outcome.shot.from + span * reach.at);

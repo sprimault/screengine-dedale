@@ -18,7 +18,7 @@
 
 use screengine_play::Output;
 
-use super::block;
+use super::{EDGE, PLATE, block};
 
 /// L'épaisseur de la jauge, en pixels.
 const THICK: u32 = 7;
@@ -32,12 +32,6 @@ const INSET: u32 = 8;
 /// la vie, donc la jauge a besoin d'au moins dix pixels utiles pour que le retrait se
 /// voie. À la résolution interne du jeu, le quart en fait cent soixante.
 const SHARE: u32 = 4;
-
-/// Le fond, sous le remplissage.
-const BACKDROP: [u8; 4] = [0x20, 0x1C, 0x1C, 0xFF];
-
-/// Le liseré qui détache la jauge du décor.
-const EDGE: [u8; 4] = [0x00, 0x00, 0x00, 0xFF];
 
 /// Le remplissage : ce qui reste de vie.
 const FILL: [u8; 4] = [0xD0, 0x3C, 0x30, 0xFF];
@@ -72,6 +66,6 @@ pub fn draw(output: &mut Output<'_>, share: f32) {
     let top = output.height() - INSET - THICK;
 
     block(output, left - 1, top - 1, span + 2, THICK + 2, EDGE);
-    block(output, left, top, span, THICK, BACKDROP);
+    block(output, left, top, span, THICK, PLATE);
     block(output, left, top, (span as f32 * share) as u32, THICK, FILL);
 }
