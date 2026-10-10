@@ -101,8 +101,12 @@ d'être de ce dépôt — et rien de ce qui vit à côté ne doit pouvoir le fai
 ## Les assets
 
 `assets/` porte les sorties **validées** de la chaîne, rangées par type :
-`sprites/`, `textures/`, `skies/`, `sounds/`, `music/`, `fonts/`. Elles sont
-versionnées : le jeu ne tourne pas sans elles.
+`sprites/`, `textures/`, `skies/`, `sounds/`, `music/`, `fonts/`, `icons/`. Elles
+sont versionnées : le jeu ne tourne pas sans elles.
+
+**`icons/` est le seul répertoire dont le jeu ne lit rien à l'exécution** : son
+icône entre dans l'exécutable à la compilation, par une ressource Win32 que
+`build.rs` pose, et les installateurs la reprennent depuis le dépôt.
 
 La chaîne qui les produit vit **hors du dépôt** : des modèles, du rendu hors écran et
 de l'outillage, dont le dépôt n'a besoin que des sorties.
@@ -137,3 +141,10 @@ comme un tag d'action mobile change de contenu.
 **Rien n'est signé**, ni sur Windows ni ailleurs : un exécutable téléchargé déclenche
 donc un avertissement du système, qu'un installateur non signé ne lèverait pas
 davantage.
+
+**L'icône de l'exécutable se pose à la compilation, et elle ne vaut que pour
+Windows.** C'est une ressource du binaire, donc l'explorateur, la barre des tâches
+et la fenêtre la montrent toutes les trois — une fenêtre sans icône explicite prend
+celle de son exécutable. Sous X11 et Wayland il n'y a pas d'équivalent : l'icône y
+vient du fichier `.desktop` posé à l'installation, et un binaire lancé à la main
+garde celle du système.

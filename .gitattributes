@@ -23,6 +23,7 @@ Makefile text eol=lf
 # `text=auto` ferait dépendre le contrôle d'une détection au lieu d'une
 # déclaration.
 *.png binary
+*.ico binary
 *.ttf binary
 *.webp binary
 *.wav binary
