@@ -19,7 +19,7 @@
 //! et deux cellules superposées sans lien sont un cas que le moteur éprouve déjà.
 //! La cellule-escalier les reliera.
 
-use screengine_play::screengine::{MAX_TEXEL_COORD, MAX_TEXTURE_SIZE, Vec3, lightmap_fault};
+use screengine_play::{MAX_TEXEL_COORD, MAX_TEXTURE_SIZE, Vec3, lightmap_fault};
 
 use super::grid::{Grid, Shape, Side, Stair};
 

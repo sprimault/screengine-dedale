@@ -40,7 +40,7 @@ illisible ou qu'un démon apparaît dans un mur.
 `Cargo.toml` épingle `screengine-play` par **version et par commit** :
 
 ```toml
-screengine-play = { version = "0.9", git = "…/screengine", rev = "…" }
+screengine-play = { version = "1.0", git = "…/screengine", rev = "…" }
 ```
 
 **Par git et non par chemin** : un chemin ne vaudrait que sur un poste où les deux
@@ -58,6 +58,13 @@ publiée portera ce dont ce jeu dépend.
 **La `version` en plus du commit n'est pas redondante** : sans elle la dépendance
 est un joker, que `cargo deny` refuse — et à juste titre, puisque rien ne dirait
 alors contre quelle version de l'API ce jeu est écrit.
+
+**Et ce que le moteur emprunte à son noyau s'écrit à plat** : `screengine_play::Vec3`
+et non `screengine_play::screengine::Vec3`, l'étage d'accueil réexportant tout ce
+qu'un hôte écrit. Deux noms y portent un préfixe parce qu'ils entraient en collision
+avec les siens — `CoreError` et `CoreOutput` —, et la distinction est réelle : `Error`
+est celle de l'étage, rendue par les constructions, `CoreError` celle du noyau, rendue
+par les soumissions.
 
 ### Aucune redirection locale
 

@@ -22,8 +22,8 @@
 use std::sync::Arc;
 
 use screengine_play::{
-    Affine3, Angle, Camera, Color, Context, Error, Sprite, SpriteOrientation, Texture, Vec3,
-    load_png_masked,
+    Affine3, Angle, Camera, Color, Context, CoreError, Error, Sprite, SpriteOrientation, Texture,
+    Vec3, load_png_masked,
 };
 
 use crate::player::HALF;
@@ -216,11 +216,7 @@ impl Weapon {
 ///
 /// Comme la scène, cette fonction ne lit ni horloge, ni entrée, ni tampon de
 /// sortie : le chemin de rendu hors fenêtre de l'étape 8 l'appellera telle quelle.
-pub fn submit(
-    context: &mut Context,
-    weapon: &Weapon,
-    camera: &Camera,
-) -> Result<(), screengine_play::screengine::Error> {
+pub fn submit(context: &mut Context, weapon: &Weapon, camera: &Camera) -> Result<(), CoreError> {
     let pose = Affine3::from_rotation_translation(camera.orientation, Vec3::ZERO);
     let ahead = pose.transform_vector(Vec3::new(1.0, 0.0, 0.0));
     // Le repère de la caméra neutre : elle regarde le +X, sa droite est le −Y.

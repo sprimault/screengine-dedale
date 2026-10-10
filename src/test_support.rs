@@ -24,8 +24,7 @@ use std::fs::File;
 use std::io::BufWriter;
 
 use png::{BitDepth, ColorType, Encoder};
-use screengine_play::screengine::{BYTES_PER_PIXEL, Config};
-use screengine_play::{Context, Vec3, World};
+use screengine_play::{BYTES_PER_PIXEL, Config, Context, Vec3, World};
 
 use crate::maze::export;
 use crate::maze::grid::{Grid, Settings, Side};

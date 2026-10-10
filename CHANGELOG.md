@@ -14,6 +14,16 @@ cela s'adresse à quelqu'un.
 
 ## [Non publié]
 
+### Modifié
+- **Le jeu rend plus vite** : un tiers de temps en moins sur une traversée, et plus de
+  la moitié sur les surfaces qui portent une texture et son éclairage.
+
+***
+
+### Changed
+- **The game renders faster**: a third less time on a traversal, and more than half on
+  surfaces carrying both a texture and its lighting.
+
 ## [0.5.0] — 2026-10-10 — La vie, le score, l'interface
 
 ### Ajouté

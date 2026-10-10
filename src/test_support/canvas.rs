@@ -12,8 +12,7 @@
 //! cas par lui, un adressage faux serait partagé par l'oracle et par le sujet, et
 //! l'égalité resterait verte. Les accès d'ici n'empruntent donc rien au tampon prêté.
 
-use screengine_play::Output;
-use screengine_play::screengine::BYTES_PER_PIXEL;
+use screengine_play::{BYTES_PER_PIXEL, Output};
 
 /// L'écart entre la largeur d'une image d'épreuve et le pas de son tampon.
 ///

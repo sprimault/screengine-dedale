@@ -7,8 +7,9 @@ use super::*;
 use crate::maze::grid::Side;
 use crate::player::{EYE_ABOVE, HALF, Player};
 use crate::test_support::{HEIGHT, WIDTH, context, frame};
-use screengine_play::screengine::BYTES_PER_PIXEL;
-use screengine_play::{Affine3, Angle, Camera, FreeCamera, Quat, Vec3, Visibility};
+use screengine_play::{
+    Affine3, Angle, BYTES_PER_PIXEL, Camera, FreeCamera, Quat, Vec3, Visibility,
+};
 
 /// Les réglages du labyrinthe d'épreuve.
 fn settings() -> Settings {
