@@ -23,6 +23,8 @@ cela s'adresse à quelqu'un.
   pour Linux, sans rien à installer à côté.
 - **Le jeu a son icône** — un couloir, et un démon au bout —, que l'exécutable Windows
   porte.
+- **Et il s'installe** : un programme d'installation pour Windows, une AppImage pour
+  Linux, chacun avec son raccourci et son icône.
 
 ### Corrigé
 - **Un démon se touche là où on le voit** : viser le flanc des plus larges ratait le
@@ -41,6 +43,8 @@ cela s'adresse à quelqu'un.
   Windows and for Linux, with nothing to install alongside.
 - **The game has its icon** — a corridor, and a demon at the end — carried by the
   Windows executable.
+- **And it installs**: a Windows installer and a Linux AppImage, each with its shortcut
+  and its icon.
 
 ### Fixed
 - **A demon is hit where it is seen**: aiming at the flank of the wider ones missed.

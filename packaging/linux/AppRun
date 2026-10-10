@@ -1,0 +1,11 @@
+#!/bin/sh
+# Le point d'entrée de l'AppImage.
+#
+# **Il résout son propre chemin plutôt que de s'y fier** : une AppImage est
+# montée à un emplacement temporaire qui change à chaque lancement, et un chemin
+# relatif dépendrait du répertoire courant de celui qui la lance.
+#
+# `exec` plutôt qu'un appel : le jeu remplace ce script, donc il reçoit les
+# signaux directement et aucun processus de plus ne reste derrière lui.
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/bin/screengine-dedale" "$@"

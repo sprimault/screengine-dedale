@@ -12,6 +12,15 @@
 *.md text eol=lf
 Makefile text eol=lf
 *.sh text eol=lf
+# Sans extension, et sans ça le shebang d'un AppRun en CRLF rend un
+# « bad interpreter » que rien ne relie à un problème de fins de ligne.
+AppRun text eol=lf
+*.desktop text eol=lf
+# Inno Setup lit un `.iss` en UTF-8 **à condition d'y trouver un BOM** ; sans
+# lui il l'interprète en ANSI et les accents deviennent du charabia dans le nom
+# du programme. Le BOM se garde donc, et la déclaration empêche une
+# normalisation de le retirer.
+*.iss text eol=crlf
 
 # Spécifiques Windows
 *.ps1 text eol=crlf
