@@ -1146,7 +1146,7 @@ source = "git+https://github.com/sprimault/screengine?rev=4d8ed96b29c8629ec873df
 
 [[package]]
 name = "screengine-dedale"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "png",
  "screengine-play",

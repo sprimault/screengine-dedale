@@ -4,7 +4,7 @@
 [package]
 name = "screengine-dedale"
 description = "Sortir d'un dédale : le jeu de démonstration de screengine."
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"

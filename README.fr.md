@@ -25,12 +25,17 @@ police en CC0, dont [`THIRD-PARTY-NOTICES`](THIRD-PARTY-NOTICES) rend compte.
 
 ## État
 
-**Étape 4 : le tir et le contact.** Un labyrinthe engendré qu'on parcourt à la
-première personne, des étages reliés par des cages — à marches, ou en rampe. Le décor
-arrête : on longe les murs, on gravit les marches et les rampes, et la pesanteur
+**Étape 5 : la vie, le score, l'interface.** Un labyrinthe engendré qu'on parcourt à
+la première personne, des étages reliés par des cages — à marches, ou en rampe. Le
+décor arrête : on longe les murs, on gravit les marches et les rampes, et la pesanteur
 ramène au sol. Trois démons le parcourent, chacun sa silhouette. On tire : les murs
-gardent la marque, les démons encaissent et tombent. Pas encore un jeu : ni vie, ni
-score, ni ramassages.
+gardent la marque, les démons encaissent et tombent. On perd de la vie à leur contact,
+et chacun abattu vaut des points. Pas encore un jeu : ni ramassages, ni sortie.
+
+**Il se télécharge** : chaque version porte un exécutable autonome pour Windows et pour
+Linux — rien à installer à côté, tout est dedans —, avec un programme d'installation et
+une AppImage pour qui les préfère. Tout est dans
+[les fichiers de la dernière version](../../releases/latest).
 
 - [`ROADMAP.md`](ROADMAP.md) — les étapes et ce qui est hors périmètre
 - [`CHANGELOG.md`](CHANGELOG.md) — ce que chaque version a apporté, daté
