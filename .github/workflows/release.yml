@@ -123,21 +123,27 @@ jobs:
       # **Installé plutôt que supposé présent** : l'image le porte aujourd'hui,
       # mais c'est un outil tiers de son catalogue, donc une dépendance qu'on ne
       # tient pas. Le chercher d'abord évite d'attendre une installation inutile.
+      #
+      # **En `pwsh` et non en `bash`, et c'est mesuré** : les options d'`ISCC`
+      # commencent par une barre oblique, que la couche MSYS de Git Bash prend
+      # pour un chemin et réécrit. Le doublement qui est censé l'en empêcher est
+      # passé tel quel — « Unknown option: //DCharge=… », vu le 2026-10-10 sur le
+      # premier essai du workflow. PowerShell ne réécrit rien, donc il n'y a rien
+      # à déjouer.
       - name: Installateur Windows
         if: matrix.cible == 'windows-x86_64'
-        shell: bash
+        shell: pwsh
         run: |
-          iscc="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
-          if [ ! -f "$iscc" ]; then
-            choco install innosetup --no-progress --yes
-          fi
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress --yes }
           # Deux racines, parce que ce qui s'installe et ce qui habille
           # l'installateur ne vivent pas au même endroit : la charge est le
           # répertoire de mise en scène, le dépôt porte l'icône et la licence.
-          "$iscc" //DVersion="$VERSION" //DBinaire="${{ matrix.binaire }}" \
-                  //DCharge="$(pwd -W)/$NOM" //DDepot="$(pwd -W)" \
-                  //O"$(pwd -W)" packaging/windows/dedale.iss
-          echo "INSTALLATEUR=${NOM}-installateur.exe" >> "$GITHUB_ENV"
+          & $iscc "/DVersion=${env:VERSION}" "/DBinaire=${{ matrix.binaire }}" `
+                  "/DCharge=${PWD}\${env:NOM}" "/DDepot=${PWD}" "/O${PWD}" `
+                  packaging\windows\dedale.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "INSTALLATEUR=${env:NOM}-installateur.exe" >> $env:GITHUB_ENV
 
       # **L'AppImage est le seul des deux qui corrige quelque chose** : son
       # fichier `.desktop` donne au jeu son icône sous X11 et Wayland, que rien
@@ -148,6 +154,11 @@ jobs:
       # mobile désigne un contenu qui change sans que ce dépôt bouge, et c'est la
       # même clause que l'épinglage des actions au SHA.
       #
+      # **Et il vient de `appimagetool`, non d'`AppImageKit`** : le second a
+      # renommé tous ses assets en `obsolete-` à sa version 13, donc l'URL qu'on
+      # trouve partout rend un 404 — mesuré le 2026-10-10 sur le premier essai du
+      # workflow. L'outil vit désormais dans son propre dépôt.
+      #
       # **Extraite plutôt que montée** : une AppImage a besoin de FUSE pour se
       # lancer, et le runner ne l'a pas.
       - name: AppImage
@@ -155,7 +166,7 @@ jobs:
         shell: bash
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
-          OUTIL: https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage
+          OUTIL: https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
         run: |
           curl -fsSL -o appimagetool "$OUTIL"
           chmod +x appimagetool
