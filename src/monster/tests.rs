@@ -37,6 +37,64 @@ use screengine_play::screengine::BYTES_PER_PIXEL;
 /// appuis se superposent et l'écartement ne se voit pas.
 const PROFILES: [u32; 2] = [2, 6];
 
+/// La largeur encrée d'une vignette, en texels — toute la silhouette, pas ses pieds.
+///
+/// **Elle ne se déduit pas de [`footprint`]**, qui ne regarde que les quatre lignes du
+/// bas : ce qu'on vise est le corps, et un bras tendu ou une aile élargissent la cible
+/// sans qu'un pied ait bougé. Rend zéro pour une vignette vide, qu'aucune planche du
+/// dépôt ne porte.
+fn drawn_width(sheet: &Texture, view: u32, frame: u32) -> u32 {
+    let side = FRAME as u32;
+    let (bu, bv) = (frame * side, view * side);
+    let inked =
+        |du: u32| (0..side).any(|dv| sheet.texel(0, (bu + du) as i32, (bv + dv) as i32) >> 24 != 0);
+
+    let span = (0..side).filter(|&du| inked(du));
+    match (span.clone().min(), span.max()) {
+        (Some(left), Some(right)) => right - left + 1,
+        _ => 0,
+    }
+}
+
+/// La largeur du **corps** d'une vignette, en texels : la médiane des largeurs de ligne.
+///
+/// **La médiane et non le maximum**, parce que ce qu'on cherche est ce qu'un joueur
+/// prend pour le corps : un bras tendu ou une aile élargit l'enveloppe sur quelques
+/// lignes, et un volume qui la couvrirait rendrait touchable le vide entre les membres.
+fn trunk_width(sheet: &Texture, view: u32, frame: u32) -> u32 {
+    let side = FRAME as u32;
+    let (bu, bv) = (frame * side, view * side);
+    let solid = |du: u32, dv: u32| sheet.texel(0, (bu + du) as i32, (bv + dv) as i32) >> 24 != 0;
+
+    let mut widths: Vec<u32> = (0..side)
+        .filter_map(|dv| {
+            let span = (0..side).filter(|&du| solid(du, dv));
+            match (span.clone().min(), span.max()) {
+                (Some(left), Some(right)) => Some(right - left + 1),
+                _ => None,
+            }
+        })
+        .collect();
+
+    widths.sort_unstable();
+    widths.get(widths.len() / 2).copied().unwrap_or_default()
+}
+
+/// Combien de lignes vides la planche laisse **au-dessus** de la silhouette.
+///
+/// Le pendant de [`hollow`] par le haut, et les deux ensemble donnent la hauteur
+/// encrée : c'est elle qu'un volume touchable doit couvrir, pas le côté de la vignette.
+fn crown(sheet: &Texture, view: u32, frame: u32) -> u32 {
+    let side = FRAME as u32;
+    let (u, v) = (frame * side, view * side);
+
+    (0..side)
+        .find(|&row| {
+            (0..side).any(|col| sheet.texel(0, (u + col) as i32, (v + row) as i32) >> 24 != 0)
+        })
+        .unwrap_or(side)
+}
+
 /// Combien de lignes vides la planche laisse sous la silhouette d'une vignette.
 ///
 /// **L'alpha décide**, et il est binaire : la planche se charge masquée, donc un
@@ -1646,6 +1704,152 @@ fn le_facteur_de_modulation_s_applique_entier_sans_eclairage() {
             (got as f32 - expected).abs() <= 1.0,
             "canal {channel} : la dalle à {was} sous une tache à {SHADOW_CORE} \
              rend {got}, là où le facteur entier donnerait {expected}"
+        );
+    }
+}
+
+/// Ce qu'on voit d'une créature tient dans ce qu'on peut toucher.
+///
+/// **C'est la propriété qui manquait**, et son absence s'est vue à l'écran : viser le
+/// corps d'une silhouette dessinée plus large que son volume rate le coup, et rien ne
+/// dit pourquoi. La largeur dessinée se relève sur les planches, la largeur touchable
+/// vient du volume que le tir reçoit, et les deux doivent s'accorder.
+///
+/// **Le cas défavorable est la vue de face**, et c'est lui qu'on prend : le volume est
+/// une boîte alignée sur les axes du monde, donc sa largeur apparente va de son côté à
+/// sa diagonale selon l'angle sous lequel on la regarde. Un dessin qui tient dans le
+/// côté tient dans tous les angles.
+///
+/// **Les deux cycles vivants seulement** : une créature tombée n'est plus touchable, et
+/// sa planche la couche — sa largeur n'a donc rien à accorder.
+#[test]
+fn le_dessin_tient_dans_le_volume_touchable() {
+    let side = FRAME as u32;
+    let texel = 2.0 * SPRITE_HALF / FRAME;
+
+    let mut report = Vec::new();
+    for figure in &FIGURES {
+        for bytes in [figure.idle, figure.walk] {
+            let sheet = load_png_masked(bytes).expect("planche du dépôt valide");
+            let (views, frames) = (sheet.height() / side, sheet.width() / side);
+
+            let poses: Vec<(u32, u32)> = (0..views)
+                .flat_map(|view| (0..frames).map(move |frame| (view, frame)))
+                .collect();
+            let hull = poses
+                .iter()
+                .map(|&(view, frame)| drawn_width(&sheet, view, frame))
+                .max()
+                .expect("une planche a des vignettes");
+            let trunk = poses
+                .iter()
+                .map(|&(view, frame)| trunk_width(&sheet, view, frame))
+                .max()
+                .expect("une planche a des vignettes");
+
+            let rise = poses
+                .iter()
+                .map(|&(view, frame)| {
+                    side - hollow(&sheet, view, frame) - crown(&sheet, view, frame)
+                })
+                .max()
+                .expect("une planche a des vignettes");
+
+            report.push((
+                figure.name,
+                hull,
+                hull as f32 * texel,
+                trunk,
+                trunk as f32 * texel,
+                rise,
+                rise as f32 * texel,
+            ));
+        }
+    }
+
+    for (name, hull, wide, trunk, body, rise, tall) in report {
+        let figure = FIGURES
+            .iter()
+            .find(|figure| figure.name == name)
+            .expect("une ligne par nom relevé");
+        let touch = figure.touch();
+
+        assert!(
+            body <= 2.0 * touch.x,
+            "{name} : son corps est dessiné sur {trunk} texels, soit {body:.2} de \
+             large, et son volume touchable n'en fait que {:.2} — viser son flanc \
+             raterait",
+            2.0 * touch.x
+        );
+        assert!(
+            tall <= 2.0 * touch.z,
+            "{name} : elle est dessinée sur {rise} texels, soit {tall:.2} de haut, et \
+             son volume touchable n'en fait que {:.2} — viser sa tête raterait",
+            2.0 * touch.z
+        );
+
+        // L'enveloppe, elle, **dépasse** et c'est voulu : un volume qui la couvrirait
+        // rendrait touchable le vide entre les membres. Ce qui est vérifié est qu'on
+        // n'a pas confondu les deux en posant la cote.
+        assert!(
+            wide > 2.0 * touch.x,
+            "{name} : son enveloppe de {hull} texels tient dans son volume touchable, \
+             donc la cote a été prise sur elle et non sur le corps"
+        );
+    }
+}
+
+/// La largeur de corps annoncée est celle des planches.
+///
+/// **Elle se remesure, elle ne se relit pas** : c'est un relevé comme les marges de
+/// cadrage et la foulée, donc une planche refaite par la chaîne doit faire rougir la
+/// table plutôt que de passer en silence. Sans cette épreuve, le volume touchable
+/// resterait sur une mesure périmée, et le symptôme reviendrait sans sa cause.
+///
+/// **Le plus large des deux cycles vivants**, parce que c'est lui qui décide : une cote
+/// prise sur la marche laisserait dépasser le repos de trois texels sur `d1`.
+#[test]
+fn le_corps_annonce_est_celui_de_la_planche() {
+    let side = FRAME as u32;
+
+    for figure in &FIGURES {
+        let widest = [figure.idle, figure.walk]
+            .into_iter()
+            .map(|bytes| {
+                let sheet = load_png_masked(bytes).expect("planche du dépôt valide");
+                let (views, frames) = (sheet.height() / side, sheet.width() / side);
+                (0..views)
+                    .flat_map(|view| (0..frames).map(move |frame| (view, frame)))
+                    .map(|(view, frame)| trunk_width(&sheet, view, frame))
+                    .max()
+                    .expect("une planche a des vignettes")
+            })
+            .max()
+            .expect("deux cycles vivants");
+
+        assert_eq!(
+            figure.trunk, widest as f32,
+            "{} : le corps le plus large de ses planches fait {widest} texels, et la \
+             table en annonce {}",
+            figure.name, figure.trunk
+        );
+    }
+}
+
+/// Le volume touchable ne descend jamais sous le volume de marche.
+///
+/// **C'est le plancher, et il sert `d3`** : son corps est dessiné sur `0,66`, soit moins
+/// que les `0,70` du gabarit de marche, et suivre la mesure l'aurait rendue plus dure à
+/// toucher qu'avant le correctif. Un correctif qui dégrade un cas n'en est pas un.
+#[test]
+fn le_volume_touchable_ne_retrecit_jamais() {
+    for figure in &FIGURES {
+        let touch = figure.touch();
+        assert!(
+            touch.x >= HALF.x && touch.y >= HALF.y && touch.z >= HALF.z,
+            "{} : son volume touchable {touch:?} est plus étroit que son gabarit de \
+             marche {HALF:?}",
+            figure.name
         );
     }
 }
