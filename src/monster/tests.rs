@@ -1068,19 +1068,19 @@ fn une_creature_genee_par_une_autre_se_detourne() {
     );
 }
 
-/// Le décor finit par l'arrêter, et elle fait demi-tour.
+/// Le décor finit par l'arrêter, et elle se détourne.
 ///
 /// **Le critère porte sur la distance et non sur un axe**, et c'est ce que cette
 /// épreuve paie : le balayage rend la surface de moindre pénétration, donc une
 /// créature poussée contre un mur peut se voir arrêtée par le sol. Conditionné à
-/// l'axe du cap, le demi-tour ne se déclencherait jamais — elle dériverait le long
+/// l'axe du cap, le détour ne se déclencherait jamais — elle dériverait le long
 /// de la paroi en avançant toujours, et cette épreuve le dirait.
 ///
 /// **Elle marche seule, sans foule**, et c'est voulu : ce qu'on mesure est ce que le
-/// décor impose, et un demi-tour dû à une autre créature le masquerait.
+/// décor impose, et un détour dû à une autre créature le masquerait.
 ///
 /// **Ce qui est exigé est qu'elle reparte**, pas seulement qu'elle tourne : un cap
-/// inversé qui laisserait la créature collée au mur serait un demi-tour pour rien.
+/// changé qui laisserait la créature collée au mur serait un détour pour rien.
 #[test]
 fn le_decor_retourne_le_demon() {
     /// Le pas d'une image, à soixante par seconde.
@@ -1108,7 +1108,7 @@ fn le_decor_retourne_le_demon() {
 
     assert!(
         turns > 0,
-        "en {FRAMES} images, le démon n'a jamais fait demi-tour : parti au cap \
+        "en {FRAMES} images, le démon ne s'est jamais détourné : parti au cap \
          {first}, il y est encore"
     );
     assert!(
@@ -1123,9 +1123,8 @@ fn le_decor_retourne_le_demon() {
 /// **C'est elle qui paie le seuil de [`STALLED`]**, et aucune autre : poussée de
 /// travers contre une paroi, la créature garde la composante tangentielle de son
 /// pas — `cos 45°`, soit `0,707` — donc elle avance, mais le long du mur et non vers
-/// son cap. À un seuil de `0,5`, elle longe indéfiniment sans jamais être retournée,
-/// et c'est ce que cette épreuve a relevé : neuf cents images sans un seul
-/// demi-tour.
+/// son cap. À un seuil de `0,5`, elle longe indéfiniment sans jamais se détourner,
+/// et c'est ce que cette épreuve a relevé : neuf cents images sans un seul détour.
 ///
 /// **Ce qu'elle ne paie pas, et qu'il faut savoir** : le choix de porter le critère
 /// sur la **distance** plutôt que sur l'axe du cap. Remplacé par un test du seul
@@ -1168,7 +1167,7 @@ fn un_cap_oblique_ne_fait_pas_deriver() {
 
     assert!(
         turns > 0,
-        "parti en biais, le démon n'a jamais fait demi-tour en {FRAMES} images"
+        "parti en biais, le démon ne s'est jamais détourné en {FRAMES} images"
     );
     // Ce qu'une marche de quinze secondes couvrirait sans jamais être retournée :
     // la borne est large, et c'est une dérive qu'on cherche, pas une cadence.
@@ -1797,6 +1796,97 @@ fn le_dessin_tient_dans_le_volume_touchable() {
              donc la cote a été prise sur elle et non sur le corps"
         );
     }
+}
+
+/// Une créature ne tourne pas sur place.
+///
+/// **Le prédicat est l'étendue visitée, et non la distance franchie** : c'est la
+/// distinction qui a coûté deux mesures fausses. Une créature qui oscille contre une
+/// paroi franchit soixante-douze pour cent d'un trajet libre — mesuré — et paraît
+/// pourtant immobile à l'écran, parce qu'elle revient toujours au même endroit. Un
+/// prédicat de distance la déclarait saine.
+///
+/// **Le régime est la promenade, pas une pose fabriquée.** Un cap lancé droit dans un
+/// angle rentrant n'a rien montré — `13,47` sur `14,00` en dix secondes, donc elle s'en
+/// détourne très bien. Le blocage naît de ce que la promenade **accumule**, et il n'est
+/// apparu qu'à la quatre-vingt-troisième seconde.
+///
+/// **Les deux bornes du seuil sont mesurées**, sur ce corpus exactement : avec un
+/// demi-tour, `0,54` ; avec l'angle d'or, `1,26`. L'unité les sépare, et elle n'est donc
+/// pas un chiffre de goût — c'est la seule valeur qui rougisse sur l'un et pas sur
+/// l'autre.
+///
+/// **Ce que cette épreuve ne garde pas**, et c'est à savoir : le blocage **permanent**
+/// signalé à l'écran n'a pas été reproduit. Dix minutes sur six graines, à trente,
+/// soixante, cent quarante-quatre et deux cent quarante images par seconde, aucune
+/// créature n'est restée sous une case pendant vingt secondes — avant comme après. Ce
+/// qui est corrigé est un mécanisme mesuré, pas le symptôme dans son ampleur.
+#[test]
+fn une_creature_ne_tourne_pas_sur_place() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+    /// Combien de secondes la promenade dure.
+    ///
+    /// Deux minutes, parce que l'épisode le plus net arrive à quatre-vingt-trois
+    /// secondes : une promenade courte ne le voit pas.
+    const SPAN: f32 = 120.0;
+    /// La fenêtre sur laquelle on juge qu'elle va quelque part, en images.
+    ///
+    /// Trois secondes, et c'est la fenêtre qui **discrimine** : à dix secondes, les deux
+    /// régimes rendent `2,30` et `2,31`, parce que l'épisode y est noyé dans ce qui
+    /// l'entoure.
+    const WINDOW: usize = 180;
+    /// L'étendue sous laquelle on tient la créature pour tournant sur place.
+    const PENNED: f32 = 1.0;
+
+    let mut worst = (f32::MAX, 0usize, "aucune", 0u64);
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+        let mut monsters = population(&grid, &map).expect("planches du dépôt valides");
+
+        let mut tracks: Vec<Vec<Vec3>> = vec![Vec::new(); monsters.len()];
+        for _ in 0..(SPAN / DT) as u32 {
+            stroll(&mut monsters, &map, DT);
+            for (rank, monster) in monsters.iter().enumerate() {
+                tracks[rank].push(monster.at());
+            }
+        }
+
+        for (rank, track) in tracks.iter().enumerate() {
+            for start in 0..track.len() - WINDOW {
+                let seen = spread(&track[start..start + WINDOW]);
+                if seen < worst.0 {
+                    worst = (seen, start, monsters[rank].name(), seed);
+                }
+            }
+        }
+    }
+
+    let (seen, start, name, seed) = worst;
+    assert!(
+        seen > PENNED,
+        "graine {seed:#x} : {name} n'a visité qu'une zone de {seen:.2} sur les \
+         {WINDOW} images à partir de l'image {start}, là où {PENNED} sépare une \
+         promenade d'un tour sur place"
+    );
+}
+
+/// L'étendue de la zone qu'un trajet visite, en unités de monde.
+///
+/// **Le côté de son emprise horizontale, et non la distance parcourue** : c'est la
+/// distinction que le premier prédicat de `H21` avait manquée. Une créature qui oscille
+/// contre une paroi franchit de la distance à chaque image — soixante-douze pour cent
+/// d'un trajet libre, mesuré — et paraît pourtant immobile à l'écran, parce qu'elle
+/// revient toujours au même endroit. Ce qu'on veut savoir est si elle **va** quelque
+/// part.
+fn spread(track: &[Vec3]) -> f32 {
+    let span = |axis: fn(&Vec3) -> f32| {
+        let low = track.iter().map(axis).fold(f32::MAX, f32::min);
+        let high = track.iter().map(axis).fold(f32::MIN, f32::max);
+        high - low
+    };
+
+    span(|at| at.x).max(span(|at| at.y))
 }
 
 /// La largeur de corps annoncée est celle des planches.

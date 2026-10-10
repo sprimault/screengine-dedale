@@ -23,6 +23,8 @@ cela s'adresse à quelqu'un.
 ### Corrigé
 - **Un démon se touche là où on le voit** : viser le flanc des plus larges ratait le
   coup.
+- **Un démon ne fait plus l'aller-retour au même endroit** : arrêté par le décor, il
+  se détourne au lieu de refaire son chemin à l'envers.
 
 ***
 
@@ -34,6 +36,8 @@ cela s'adresse à quelqu'un.
 
 ### Fixed
 - **A demon is hit where it is seen**: aiming at the flank of the wider ones missed.
+- **A demon no longer paces the same spot**: stopped by the level, it veers instead of
+  retracing its path backwards.
 
 ## [0.4.0] — 2026-10-07 — Le tir et le contact
 
