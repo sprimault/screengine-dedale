@@ -24,11 +24,16 @@ font, recorded in [`THIRD-PARTY-NOTICES`](THIRD-PARTY-NOTICES).
 
 ## Status
 
-**Step 4: shooting and contact.** A generated maze walked in first person, floors
+**Step 5: health, score, interface.** A generated maze walked in first person, floors
 linked by shafts — stepped, or ramped. The map stops you: you hug walls, you climb
 steps and ramps, and gravity brings you back down. Three demons roam it, each with its
-own figure. You shoot: walls keep the mark, demons take the hits and go down. Not a
-game yet: no health, no score, no pickups.
+own figure. You shoot: walls keep the mark, demons take the hits and go down. They cost
+you health on contact, and each one downed scores. Not a game yet: no pickups, no exit.
+
+**It downloads**: every version carries a self-contained executable for Windows and for
+Linux — nothing to install alongside, it is all in there — with an installer and an
+AppImage for those who prefer them. Everything is in
+[the latest version's files](../../releases/latest).
 
 - [`ROADMAP.md`](ROADMAP.md) — the steps and what is out of scope (French)
 - [`CHANGELOG.md`](CHANGELOG.md) — what each version brought, dated

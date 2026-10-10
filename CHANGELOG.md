@@ -14,42 +14,30 @@ cela s'adresse à quelqu'un.
 
 ## [Non publié]
 
+## [0.5.0] — 2026-10-10 — La vie, le score, l'interface
+
 ### Ajouté
-- **Les démons blessent au contact**, et une barre de vie en bas de l'écran dit ce
-  qu'il reste. À zéro la partie se fige, et un texte dit que `R` en relance une.
-- **Un démon abattu compte**, chaque silhouette pour sa valeur, et le score se lit en
-  bas à droite.
-- **Le jeu se télécharge** : chaque version porte un exécutable autonome pour Windows et
-  pour Linux, sans rien à installer à côté.
-- **Le jeu a son icône** — un couloir, et un démon au bout —, que l'exécutable Windows
-  porte.
-- **Et il s'installe** : un programme d'installation pour Windows, une AppImage pour
-  Linux, chacun avec son raccourci et son icône.
+- **On peut perdre, et marquer des points** : les démons blessent au contact, la jauge
+  dit ce qui reste, et chaque silhouette abattue vaut la sienne au compteur. À zéro
+  tout se fige, et `R` relance.
+- **Le jeu se télécharge et s'installe** : un exécutable autonome pour Windows et pour
+  Linux, un programme d'installation et une AppImage, et son icône avec.
 
 ### Corrigé
-- **Un démon se touche là où on le voit** : viser le flanc des plus larges ratait le
-  coup.
-- **Un démon ne fait plus l'aller-retour au même endroit** : arrêté par le décor, il
-  se détourne au lieu de refaire son chemin à l'envers.
+- **Un démon se touche là où on le voit**, et il ne tourne plus en rond au même
+  endroit.
 
 ***
 
 ### Added
-- **Demons hurt on contact**, and a health bar at the bottom of the screen shows what
-  is left. At zero the game freezes, and a line says `R` starts a new one.
-- **Downing a demon scores**, each figure for its own value, and the count reads at the
-  bottom right.
-- **The game is downloadable**: every version carries a self-contained executable for
-  Windows and for Linux, with nothing to install alongside.
-- **The game has its icon** — a corridor, and a demon at the end — carried by the
-  Windows executable.
-- **And it installs**: a Windows installer and a Linux AppImage, each with its shortcut
-  and its icon.
+- **You can lose, and you can score**: demons hurt on contact, the bar shows what is
+  left, and each figure downed is worth its own value. At zero everything freezes, and
+  `R` starts again.
+- **The game downloads and installs**: a self-contained executable for Windows and for
+  Linux, an installer and an AppImage, and its icon with them.
 
 ### Fixed
-- **A demon is hit where it is seen**: aiming at the flank of the wider ones missed.
-- **A demon no longer paces the same spot**: stopped by the level, it veers instead of
-  retracing its path backwards.
+- **A demon is hit where it is seen**, and it no longer paces the same spot.
 
 ## [0.4.0] — 2026-10-07 — Le tir et le contact
 
