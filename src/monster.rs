@@ -80,6 +80,18 @@ struct Figure {
     /// texels, et un chiffre converti à la main dans une table est un chiffre qu'on
     /// ne peut plus comparer à ce qu'on remesure.
     stride: f32,
+    /// La largeur de son **corps** dessiné, en texels de planche.
+    ///
+    /// **Relevée et non choisie**, comme les marges et la foulée : c'est la médiane des
+    /// largeurs de ligne de ses vignettes, prise au plus large de ses deux cycles
+    /// vivants. `le_corps_annonce_est_celui_de_la_planche` la rattache aux planches, et
+    /// une planche refaite doit donc faire rougir la table plutôt que de passer.
+    ///
+    /// **La médiane et pas l'enveloppe**, et l'écart est du double : `d2` est dessinée
+    /// sur cinquante-sept texels avec ses appendices, et son corps en fait
+    /// trente-sept. Un volume qui couvrirait l'enveloppe rendrait touchable le vide
+    /// entre les membres ; ce qu'on cherche est ce qu'un joueur prend pour le corps.
+    trunk: f32,
     /// Ce qu'elle vaut au compteur, abattue.
     ///
     /// **Une prime par silhouette et non un barème unique**, parce que ce qui la
@@ -88,16 +100,18 @@ struct Figure {
     /// jour-là, et la table est l'endroit où il s'écrit — tout ce qui sépare les
     /// trois y est déjà.
     ///
-    /// **`d2` vaut le plus parce qu'elle est la plus dure à abattre**, jugé à l'écran
-    /// le 2026-10-10. Ce n'est pas une cote qui le dit — les trois ont la même vie, la
-    /// même vitesse et le même volume —, c'est la créature telle qu'on la vise ; et
-    /// c'est bien de l'écran qu'un barème doit venir, puisque ce qu'il récompense est
-    /// la difficulté ressentie.
+    /// **L'ordre est celui de la table, et il n'affirme rien** : les trois sont
+    /// également touchables depuis que [`Figure::touch`] suit le corps dessiné, et elles
+    /// partagent vie, vitesse et volume de marche. Rien ne les ordonne donc, et les
+    /// valeurs se reprendront quand leur résistance divergera.
     ///
-    /// **Rien ne sépare `d1` de `d3`**, qui gardent donc l'ordre de la table, et les
-    /// trois valeurs se reprendront quand leur résistance divergera. Distinctes dès
-    /// maintenant pour que le compteur dise **laquelle** on a abattue, ce qu'un chiffre
-    /// commun ne dirait jamais.
+    /// **`d2` a valu le plus pendant un lot**, parce qu'elle paraissait la plus dure à
+    /// abattre : elle l'était, mais d'un défaut — son corps dessiné dépassait de moitié
+    /// son volume touchable. Le barème récompensait un ratage, et c'est ce qui a fait
+    /// mesurer plutôt que payer.
+    ///
+    /// **Distinctes malgré tout**, pour que le compteur dise **laquelle** on a abattue :
+    /// un chiffre commun ne le dirait jamais.
     bounty: u32,
 }
 
@@ -142,6 +156,32 @@ impl Figure {
     fn stride(&self) -> f32 {
         self.stride / FRAME * (2.0 * SPRITE_HALF)
     }
+
+    /// Les demi-étendues de ce que le **tir** peut toucher, en unités de monde.
+    ///
+    /// **Ce n'est pas [`HALF`], et c'est la correction de tout ce lot** : ce volume-là
+    /// est le corps qui doit passer dans un couloir, et il vaut le même pour les trois.
+    /// Celui-ci doit couvrir ce qu'on voit, parce qu'on vise ce qu'on voit — et le
+    /// corps dessiné de `d2` fait `1,11` de large là où le volume de marche en fait
+    /// `0,70`. Viser son flanc ratait le coup sans que rien ne le dise, ce qui s'est vu
+    /// à l'écran le 2026-10-10 et a d'abord été pris pour une difficulté de la
+    /// créature.
+    ///
+    /// **Jamais sous le volume de marche** : `d3` mesure `0,66`, donc moins que les
+    /// `0,70` d'aujourd'hui, et un correctif qui la rendrait plus dure à toucher ne
+    /// serait pas un correctif. Le plancher est donc le gabarit de marche.
+    ///
+    /// **Carré en plan, comme [`HALF`]** : la planche est orientée caméra, donc la
+    /// largeur dessinée est la même sous tous les angles. Une boîte plus profonde que
+    /// large se laisserait toucher de côté à une distance qu'on ne voit pas.
+    ///
+    /// **La hauteur ne bouge pas, et c'est mesuré** : les trois silhouettes sont
+    /// dessinées sur cinquante-neuf à soixante texels, soit `1,77` à `1,80`, là où le
+    /// volume en fait `1,80`. Viser la tête touche déjà.
+    fn touch(&self) -> Vec3 {
+        let half = (self.trunk / FRAME * SPRITE_HALF).max(HALF.x);
+        Vec3::new(half, half, HALF.z)
+    }
 }
 
 /// Les trois silhouettes du labyrinthe, et ce que leurs planches imposent.
@@ -170,6 +210,7 @@ static FIGURES: [Figure; 3] = [
         walk_margin: 4.0,
         dead_margin: 2.0,
         stride: 36.0,
+        trunk: 31.0,
         bounty: 100,
     },
     Figure {
@@ -181,7 +222,8 @@ static FIGURES: [Figure; 3] = [
         walk_margin: 3.0,
         dead_margin: 2.0,
         stride: 16.0,
-        bounty: 200,
+        trunk: 37.0,
+        bounty: 150,
     },
     Figure {
         name: "d3",
@@ -192,7 +234,8 @@ static FIGURES: [Figure; 3] = [
         walk_margin: 2.0,
         dead_margin: 3.0,
         stride: 22.0,
-        bounty: 150,
+        trunk: 22.0,
+        bounty: 200,
     },
 ];
 
@@ -713,6 +756,14 @@ impl Monster {
     /// sol, pas même son ombre, qui s'est éteinte dès le coup fatal.
     pub fn spent(&self) -> bool {
         self.fallen() && self.phase >= 1.0
+    }
+
+    /// Les demi-étendues que le tir doit tester contre elle.
+    ///
+    /// **De la silhouette et non du module**, là où le volume de marche est commun :
+    /// voir [`Figure::touch`], qui porte la mesure et ce qu'elle a corrigé.
+    pub fn hittable(&self) -> Vec3 {
+        self.figure.touch()
     }
 
     /// Où son centre se trouve, ce que le titre de la fenêtre affiche.

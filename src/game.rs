@@ -418,6 +418,11 @@ impl Game {
     /// **Les deux gabarits diffèrent**, et c'est ce qui a sorti l'inégalité du module
     /// des créatures : une boîte de joueur est plus étroite que celle d'un démon, donc
     /// un test écrit sur le double d'une seule demi-étendue serait faux des deux côtés.
+    ///
+    /// **Et c'est le volume de marche qu'on prend ici, pas celui du tir** : mordre
+    /// demande d'être contre la créature, ce qui est une question de corps ; toucher
+    /// demande de viser ce qu'on voit, ce qui est une question de dessin. Le second est
+    /// plus large que le premier sur deux des trois silhouettes.
     fn touched(&self) -> bool {
         self.monsters
             .iter()
@@ -443,9 +448,10 @@ impl Game {
     /// porte à côté plutôt que par un identifiant dans `Monster`, qui serait un champ
     /// de plus à tenir pour une durée d'une image.
     ///
-    /// **Le gabarit vient du module des créatures et non du corps** : toutes le
-    /// partagent, le volume tenant à ce qui doit passer dans un couloir et non au
-    /// dessin.
+    /// **Le gabarit vient de la silhouette, et c'est ce qui le sépare du corps** : le
+    /// volume de marche tient à ce qui doit passer dans un couloir, donc il est le même
+    /// pour les trois ; celui-ci doit couvrir ce qu'on voit, parce qu'on vise ce qu'on
+    /// voit. Les confondre faisait rater les flancs de la silhouette la plus large.
     fn volumes(&self) -> (Vec<shot::Volume>, Vec<usize>) {
         let alive = self
             .monsters
@@ -458,7 +464,7 @@ impl Game {
                 (
                     shot::Volume {
                         centre: monster.at(),
-                        half: monster::HALF,
+                        half: monster.hittable(),
                     },
                     rank,
                 )
