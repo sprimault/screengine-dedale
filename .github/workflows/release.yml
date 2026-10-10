@@ -1,0 +1,120 @@
+# Les binaires d'une version, attachés à sa release.
+#
+# **Séparé de `ci.yml`, et les trois raisons sont indépendantes** : le déclencheur
+# est un tag et non une pull request ; les droits sont ceux d'écriture sur le
+# dépôt, que l'intégration continue n'a pas et ne doit pas avoir ; et une
+# compilation en profil release emporte LTO et une seule unité de génération,
+# donc elle coûte plusieurs minutes qu'aucune PR n'a de raison de payer.
+#
+# Tout passe par le Makefile, comme en local et comme dans `ci.yml` : une
+# commande cargo écrite ici serait une seconde définition de ce qu'on distribue,
+# et c'est celle qu'on ne peut pas essayer avant de pousser.
+#
+# **Le binaire est autonome, et c'est ce qui rend l'archive suffisante.** Les
+# planches, les textures et la police entrent dans l'exécutable par
+# `include_bytes!`, donc il n'y a rien à poser à côté de lui ni à chercher au
+# lancement.
+name: Release
+
+on:
+  # Le chemin normal, et c'est pour lui que l'entrée existe : une release de ce
+  # dépôt part en **brouillon**, donc son tag n'est pas encore posé au moment où
+  # on veut garnir la page. L'entrée nomme la release à garnir, brouillon
+  # compris, ce qu'un déclencheur de tag ne peut pas faire.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Le tag de la release à garnir, brouillon compris — v0.5.0"
+        required: true
+        type: string
+  # Le garde-fou : un tag posé autrement garnit quand même sa release. Les deux
+  # chemins peuvent se croiser sans dommage, l'envoi écrasant ce qui porte le
+  # même nom.
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  binaire:
+    name: Binaire — ${{ matrix.cible }}
+    runs-on: ${{ matrix.os }}
+    # Le seul endroit du dépôt qui écrive, et il est au niveau du job : un droit
+    # posé sur le fichier entier s'appliquerait à tout ce qu'on y ajouterait
+    # ensuite.
+    permissions:
+      contents: write
+    strategy:
+      # Un système qui casse ne doit pas emporter l'archive de l'autre : la
+      # moitié d'une release vaut mieux que rien, et le journal dit laquelle.
+      fail-fast: false
+      matrix:
+        include:
+          # **Jamais `ubuntu-latest` pour un binaire qu'on distribue.** Le
+          # libellé mobile migre d'une version d'Ubuntu à la suivante sans que ce
+          # dépôt bouge, et il emporte la glibc avec lui : un binaire construit
+          # sur la plus récente refuse de démarrer sur une distribution plus
+          # ancienne, et le défaut n'apparaît que chez celui qui télécharge.
+          # L'image la plus ancienne encore offerte est donc le bon choix — c'est
+          # le même raisonnement que l'épinglage des actions au SHA.
+          - os: ubuntu-22.04
+            cible: linux-x86_64
+            binaire: screengine-dedale
+            archive: tar.gz
+          - os: windows-latest
+            cible: windows-x86_64
+            binaire: screengine-dedale.exe
+            archive: zip
+    env:
+      # Le répertoire de sortie est imposé plutôt que déduit : `makefile.local`
+      # le redirige sur le poste de développement et n'est pas versionné, donc le
+      # chemin du binaire dépendrait d'un fichier absent ici.
+      CARGO_TARGET_DIR: target
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Chaîne Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - run: make release
+
+      # Le même shell sur les deux systèmes, pour que l'archive se fabrique une
+      # fois : `tar` et `zip` sont tous deux dans l'image Windows, et un script
+      # par système serait deux choses à tenir d'accord.
+      - name: Mettre en archive
+        shell: bash
+        run: |
+          version="${TAG#v}"
+          nom="dedale-${version}-${{ matrix.cible }}"
+          mkdir "$nom"
+          # Le nom du binaire est celui que cargo produit, et il ne se renomme
+          # pas : deux noms pour un fichier font chercher lequel fait foi.
+          cp "target/release/${{ matrix.binaire }}" "$nom/"
+          cp README.md README.fr.md CHANGELOG.md LICENSE-MIT LICENSE-APACHE \
+             THIRD-PARTY-NOTICES "$nom/"
+          case "${{ matrix.archive }}" in
+            # Par `tar` et non par `zip` sous Linux : le bit exécutable ne
+            # survit pas à une archive zip, et un binaire téléchargé qui ne se
+            # lance pas est un défaut qu'on met du temps à nommer.
+            tar.gz) tar -czf "${nom}.tar.gz" "$nom" ;;
+            # Et par `Compress-Archive` sous Windows, qui vient du système :
+            # `7z` est bien sur l'image d'aujourd'hui, mais c'est un outil
+            # installé, donc une dépendance qu'on ne tient pas. Un zip plutôt
+            # qu'un tar parce que Windows l'ouvre sans rien installer.
+            zip)    powershell -NoProfile -Command \
+                      "Compress-Archive -Path '$nom' -DestinationPath '${nom}.zip'" ;;
+          esac
+          echo "ARCHIVE=${nom}.${{ matrix.archive }}" >> "$GITHUB_ENV"
+
+      - name: Attacher à la release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "$ARCHIVE" --clobber
