@@ -41,6 +41,13 @@ screengine-play = { version = "0.9", git = "https://github.com/sprimault/screeng
 [dev-dependencies]
 png = "0.18"
 
+# Pour poser l'icône dans l'exécutable Windows, faute d'un réglage de fenêtre côté
+# moteur. **Sous Windows seulement** : c'est la seule cible où une ressource de
+# binaire porte une icône, et la déclarer pour toutes alourdirait l'arbre de Linux
+# pour rien. `build.rs` dit ce qu'elle rattrape et ce qu'elle laisse ouvert.
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"
+
 [lints.rust]
 missing_docs = "warn"
 

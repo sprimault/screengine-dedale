@@ -21,6 +21,8 @@ cela s'adresse à quelqu'un.
   bas à droite.
 - **Le jeu se télécharge** : chaque version porte un exécutable autonome pour Windows et
   pour Linux, sans rien à installer à côté.
+- **Le jeu a son icône** — un couloir, et un démon au bout —, que l'exécutable Windows
+  porte.
 
 ### Corrigé
 - **Un démon se touche là où on le voit** : viser le flanc des plus larges ratait le
@@ -37,6 +39,8 @@ cela s'adresse à quelqu'un.
   bottom right.
 - **The game is downloadable**: every version carries a self-contained executable for
   Windows and for Linux, with nothing to install alongside.
+- **The game has its icon** — a corridor, and a demon at the end — carried by the
+  Windows executable.
 
 ### Fixed
 - **A demon is hit where it is seen**: aiming at the flank of the wider ones missed.
