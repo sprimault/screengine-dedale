@@ -28,8 +28,8 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use screengine_play::{
-    Affine3, Angle, Camera, Color, Context, Error, Sprite, SpriteOrientation, Texture, Triangle,
-    Vec3, VertexUv, World, load_png_masked,
+    Affine3, Angle, Camera, Color, Context, CoreError, Error, Sprite, SpriteOrientation, Texture,
+    Triangle, Vec3, VertexUv, World, load_png_masked,
 };
 
 use crate::blot::blot;
@@ -987,7 +987,7 @@ pub fn submit(
     context: &mut Context,
     monsters: &[Monster],
     camera: &Camera,
-) -> Result<(), screengine_play::screengine::Error> {
+) -> Result<(), CoreError> {
     // **Une créature tombée ne pose plus d'ombre**, et dès le coup fatal : la tache est
     // dimensionnée sur l'empreinte des pieds d'une silhouette debout, et un disque resté
     // rond sous un corps qui s'affaisse se lit comme une marque au sol. Rien ne doit

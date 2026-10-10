@@ -23,7 +23,8 @@
 use std::sync::Arc;
 
 use screengine_play::{
-    Affine3, Angle, Color, Context, Sprite, SpriteOrientation, Texture, Triangle, Vec3, VertexUv,
+    Affine3, Angle, Color, Context, CoreError, Sprite, SpriteOrientation, Texture, Triangle, Vec3,
+    VertexUv,
 };
 
 use crate::blot::{blot, spark};
@@ -266,10 +267,7 @@ fn corners(mark: &Mark) -> [Vec3; 4] {
 ///
 /// Comme la scène et l'arme, cette fonction ne lit ni horloge, ni entrée, ni tampon de
 /// sortie : le chemin de rendu hors fenêtre de l'étape 8 l'appellera telle quelle.
-pub fn submit(
-    context: &mut Context,
-    marks: &Marks,
-) -> Result<(), screengine_play::screengine::Error> {
+pub fn submit(context: &mut Context, marks: &Marks) -> Result<(), CoreError> {
     /// Les coordonnées de texture d'un coin, en texels.
     const EDGE: f32 = SIDE as f32;
 

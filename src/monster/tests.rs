@@ -28,8 +28,7 @@ use crate::maze::export;
 use crate::maze::grid::Settings;
 use crate::scene::{Scenery, View};
 use crate::test_support::{HEIGHT, SEEDS, WIDTH, context, frame, maze, snapshot};
-use screengine_play::FreeCamera;
-use screengine_play::screengine::BYTES_PER_PIXEL;
+use screengine_play::{BYTES_PER_PIXEL, FreeCamera};
 
 /// Les deux vues de profil d'une planche : à un quart et à trois quarts de tour.
 ///

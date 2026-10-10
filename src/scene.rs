@@ -16,7 +16,9 @@
 
 use std::sync::Arc;
 
-use screengine_play::{Affine3, Camera, Context, Error, Texture, Visibility, World, load_png};
+use screengine_play::{
+    Affine3, Camera, Context, CoreError, Error, Texture, Visibility, World, load_png,
+};
 
 use crate::maze::export;
 use crate::maze::grid::{Grid, Settings};
@@ -117,7 +119,7 @@ pub fn submit(
     context: &mut Context,
     scenery: &Scenery,
     view: &View,
-) -> Result<Visibility, screengine_play::screengine::Error> {
+) -> Result<Visibility, CoreError> {
     context.set_camera(view.camera)?;
     context.submit_world_visible(
         Affine3::IDENTITY,
