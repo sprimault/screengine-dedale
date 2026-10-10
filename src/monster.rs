@@ -335,12 +335,12 @@ const SPEED: f32 = 1.4;
 /// **Le seuil se mesure sur la glissade la plus favorable, pas au jugé.** Un cap à
 /// quarante-cinq degrés contre une paroi axiale garde `cos 45°`, soit `0,707`, de
 /// son pas : sous ce chiffre, la créature longe les murs indéfiniment sans être
-/// retournée — relevé, neuf cents images sans un seul demi-tour. Au-dessus, elle se
+/// détournée — relevé, neuf cents images sans un seul détour. Au-dessus, elle se
 /// retourne dès qu'elle perd franchement sa route, et continue de longer tant
 /// qu'elle ne perd presque rien.
 const STALLED: f32 = 0.8;
 
-/// Combien d'images de suite la créature doit être gênée avant de se retourner.
+/// Combien d'images de suite la créature doit être gênée avant de se détourner.
 ///
 /// **Une image gênée ne vaut pas un obstacle**, et c'est ce qui se voyait à
 /// l'écran : en ligne droite, le franchissement d'un joint de dalle ou la reprise
@@ -356,6 +356,26 @@ const STALLED: f32 = 0.8;
 /// ligne droite, et bien en deçà de ce qu'un mur impose — contre une paroi, la gêne
 /// ne cesse pas tant qu'on ne s'en détourne pas.
 const PATIENCE: u32 = 12;
+
+/// De combien la créature se détourne quand sa patience est épuisée, en radians.
+///
+/// **L'angle d'or, et ce n'est pas une coquetterie : c'est la seule famille d'angles
+/// qui ne referme pas le trajet.** Un demi-tour est involutif — il remet la créature
+/// sur sa propre trace, donc elle refait le chemin qui vient de l'arrêter et bute au
+/// même endroit. Et tout angle qui **divise le tour** referme un polygone : quatre
+/// quarts de tour parcourus sur la même distance décrivent un carré, et la créature
+/// revient exactement à son départ. Les deux ont été mesurés dans cet ordre.
+///
+/// **La mesure, sur la graine `0x2`** : au demi-tour, `d2` faisait un aller-retour de
+/// `0,49` toutes les vingt-une images et ne visitait qu'une zone de `0,54` là où une
+/// case en fait quatre ; au quart de tour, `0,85`. Avec cet angle-ci, aucun cap ne
+/// revient jamais — la suite est équirépartie sur le cercle —, donc aucune boucle
+/// fermée n'existe pour l'y enfermer.
+///
+/// **Déterministe, et c'est ce qui l'emporte sur un tirage** : une direction au hasard
+/// sortirait aussi, mais demanderait une graine dans chaque créature et ferait perdre
+/// ce que la graine du labyrinthe achète — un défaut qui se rejoue.
+const VEER: f32 = 2.399_963_2;
 
 /// Combien de coups une créature encaisse avant de tomber.
 ///
@@ -525,7 +545,7 @@ impl Monster {
             // l'arrivée recouvre encore, c'est refuser aussi ceux qui en sortent —
             // vingt-huit centimètres de recul s'évacuent par une douzaine de pas de
             // deux centimètres et demi, dont pas un seul ne passerait. Deux créatures
-            // bloquées l'une dans l'autre ne repartaient jamais, et le demi-tour de la
+            // bloquées l'une dans l'autre ne repartaient jamais, et le détour de la
             // patience n'y changeait rien, le recouvrement étant le même des deux
             // côtés.
             //
@@ -535,18 +555,19 @@ impl Monster {
         })
     }
 
-    /// Marche droit devant, et fait demi-tour quand le décor l'arrête.
+    /// Marche droit devant, et se détourne quand le décor l'arrête.
     ///
     /// **Le déplacement passe par le corps**, avec son propre gabarit : la glissade,
     /// la chute et le franchissement sont ceux du joueur, et c'est ce que
     /// l'extraction du corps a acheté. Une créature monte donc un escalier sans
     /// qu'une ligne d'ici le sache.
     ///
-    /// **Arrêtée veut dire demi-tour, quel que soit l'axe qui a arrêté**, et c'est le
-    /// piège de cette fonction : le balayage rend la surface de moindre pénétration,
+    /// **Arrêtée veut dire se détourner, quel que soit l'axe qui a arrêté**, et c'est
+    /// le piège de cette fonction : le balayage rend la surface de moindre pénétration,
     /// donc la normale qui arrête n'est pas forcément celle du cap. Le critère porte
     /// sur la **distance horizontale réellement franchie** contre celle demandée —
-    /// voir [`STALLED`].
+    /// voir [`STALLED`], et l'angle du détour est celui de [`VEER`], qui n'est pas un
+    /// demi-tour et explique pourquoi.
     ///
     /// **La composante verticale ne compte pas** dans ce critère : la pesanteur en
     /// ajoute une à chaque image, et une créature qui descend une rampe parcourt plus
@@ -603,7 +624,7 @@ impl Monster {
             false => 0,
         };
         if self.hindered >= PATIENCE {
-            self.facing += core::f32::consts::PI;
+            self.facing = (self.facing + VEER).rem_euclid(core::f32::consts::TAU);
             self.hindered = 0;
         }
 

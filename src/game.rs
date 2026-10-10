@@ -333,8 +333,8 @@ impl Game {
 
         // Les créatures marchent pour leur compte : elles ne poursuivent personne, la
         // navigation d'une cellule à l'autre demandant un graphe que la carte ne
-        // donne pas. Chacune avance droit et fait demi-tour sur ce qui l'arrête —
-        // une paroi, ou une autre créature.
+        // donne pas. Chacune avance droit et se détourne de ce qui l'arrête — une
+        // paroi, ou une autre créature.
         monster::stroll(&mut self.monsters, map, tick.dt());
 
         // **Une créature dont la chute est jouée quitte la partie**, et il n'en reste
