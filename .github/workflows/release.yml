@@ -112,9 +112,72 @@ jobs:
                       "Compress-Archive -Path '$nom' -DestinationPath '${nom}.zip'" ;;
           esac
           echo "ARCHIVE=${nom}.${{ matrix.archive }}" >> "$GITHUB_ENV"
+          echo "NOM=${nom}" >> "$GITHUB_ENV"
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+
+      # **Inno Setup plutôt que WiX**, parce que ce qu'on installe tient en un
+      # fichier : un MSI apporte la réparation, l'installation par stratégie de
+      # groupe et la transformation, dont aucune n'a de destinataire pour un jeu
+      # autonome, au prix d'une description bien plus lourde.
+      #
+      # **Installé plutôt que supposé présent** : l'image le porte aujourd'hui,
+      # mais c'est un outil tiers de son catalogue, donc une dépendance qu'on ne
+      # tient pas. Le chercher d'abord évite d'attendre une installation inutile.
+      - name: Installateur Windows
+        if: matrix.cible == 'windows-x86_64'
+        shell: bash
+        run: |
+          iscc="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          if [ ! -f "$iscc" ]; then
+            choco install innosetup --no-progress --yes
+          fi
+          # Deux racines, parce que ce qui s'installe et ce qui habille
+          # l'installateur ne vivent pas au même endroit : la charge est le
+          # répertoire de mise en scène, le dépôt porte l'icône et la licence.
+          "$iscc" //DVersion="$VERSION" //DBinaire="${{ matrix.binaire }}" \
+                  //DCharge="$(pwd -W)/$NOM" //DDepot="$(pwd -W)" \
+                  //O"$(pwd -W)" packaging/windows/dedale.iss
+          echo "INSTALLATEUR=${NOM}-installateur.exe" >> "$GITHUB_ENV"
+
+      # **L'AppImage est le seul des deux qui corrige quelque chose** : son
+      # fichier `.desktop` donne au jeu son icône sous X11 et Wayland, que rien
+      # d'autre ne peut poser — l'étage d'accueil du moteur ne règle pas l'icône
+      # d'une fenêtre, et une ressource de binaire n'existe que sur Windows.
+      #
+      # **L'outil est épinglé à une version et non au `continuous`** : un libellé
+      # mobile désigne un contenu qui change sans que ce dépôt bouge, et c'est la
+      # même clause que l'épinglage des actions au SHA.
+      #
+      # **Extraite plutôt que montée** : une AppImage a besoin de FUSE pour se
+      # lancer, et le runner ne l'a pas.
+      - name: AppImage
+        if: matrix.cible == 'linux-x86_64'
+        shell: bash
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          OUTIL: https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage
+        run: |
+          curl -fsSL -o appimagetool "$OUTIL"
+          chmod +x appimagetool
+
+          mkdir -p AppDir/usr/bin
+          cp "target/release/${{ matrix.binaire }}" AppDir/usr/bin/
+          cp packaging/linux/AppRun AppDir/
+          chmod +x AppDir/AppRun
+          cp packaging/linux/dedale.desktop AppDir/
+          # L'icône du répertoire racine est celle que l'AppImage expose, et son
+          # nom doit être celui que le `.desktop` déclare, extension comprise.
+          cp assets/icons/dedale-1024.png AppDir/dedale.png
+
+          appimage="${NOM}.AppImage"
+          ./appimagetool AppDir "$appimage"
+          echo "APPIMAGE=${appimage}" >> "$GITHUB_ENV"
 
       - name: Attacher à la release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$TAG" "$ARCHIVE" --clobber
+        run: |
+          # Les variables absentes se replient sur du vide : chaque système n'en
+          # produit qu'une des deux, et `gh` refuserait un chemin vide.
+          gh release upload "$TAG" $ARCHIVE ${INSTALLATEUR:-} ${APPIMAGE:-} --clobber

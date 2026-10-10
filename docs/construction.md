@@ -142,6 +142,15 @@ comme un tag d'action mobile change de contenu.
 donc un avertissement du système, qu'un installateur non signé ne lèverait pas
 davantage.
 
+**Deux formes d'installation s'ajoutent aux archives**, décrites dans `packaging/` :
+un programme d'installation Windows, et une AppImage pour Linux. Le binaire étant
+autonome, ni l'un ni l'autre ne copie quoi que ce soit d'essentiel — leur intérêt est
+dans ce que le système en sait : un raccourci, une désinstallation propre, une entrée
+dans la liste des programmes.
+
+**L'AppImage est la seule des deux qui corrige quelque chose** : son fichier
+`.desktop` donne au jeu son icône sous X11 et Wayland, que rien d'autre ne peut poser.
+
 **L'icône de l'exécutable se pose à la compilation, et elle ne vaut que pour
 Windows.** C'est une ressource du binaire, donc l'explorateur, la barre des tâches
 et la fenêtre la montrent toutes les trois — une fenêtre sans icône explicite prend

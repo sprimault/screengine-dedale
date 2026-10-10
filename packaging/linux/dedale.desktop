@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Dédale
+GenericName=Jeu de labyrinthe
+GenericName[en]=Maze game
+Comment=Sortir d'un labyrinthe sombre, en vue subjective
+Comment[en]=Escape a dark maze, in first person
+Exec=screengine-dedale
+Icon=dedale
+Categories=Game;ActionGame;
+Keywords=maze;labyrinth;shooter;
+Terminal=false
