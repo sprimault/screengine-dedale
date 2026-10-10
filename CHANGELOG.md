@@ -19,6 +19,8 @@ cela s'adresse à quelqu'un.
   qu'il reste. À zéro la partie se fige, et un texte dit que `R` en relance une.
 - **Un démon abattu compte**, chaque silhouette pour sa valeur, et le score se lit en
   bas à droite.
+- **Le jeu se télécharge** : chaque version porte un exécutable autonome pour Windows et
+  pour Linux, sans rien à installer à côté.
 
 ### Corrigé
 - **Un démon se touche là où on le voit** : viser le flanc des plus larges ratait le
@@ -33,6 +35,8 @@ cela s'adresse à quelqu'un.
   is left. At zero the game freezes, and a line says `R` starts a new one.
 - **Downing a demon scores**, each figure for its own value, and the count reads at the
   bottom right.
+- **The game is downloadable**: every version carries a self-contained executable for
+  Windows and for Linux, with nothing to install alongside.
 
 ### Fixed
 - **A demon is hit where it is seen**: aiming at the flank of the wider ones missed.

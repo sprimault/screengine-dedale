@@ -114,3 +114,26 @@ qu'au moment où elle ne se décode plus.
 **Rien de ce qui entre ici ne vient d'un jeu existant.** Textures, palettes,
 colormaps, cartes, maillages et sons extraits de jeux commerciaux ne sont pas
 redistribuables, et c'est la tentation naturelle d'un jeu de cette famille.
+
+## Ce qui se distribue
+
+**Une archive par système, attachée à la release.** Le jeu ne se publie pas sur
+`crates.io` — c'est une application, pas une bibliothèque —, donc ce qu'on en prend
+est un exécutable.
+
+**Et cet exécutable est autonome.** Les planches, les textures et la police entrent
+dedans par `include_bytes!` : il n'y a rien à poser à côté de lui, rien à chercher au
+lancement, et aucun répertoire d'assets à distribuer. L'archive ne porte le `README`,
+le `CHANGELOG` et les licences que parce qu'une archive sans eux ne dit pas ce qu'elle
+contient.
+
+**Le binaire Linux se construit sur la plus ancienne image encore offerte**, jamais sur
+la plus récente : il se lie dynamiquement à la glibc, donc un exécutable construit sur
+une distribution récente refuse de démarrer sur une plus ancienne — et le défaut
+n'apparaît que chez celui qui télécharge. C'est aussi pourquoi le libellé mobile
+`ubuntu-latest` est écarté : il change de version sans que ce dépôt bouge, exactement
+comme un tag d'action mobile change de contenu.
+
+**Rien n'est signé**, ni sur Windows ni ailleurs : un exécutable téléchargé déclenche
+donc un avertissement du système, qu'un installateur non signé ne lèverait pas
+davantage.
