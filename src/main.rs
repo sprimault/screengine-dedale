@@ -58,6 +58,18 @@ const MAZE: Settings = Settings {
     loops: 8,
 };
 
+/// L'icône que la fenêtre porte, en PNG.
+///
+/// **Elle double la ressource du binaire Windows sans la remplacer**, et les deux
+/// couvrent des choses différentes : la ressource sert l'explorateur et la barre
+/// des tâches, celle-ci sert la fenêtre, où elle est la seule à agir sous X11.
+/// Wayland n'a pas d'icône par fenêtre et tire la sienne du fichier de bureau,
+/// que l'AppImage pose.
+///
+/// Deux cent cinquante-six de côté parce que l'étage d'accueil refuse au-delà, et
+/// qu'il ne redimensionne pas ce qu'on lui donne.
+const ICON: &[u8] = include_bytes!("../assets/icons/dedale-256.png");
+
 /// Ce que la boucle garde : le monde d'un côté, la partie de l'autre.
 ///
 /// La frontière est ici et nulle part ailleurs. Le monde se recharge à chaud,
@@ -103,7 +115,7 @@ fn main() -> Result<(), Error> {
         scenery.map.triangle_count()
     );
 
-    Play::new().title(&title).run_with_output(
+    Play::new().title(&title).icon(ICON)?.run_with_output(
         Session {
             scenery,
             game,
