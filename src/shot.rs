@@ -19,7 +19,7 @@
 //! valable que si le trajet a été examiné en entier — [`Shot::impact`] dit pourquoi,
 //! et c'est la seule subtilité du module.
 
-use screengine_play::{Hit, Surfaces, Vec3, World};
+use screengine_play::{Hit, Surfaces, Sweep, Vec3, World};
 
 #[cfg(test)]
 mod tests;
@@ -202,11 +202,11 @@ fn enters(from: Vec3, to: Vec3, volume: &Volume) -> Option<f32> {
 /// rend toujours un. La portée s'applique telle quelle, donc une direction plus
 /// courte raccourcirait le tir sans que rien ne le dise.
 ///
-/// **Une cellule nulle ne tire pas**, et le partage se fait ici parce que le chemin
-/// Rust du moteur ne le fait pas : sa méthode de rayon rend l'absence aussi bien pour
-/// une cellule nulle que pour une cellule inconnue, là où sa frontière C en fait deux
-/// cas distincts — déplacement libre d'un côté, erreur de l'autre. Zéro veut dire
-/// « hors de tout volume », et un tir parti de là n'a aucun décor à rencontrer.
+/// **Une cellule nulle ne tire pas, et c'est le moteur qui le dit** : son rayon
+/// départage « hors de tout volume » — rien à rencontrer, donc aucun impact — d'une
+/// cellule qu'aucune carte ne porte, qui est une faute d'appel. Les deux ne laissent
+/// pas de marque, mais seul le second est un défaut d'ici, et le confondre avec le
+/// premier derrière un test de zéro écrit à la main le rendait muet.
 ///
 /// **Le filtre prend les surfaces solides seules.** Le décor engendré n'en écrit
 /// aujourd'hui aucune autre, donc les deux filtres y voient la même chose ; celui-ci
@@ -218,9 +218,9 @@ pub fn fire(map: &World, from: Vec3, ahead: Vec3, cell: u32) -> Shot {
         from,
         to,
         cell,
-        hit: match cell {
-            0 => None,
-            _ => map.pick(cell, from, to, Surfaces::Solid),
+        hit: match map.pick_checked(cell, from, to, Surfaces::Solid) {
+            Ok(Sweep::Reached(hit)) => Some(hit),
+            _ => None,
         },
     }
 }
