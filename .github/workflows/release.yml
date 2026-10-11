@@ -27,9 +27,10 @@ on:
         description: "Le tag de la release à garnir, brouillon compris — v0.5.0"
         required: true
         type: string
-  # Le garde-fou : un tag posé autrement garnit quand même sa release. Les deux
-  # chemins peuvent se croiser sans dommage, l'envoi écrasant ce qui porte le
-  # même nom.
+  # Le garde-fou : un tag posé autrement garnit quand même sa release. Il
+  # recouvre le chemin normal, puisque publier un brouillon pose son tag, et
+  # c'est le premier job qui l'en empêche plutôt qu'une condition écrite ici —
+  # ce qu'il faut savoir est ce que la release porte déjà, pas d'où le tag vient.
   push:
     tags: ['v*']
 
@@ -40,8 +41,66 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # **Le garde-fou ne doit pas refaire le chemin normal.** Publier une release
+  # depuis son brouillon pose son tag, donc déclenche ce workflow une seconde
+  # fois : dix minutes de compilation pour réenvoyer les mêmes fichiers, mesuré
+  # en publiant la 0.5.0. Le résultat est juste — l'envoi écrase ce qui porte le
+  # même nom —, et c'est précisément ce qui le rend invisible.
+  #
+  # **Le contrôle porte sur les noms et non sur un compte** : quatre fichiers
+  # quelconques ne sont pas les quatre attendus, et c'est ce qui fait qu'une
+  # cible tombée est refaite plutôt que tenue pour posée.
+  #
+  # **Et il ne barre pas l'entrée manuelle** : la relancer est un geste délibéré,
+  # souvent pour refaire ce qui est déjà là.
+  examen:
+    name: Ce que la release porte déjà
+    runs-on: ubuntu-22.04
+    outputs:
+      a_garnir: ${{ steps.verdict.outputs.a_garnir }}
+    steps:
+      - id: verdict
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "entrée manuelle : on garnit sans regarder"
+            echo "a_garnir=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          version="${TAG#v}"
+          attendus=(
+            "dedale-${version}-linux-x86_64.tar.gz"
+            "dedale-${version}-linux-x86_64.AppImage"
+            "dedale-${version}-windows-x86_64.zip"
+            "dedale-${version}-windows-x86_64-installateur.exe"
+          )
+
+          # Le repli sur le vide tient le cas qui a fait écrire ce job : un tag
+          # posé sans release derrière. `gh` échoue alors, et sans ce repli
+          # l'échec passerait pour une release garnie — c'est-à-dire pour la
+          # seule situation où il ne faut surtout pas s'abstenir.
+          poses=$(gh release view "$TAG" --json assets --jq '.assets[].name' || true)
+
+          for nom in "${attendus[@]}"; do
+            if ! grep -qxF "$nom" <<<"$poses"; then
+              echo "$nom manque : on garnit"
+              echo "a_garnir=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+
+          echo "les quatre fichiers sont posés, rien à refaire"
+          echo "a_garnir=false" >> "$GITHUB_OUTPUT"
+
   binaire:
     name: Binaire — ${{ matrix.cible }}
+    needs: examen
+    if: needs.examen.outputs.a_garnir == 'true'
     runs-on: ${{ matrix.os }}
     # Le seul endroit du dépôt qui écrive, et il est au niveau du job : un droit
     # posé sur le fichier entier s'appliquerait à tout ce qu'on y ajouterait
