@@ -111,9 +111,10 @@ d'être de ce dépôt — et rien de ce qui vit à côté ne doit pouvoir le fai
 `sprites/`, `textures/`, `skies/`, `sounds/`, `music/`, `fonts/`, `icons/`. Elles
 sont versionnées : le jeu ne tourne pas sans elles.
 
-**`icons/` est le seul répertoire dont le jeu ne lit rien à l'exécution** : son
-icône entre dans l'exécutable à la compilation, par une ressource Win32 que
-`build.rs` pose, et les installateurs la reprennent depuis le dépôt.
+**`icons/` est le seul répertoire dont deux formats servent à deux moments** : le PNG
+entre dans le binaire comme les planches et s'en va à la fenêtre au lancement, là où
+le `.ico` est posé en ressource à la compilation par `build.rs` et repris par les
+installateurs depuis le dépôt.
 
 La chaîne qui les produit vit **hors du dépôt** : des modèles, du rendu hors écran et
 de l'outillage, dont le dépôt n'a besoin que des sorties.
@@ -155,12 +156,12 @@ autonome, ni l'un ni l'autre ne copie quoi que ce soit d'essentiel — leur int�
 dans ce que le système en sait : un raccourci, une désinstallation propre, une entrée
 dans la liste des programmes.
 
-**L'AppImage est la seule des deux qui corrige quelque chose** : son fichier
-`.desktop` donne au jeu son icône sous X11 et Wayland, que rien d'autre ne peut poser.
+**L'AppImage apporte ce que ni le binaire ni la fenêtre ne peuvent** : son fichier
+`.desktop` donne au jeu son icône sous Wayland, qui n'en a pas par fenêtre et la tire
+de l'application.
 
-**L'icône de l'exécutable se pose à la compilation, et elle ne vaut que pour
-Windows.** C'est une ressource du binaire, donc l'explorateur, la barre des tâches
-et la fenêtre la montrent toutes les trois — une fenêtre sans icône explicite prend
-celle de son exécutable. Sous X11 et Wayland il n'y a pas d'équivalent : l'icône y
-vient du fichier `.desktop` posé à l'installation, et un binaire lancé à la main
-garde celle du système.
+**L'icône se pose par deux chemins, et aucun ne couvre les trois systèmes.** Le jeu
+la donne à sa fenêtre au lancement, ce qui vaut sous Windows et sous X11 ; et une
+ressource Win32, posée à la compilation, la donne à l'exécutable, ce que seuls
+l'explorateur et la barre des tâches de Windows lisent. Reste donc le binaire Wayland
+lancé à la main, qui garde l'icône du système.

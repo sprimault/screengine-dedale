@@ -33,7 +33,7 @@ publish = false
 # quelle version de l'API ce jeu est écrit. Les deux se vérifient : le commit dit
 # d'où vient le code, la version dit ce qu'il promet.
 [dependencies]
-screengine-play = { version = "1.0", git = "https://github.com/sprimault/screengine", rev = "4e3e00afa40b20ef48aee85cc492ca74c6e7cecd" }
+screengine-play = { version = "1.1", git = "https://github.com/sprimault/screengine", rev = "638482247be514121ff8b0c786cc02fa8c8b20a3" }
 
 # Pour écrire les images de contrôle que les épreuves rendent hors fenêtre. Déjà
 # dans l'arbre par le moteur, qui décode les planches avec : la déclarer en direct
@@ -41,10 +41,11 @@ screengine-play = { version = "1.0", git = "https://github.com/sprimault/screeng
 [dev-dependencies]
 png = "0.18"
 
-# Pour poser l'icône dans l'exécutable Windows, faute d'un réglage de fenêtre côté
-# moteur. **Sous Windows seulement** : c'est la seule cible où une ressource de
-# binaire porte une icône, et la déclarer pour toutes alourdirait l'arbre de Linux
-# pour rien. `build.rs` dit ce qu'elle rattrape et ce qu'elle laisse ouvert.
+# Pour poser l'icône dans l'exécutable Windows, que l'explorateur et la barre des
+# tâches lisent là où l'étage d'accueil ne pose que celle de la fenêtre. **Sous
+# Windows seulement** : c'est la seule cible où une ressource de binaire porte une
+# icône, et la déclarer pour toutes alourdirait l'arbre de Linux pour rien.
+# `build.rs` dit ce que chacun des deux chemins dessert.
 [target.'cfg(windows)'.build-dependencies]
 winresource = "0.1"
 

@@ -3,18 +3,14 @@
 
 //! Pose l'icône du jeu dans l'exécutable Windows.
 //!
-//! **Une ressource Win32 et non un réglage de fenêtre**, parce que l'étage
-//! d'accueil du moteur n'en expose pas : `Play` règle le titre, la résolution,
-//! les tuiles, les deux budgets, la cadence et la sortie par Échap, et rien pour
-//! l'icône. Le jeu n'ayant aucun accès à la fenêtre, il ne peut pas la poser
-//! lui-même.
+//! **Une ressource Win32 en plus du réglage de fenêtre, et non à sa place** :
+//! elle est ce que l'explorateur et la barre des tâches lisent, qui regardent le
+//! fichier et jamais la fenêtre. Le jeu pose la sienne par l'étage d'accueil, et
+//! les deux chemins ne desservent pas le même endroit.
 //!
-//! **Ce que la ressource rattrape, et ce qu'elle ne rattrape pas** : sous
-//! Windows, une fenêtre sans icône explicite prend celle de son exécutable, donc
-//! la barre des tâches et l'explorateur montrent la bonne — c'est un
-//! contournement complet pour cette cible. Sous X11 et Wayland il n'y a pas
-//! d'équivalent : l'icône y vient du fichier `.desktop` qui accompagne
-//! l'installation, jamais du binaire.
+//! **Hors de Windows elle ne sert rien** : aucun bureau n'y tire une icône d'un
+//! exécutable. Sous X11 c'est la fenêtre qui la porte, sous Wayland le fichier
+//! `.desktop` que l'installation pose.
 //!
 //! **Rien ne s'exécute hors de Windows.** Le script est compilé pour toutes les
 //! cibles — cargo l'exige —, mais la dépendance qui écrit la ressource n'est
