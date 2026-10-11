@@ -168,12 +168,12 @@ fn un_passage_laisse_depasser_le_rayon() {
     );
 }
 
-/// Un tir parti de nulle part ne rencontre rien, et n'interroge pas la carte.
+/// Un tir parti de nulle part ne rencontre rien.
 ///
-/// **Le partage est à nous, et c'est ce qu'elle fige** : le chemin Rust du moteur
-/// rend l'absence aussi bien pour une cellule nulle que pour une cellule inconnue,
-/// là où sa frontière C en fait deux cas distincts. Zéro veut dire hors de tout
-/// volume, et un tir parti de là n'a aucun décor à rencontrer.
+/// **Le partage est au moteur, et c'est ce qu'elle fige** : son rayon sépare une
+/// cellule nulle — hors de tout volume, donc aucun décor à rencontrer — d'une cellule
+/// qu'aucune carte ne porte, qui est une faute d'appel. Les deux restent sans impact,
+/// et seule la première est un état légitime.
 #[test]
 fn un_tir_hors_de_tout_volume_ne_rencontre_rien() {
     let (_, map) = maze(SEEDS[0]);

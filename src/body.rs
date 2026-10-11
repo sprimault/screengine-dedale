@@ -30,7 +30,7 @@
 //! se franchit quand une marche suffit — [`Body::climb`] l'essaie en balayant,
 //! jamais en devinant la hauteur d'un obstacle.
 
-use screengine_play::{Vec3, World, sweep_skin};
+use screengine_play::{Sweep, Vec3, World, sweep_skin};
 
 use crate::maze::export::{self, RISE, SLOPE};
 use crate::maze::grid::Grid;
@@ -222,8 +222,8 @@ impl Body {
         let above = Vec3::new(spot[0], spot[1], spot[2] + half.z + clear);
         let below = Vec3::new(above.x, above.y, spot[2] + half.z - clear);
 
-        let centre = match map.sweep(cell, half, above, below) {
-            Some(hit) if !hit.start_solid => above + (below - above) * hit.fraction,
+        let centre = match map.sweep_checked(cell, half, above, below) {
+            Ok(Sweep::Reached(hit)) if !hit.start_solid => above + (below - above) * hit.fraction,
             // Un départ que le décor ne devrait pas offrir : on garde la cote
             // haute, la moins pénétrante des deux, et l'épreuve de pose dit que
             // le cas est arrivé.
@@ -261,8 +261,11 @@ impl Body {
     fn grounded(&self, map: &World) -> bool {
         let below = Vec3::new(self.centre.x, self.centre.y, self.centre.z - PROBE);
 
-        map.sweep(self.cell, self.half, self.centre, below)
-            .is_some_and(|hit| !hit.start_solid && hit.fraction < 1.0 && walkable(hit.normal))
+        matches!(
+            map.sweep_checked(self.cell, self.half, self.centre, below),
+            Ok(Sweep::Reached(hit))
+                if !hit.start_solid && hit.fraction < 1.0 && walkable(hit.normal)
+        )
     }
 
     /// Déplace le corps de ce qu'il peut parcourir, et suit sa cellule.
@@ -349,13 +352,15 @@ impl Body {
     ///
     /// **Trois cas avant toute politique, et aucun n'est un détail** :
     ///
-    /// - **hors du décor**, la cellule valant zéro : rien à balayer, et refuser le
-    ///   déplacement enfermerait dehors. Le zéro se teste ici parce que l'API ne
-    ///   le distingue pas d'un identifiant inconnu — les deux rendent `None`, là
-    ///   où la frontière C les sépare ;
-    /// - **une cellule que la carte ne connaît pas**, qui ne devrait pas arriver
-    ///   puisqu'elle vient du suivi : le déplacement passe plutôt que de bloquer
-    ///   sur une erreur de comptabilité ;
+    /// - **hors du décor**, la cellule valant zéro : rien n'est examiné, et refuser
+    ///   le déplacement enfermerait dehors. C'est le balayage qui le dit, et non un
+    ///   test de zéro écrit ici : il départage les trois réponses, là où son
+    ///   raccourci les ramène toutes à l'absence ;
+    /// - **une faute d'appel** — une cellule qu'aucune carte ne porte, une pose que
+    ///   la physique a rendue non finie : le pas ne s'applique pas. Laisser passer
+    ///   un déplacement que rien n'a examiné est ce qui faisait traverser les murs,
+    ///   et la cellule se répare d'elle-même à l'image suivante, le suivi rendant
+    ///   zéro depuis une cellule inconnue et [`Body::advance`] relocalisant alors ;
     /// - **un départ dans le solide**, que le moteur signale sans dégager : le pas
     ///   ne s'applique pas et le corps est repoussé le long de la normale rendue,
     ///   d'un pas de [`ESCAPE`] marges. C'est la politique que l'exemple `carte` du
@@ -366,21 +371,21 @@ impl Body {
     /// franchissement : [`Body::climb`] rejoue le même pas depuis une position
     /// relevée, et il n'y a qu'une politique de glissade à tenir.
     fn slide(&self, map: &World, from: Vec3, wanted: Vec3) -> Slid {
-        if self.cell == 0 {
-            return Slid::free(wanted);
-        }
-
         let mut at = from;
         let mut rest = wanted - from;
         let mut stopped = false;
 
         for plane in 0..SLIDES {
-            let Some(hit) = map.sweep(self.cell, self.half, at, at + rest) else {
-                return Slid {
-                    at: at + rest,
-                    planes: plane,
-                    stopped,
-                };
+            let hit = match map.sweep_checked(self.cell, self.half, at, at + rest) {
+                Ok(Sweep::Reached(hit)) => hit,
+                Ok(Sweep::NoCell) => return Slid::free(at + rest),
+                Err(_) => {
+                    return Slid {
+                        at,
+                        planes: plane,
+                        stopped,
+                    };
+                }
             };
             if hit.start_solid {
                 // **Sortir passe avant avancer**, donc le pas demandé ne s'applique
@@ -464,8 +469,10 @@ impl Body {
             from.z - (RISE + 2.0 * sweep_skin(self.half)),
         );
 
-        match map.sweep(self.cell, self.half, from, down) {
-            Some(hit) if !hit.start_solid && hit.fraction < 1.0 && walkable(hit.normal) => {
+        match map.sweep_checked(self.cell, self.half, from, down) {
+            Ok(Sweep::Reached(hit))
+                if !hit.start_solid && hit.fraction < 1.0 && walkable(hit.normal) =>
+            {
                 Some(from + (down - from) * hit.fraction)
             }
             _ => None,

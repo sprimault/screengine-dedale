@@ -157,6 +157,97 @@ fn un_passage_ouvert_laisse_passer_un_corps() {
     }
 }
 
+/// Un corps dont la cellule est inconnue ne traverse pas les murs.
+///
+/// **C'est le prédicat du lot**, et il n'était tenu par rien : le balayage ramenait
+/// une cellule inconnue et une absence de cellule à la même réponse, que la glissade
+/// lisait comme un pas libre. Un suivi devenu faux ouvrait donc tout le décor, en
+/// silence — le pire des deux, puisque aucune épreuve ne redit ce qu'on n'a pas vu.
+///
+/// **La seconde moitié est que le corps n'y reste pas pris** : le suivi rend zéro
+/// depuis une cellule qu'aucune carte ne porte, donc [`Body::advance`] relocalise, et
+/// le pas refusé ne coûte qu'une image. Sans cette moitié, le correctif échangerait
+/// une traversée contre un blocage définitif.
+#[test]
+fn une_cellule_inconnue_n_ouvre_pas_les_murs() {
+    // Un identifiant qu'aucune cellule ne porte, vérifié et non supposé : c'est ce
+    // que l'épreuve fausse, donc ce qu'elle doit établir avant de conclure.
+    const UNKNOWN: u32 = u32::MAX;
+
+    let (grid, map) = maze(SEEDS[0]);
+    assert!(
+        map.sweep_checked(UNKNOWN, HALF, Vec3::ZERO, Vec3::ZERO)
+            .is_err(),
+        "la carte connaît {UNKNOWN}, l'épreuve ne fausse rien"
+    );
+
+    for at in cases(&grid) {
+        if !plain(&grid, at) {
+            continue;
+        }
+        for side in sides() {
+            if !grid.has_wall(at, side) {
+                continue;
+            }
+            let mut body = Body::stand(HALF, &grid, &map, at);
+            body.cell = UNKNOWN;
+            let before = body.centre;
+            let (dx, dy, _) = side.step();
+            let step = Vec3::new(dx as f32 * export::CELL, dy as f32 * export::CELL, 0.0);
+
+            let travel = body.advance(&map, step, DT);
+
+            assert_eq!(
+                travel, 0.0,
+                "le corps avance de {travel} sur une cellule inconnue, vers {side:?} de {at:?}"
+            );
+            assert_eq!(
+                body.centre, before,
+                "le corps a bougé sans qu'aucun balayage l'ait examiné"
+            );
+            assert_eq!(
+                body.cell(),
+                export::cover(&grid, at),
+                "la cellule ne s'est pas réparée au pas suivant, en {at:?}"
+            );
+        }
+    }
+}
+
+/// Un corps hors du décor avance de tout ce qu'on lui demande.
+///
+/// **L'autre moitié du prédicat, et la raison d'être de la distinction** : sans
+/// cellule il n'y a rien à balayer, et refuser le pas enfermerait dehors qui y est
+/// déjà. C'est le cas que le refus d'une faute d'appel ne doit pas emporter avec lui.
+#[test]
+fn un_corps_hors_du_decor_avance_librement() {
+    let (grid, map) = maze(SEEDS[0]);
+
+    for at in cases(&grid) {
+        if !plain(&grid, at) {
+            continue;
+        }
+        for side in sides() {
+            if !grid.has_wall(at, side) {
+                continue;
+            }
+            let mut body = Body::stand(HALF, &grid, &map, at);
+            body.cell = 0;
+            let before = body.centre;
+            let (dx, dy, _) = side.step();
+            let step = Vec3::new(dx as f32 * export::CELL, dy as f32 * export::CELL, 0.0);
+
+            body.advance(&map, step, DT);
+            let gone = body.centre - before;
+
+            assert!(
+                gone.dot(gone).sqrt() >= export::CELL,
+                "le mur {side:?} de {at:?} arrête un corps qu'aucune cellule ne contient"
+            );
+        }
+    }
+}
+
 /// Un pas oblique contre un mur avance le long de ce mur.
 ///
 /// **C'est le prédicat du lot**, et c'est lui qui distingue une glissade d'un
