@@ -14,15 +14,23 @@ cela s'adresse à quelqu'un.
 
 ## [Non publié]
 
+## [0.5.1] — 2026-10-11 — Le rendu plus vif, et l'icône à la fenêtre
+
 ### Modifié
 - **Le jeu rend plus vite** : un tiers de temps en moins sur une traversée, et plus de
   la moitié sur les surfaces qui portent une texture et son éclairage.
+
+### Corrigé
+- **La fenêtre du jeu porte son icône**, et plus seulement sous Windows.
 
 ***
 
 ### Changed
 - **The game renders faster**: a third less time on a traversal, and more than half on
   surfaces carrying both a texture and its lighting.
+
+### Fixed
+- **The game window carries its icon**, and no longer on Windows alone.
 
 ## [0.5.0] — 2026-10-10 — La vie, le score, l'interface
 
