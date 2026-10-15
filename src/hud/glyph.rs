@@ -52,7 +52,7 @@ const ALPHA: u32 = 24;
 /// L'encre de tout texte à l'écran.
 ///
 /// **Claire, et non accordée au décor.** Le rouge de la jauge a été essayé et rejeté à
-/// l'écran le 2026-10-08 : sur un mur de brique, du rouge sur du rouge ne se lit pas.
+/// l'écran : sur un mur de brique, du rouge sur du rouge ne se lit pas.
 /// Les planches d'aujourd'hui étant provisoires, une teinte prise sur elles serait de
 /// toute façon à refaire avec l'éclairage ; ce qui tient quel que soit l'habillage est
 /// la clarté, et c'est le registre sombre du jeu qui la garantit.

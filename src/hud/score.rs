@@ -19,7 +19,7 @@
 //! choses qu'on surveille en jouant encadrent ainsi le bas de l'écran.
 //!
 //! **Et il porte la plaque de la jauge, parce qu'une ombre n'a pas suffi.** Vu à
-//! l'écran le 2026-10-10 : l'encre claire sur ombre se lit presque partout, et un peu
+//! l'écran : l'encre claire sur ombre se lit presque partout, et un peu
 //! moins par endroits sur le sol pavé, qui est clair et détaillé. Un fond sombre et
 //! son liseré rendent le chiffre lisible quel que soit ce qu'il y a derrière, et c'est
 //! la réponse que la jauge et le plan ont déjà reçue pour la même raison. L'ombre
