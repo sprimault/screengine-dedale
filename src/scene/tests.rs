@@ -8,7 +8,7 @@ use crate::maze::grid::Side;
 use crate::player::{EYE_ABOVE, HALF, Player};
 use crate::test_support::{HEIGHT, WIDTH, context, frame};
 use screengine_play::{
-    Affine3, Angle, BYTES_PER_PIXEL, Camera, FreeCamera, Quat, Vec3, Visibility,
+    Affine3, Angle, BYTES_PER_PIXEL, Camera, FreeCamera, Quat, TRAVERSAL_DEPTH, Vec3, Visibility,
 };
 
 /// Les réglages du labyrinthe d'épreuve.
@@ -19,6 +19,30 @@ fn settings() -> Settings {
         stairs: 6,
         ramps: 2,
         loops: 8,
+    }
+}
+
+/// Les réglages d'un décor trop court pour qu'un chemin de traversée atteigne la
+/// borne de profondeur.
+///
+/// **C'est le seul discriminant des deux bornes qui s'écrive d'ici.**
+/// `Incomplete` ne dit pas laquelle est atteinte — le moteur le documente ainsi —,
+/// mais un chemin ne revisite pas une cellule, donc la profondeur d'un parcours
+/// est majorée par le compte de cellules du décor. Seize cases sans volée ni
+/// boucle en rendent une trentaine, soit la moitié de `TRAVERSAL_DEPTH` : ce qui
+/// reste atteignable est la borne de **visites**, qui compte les entrées de pile
+/// et non les cellules distinctes.
+///
+/// **Parfait et non bouclé**, puisque chaque boucle ajoute une cellule de passage
+/// et rapproche donc le compte de la borne, pour rien : ce qu'on cherche ici est
+/// la marge, pas la variété.
+fn settings_court() -> Settings {
+    Settings {
+        extent: (4, 4, 1),
+        seed: 0x5EED_1A8E,
+        stairs: 0,
+        ramps: 0,
+        loops: 0,
     }
 }
 
@@ -188,6 +212,49 @@ fn accord(scenery: &Scenery, poses: &[Camera]) {
     }
 }
 
+/// Les poses où la traversée ne s'est pas dépliée entièrement : lacet, tangage
+/// en degrés, et ce qu'elle a rendu.
+///
+/// **Le tangage balaie au degré, le lacet échantillonne**, et c'est le relevé qui
+/// l'impose : ses épisodes sont tombés à des tangages de −84° à +83° sans que le
+/// lacet y paraisse. Les quatre quarts sont là pour qu'une seule direction ne
+/// décide pas.
+///
+/// **Le budget vaut huit fois le décor**, comme [`accord`] : un dépassement de
+/// capacité rend une **erreur** et non `Incomplete`, et confondre les deux ferait
+/// chercher une borne de traversée là où c'est la liste de dessin qui déborde.
+///
+/// **L'image se termine à chaque pose** parce que le contexte refuse une caméra
+/// tant qu'un triangle de l'image en cours est retenu — ce n'est pas un détail
+/// d'implémentation mais une clause du contrat.
+fn tangages_incomplets(scenery: &Scenery) -> Vec<(f32, f32, Visibility)> {
+    let player = Player::spawn(&scenery.maze, &scenery.map);
+    let eye = player.eye();
+    let cell = player.cell();
+    let mut context = context(scenery.map.triangle_count() * 8);
+
+    let mut out = Vec::new();
+    for quarter in 0..4 {
+        let yaw = quarter as f32 * 90.0;
+        for degree in -89..=89 {
+            let pitch = degree as f32;
+            let camera = FreeCamera {
+                yaw: yaw.to_radians(),
+                pitch: pitch.to_radians(),
+                ..FreeCamera::new(eye)
+            }
+            .camera();
+            let seen = submit(&mut context, scenery, &View { camera, cell })
+                .expect("scène soumise par la traversée");
+            let _ = frame(&mut context);
+            if seen != Visibility::Complete {
+                out.push((yaw, pitch, seen));
+            }
+        }
+    }
+    out
+}
+
 /// La scène se construit hors de toute fenêtre.
 ///
 /// C'est la contrainte que `ROADMAP.md` annonce pour l'étape 8 : l'image animée
@@ -343,4 +410,149 @@ fn la_traversee_rend_la_meme_image_aux_poses_relevees() {
         .collect();
 
     accord(&scenery, &poses);
+}
+
+/// Ce qu'une liste de poses tronquées dit, en une ligne qu'on puisse lire.
+///
+/// **Le vecteur entier ne se met pas dans un message** : sept cent seize poses en
+/// notation de tableau noient ce qui informe, qui est le compte et les deux bornes
+/// de tangage. C'est la raison de [`divergence`], appliquée à autre chose.
+fn resume(tronques: &[(f32, f32, Visibility)]) -> String {
+    let pitches: Vec<f32> = tronques.iter().map(|&(_, pitch, _)| pitch).collect();
+    let low = pitches.iter().copied().fold(f32::INFINITY, f32::min);
+    let high = pitches.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    format!(
+        "{} poses sur {}, tangages de {low:.0}° à {high:.0}°, dont {:?}",
+        tronques.len(),
+        4 * 179,
+        &tronques[..tronques.len().min(3)]
+    )
+}
+
+/// Un décor trop court pour la profondeur ne tronque à aucun tangage.
+///
+/// **C'est elle qui a départagé les deux bornes**, et c'est le seul discriminant
+/// qui s'écrive d'ici : le statut ne dit pas laquelle est atteinte. La troncature
+/// apparaît **entre 97 et 127 cellules** — mesuré sur des grilles carrées à un
+/// étage, de quatre à seize cases de côté : rien ne tronque jusqu'à 7×7, tout
+/// tronque à partir de 8×8. Un décor de cent vingt-sept cellules ne peut
+/// pas produire quatre mille quatre-vingt-seize visites, donc la borne atteinte est
+/// la **profondeur**, soixante-quatre, et le seuil est l'endroit où un chemin de
+/// cette longueur devient possible.
+///
+/// **Elle reste comme garde** : un décor dont aucun chemin n'atteint la borne n'a
+/// aucune raison de perdre du décor, quel que soit l'angle de vue.
+#[test]
+fn aucun_tangage_ne_tronque_un_decor_court() {
+    let scenery = Scenery::new(settings_court()).expect("labyrinthe et planches valides");
+    let cells = scenery.map.cell_count() as usize;
+    assert!(
+        cells < TRAVERSAL_DEPTH,
+        "le décor porte {cells} cellules, donc un chemin de {TRAVERSAL_DEPTH} y tiendrait \
+         et la mesure ne départagerait plus les deux bornes"
+    );
+
+    let tronques = tangages_incomplets(&scenery);
+    assert!(
+        tronques.is_empty(),
+        "la traversée tronque sur un décor de {cells} cellules : {}",
+        resume(&tronques)
+    );
+}
+
+/// Ce que la traversée perd vraiment aux poses qu'elle déclare tronquées.
+///
+/// **C'est le discriminant direct des deux bornes**, et le contrat le donne : à la
+/// profondeur, la cellule du fond est dessinée entière et le trou commence une
+/// cellule plus loin, donc derrière un mur dans un décor cloisonné ; à la borne de
+/// visites, la cellule perdue peut être une **voisine de la caméra**, donc un pan
+/// d'image. Zéro pixel d'un côté, des milliers de l'autre.
+fn perte(scenery: &Scenery, tronques: &[(f32, f32, Visibility)]) -> Vec<(f32, f32, usize)> {
+    let budget = scenery.map.triangle_count() * 8;
+    let player = Player::spawn(&scenery.maze, &scenery.map);
+    let eye = player.eye();
+    let cell = player.cell();
+
+    let mut out = Vec::new();
+    for &(yaw, pitch, _) in tronques {
+        let camera = FreeCamera {
+            yaw: yaw.to_radians(),
+            pitch: pitch.to_radians(),
+            ..FreeCamera::new(eye)
+        }
+        .camera();
+
+        let mut walked = context(budget);
+        submit(&mut walked, scenery, &View { camera, cell })
+            .expect("scène soumise par la traversée");
+
+        let mut whole = context(budget);
+        whole.set_camera(camera).expect("caméra posée");
+        whole
+            .submit_world(Affine3::IDENTITY, &scenery.map, |rank| {
+                scenery.materials.get(rank as usize)
+            })
+            .expect("décor entier soumis");
+
+        let (differing, _) = divergence(&frame(&mut walked), &frame(&mut whole));
+        if differing != 0 {
+            out.push((yaw, pitch, differing));
+        }
+    }
+    out
+}
+
+/// Le décor du jeu tronque la traversée, et n'en perd pas un pixel.
+///
+/// **Le statut est pessimiste, l'image est juste**, et c'est ce qui classe le
+/// symptôme que le relevé avait montré : quarante-deux poses sur sept cent seize
+/// annoncent `Incomplete`, et **aucune ne diverge du décor soumis en entier**, sur
+/// les cinq décors de ces épreuves. Ce que la traversée n'a pas déplié était
+/// derrière un mur, ce qui est la signature de la borne de profondeur — à la borne
+/// de visites, une voisine de la caméra manquerait, donc un pan d'image.
+///
+/// **Elle garde le statut dans son nom plutôt que de l'asserter** : la valeur
+/// rendue est une condition de décor, et un décor qui grandit la rendra ailleurs.
+/// Ce qui ne doit pas bouger est l'image.
+#[test]
+fn le_decor_du_jeu_tronque_sans_perdre_de_pixel() {
+    let scenery = Scenery::new(settings()).expect("labyrinthe et planches valides");
+    let tronques = tangages_incomplets(&scenery);
+    assert!(
+        !tronques.is_empty(),
+        "aucune pose ne tronque : la mesure ne porte plus sur rien"
+    );
+
+    let perdues = perte(&scenery, &tronques);
+    assert!(
+        perdues.is_empty(),
+        "la traversée perd des pixels à {} poses sur {} tronquées, dont {:?}",
+        perdues.len(),
+        tronques.len(),
+        &perdues[..perdues.len().min(3)]
+    );
+}
+
+/// Aucune pose tronquée n'est à moins de quatre-vingts degrés de la verticale.
+///
+/// **C'est ce qui ferme le symptôme**, dont le relevé n'avait que quatre épisodes
+/// pris à la main : les quarante-deux poses tronquées du décor du jeu sont toutes
+/// au-delà de 82° de tangage, et rien ne tronque entre −81° et +81°. Le relevé ne
+/// tenait donc pas d'un hasard de parcours.
+///
+/// **Elle borne ce qu'une régression pourrait élargir.** Un changement de décor ou
+/// de budget qui ferait tronquer la vue droite se verrait ici, là où les deux
+/// épreuves voisines ne regardent que la perte de pixels et le décor court.
+#[test]
+fn seule_la_verticale_tronque_la_traversee() {
+    let scenery = Scenery::new(settings()).expect("labyrinthe et planches valides");
+    let droites: Vec<(f32, f32, Visibility)> = tangages_incomplets(&scenery)
+        .into_iter()
+        .filter(|&(_, pitch, _)| pitch.abs() < 80.0)
+        .collect();
+    assert!(
+        droites.is_empty(),
+        "la traversée tronque hors de la verticale : {}",
+        resume(&droites)
+    );
 }
