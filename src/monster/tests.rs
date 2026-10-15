@@ -31,6 +31,14 @@ use crate::scene::{Scenery, View};
 use crate::test_support::{HEIGHT, SEEDS, WIDTH, context, frame, maze, snapshot};
 use screengine_play::{BYTES_PER_PIXEL, FreeCamera};
 
+/// Ce qu'encaisse la créature d'épreuve, qui est toujours de la première silhouette.
+///
+/// **Prise de la table et non écrite ici** : la résistance est désormais par
+/// silhouette, et un chiffre recopié ferait rougir cinq épreuves de tir le jour où la
+/// table bouge, sans dire que c'est la table qui a bougé. [`lone`] la pose, et les
+/// épreuves qui comptent les coups la relisent.
+const TOUGH: u32 = FIGURES[0].life;
+
 /// Les deux vues de profil d'une planche : à un quart et à trois quarts de tour.
 ///
 /// **C'est là et nulle part ailleurs que la foulée se lit** : de face, les deux
@@ -150,10 +158,15 @@ fn footprint(sheet: &Texture, view: u32, frame: u32) -> u32 {
 /// rien de ce que le semis pose vraiment, et c'est là que les poses impossibles
 /// apparaissent — au pied d'une cage, contre une paroi, à cheval sur un seuil.
 fn sown(grid: &Grid, map: &World) -> Vec<Monster> {
-    population(&scatter::spots(grid, POPULATION), grid, map).expect("planches du dépôt valides")
+    // Le même geste que la construction d'une partie, et dans le même ordre : un seul
+    // générateur, le semis puis la population. Les reproduire ici garde les épreuves
+    // sur ce que le jeu pose vraiment.
+    let mut rng = Rng::new(grid.seed());
+    let spots = scatter::spots(grid, POPULATION, &mut rng);
+    population(&spots, &mut rng, grid, map).expect("planches du dépôt valides")
 }
 
-/// Les trois créatures naissent hors du solide, quelle que soit la graine.
+/// Toute la population naît hors du solide, quelle que soit la graine.
 ///
 /// **Elles empruntent le chemin du joueur et doivent donc en tirer la même
 /// garantie** : la pose se résout par un balayage, et un gabarit plus étroit ne
@@ -247,7 +260,7 @@ fn chaque_demon_nait_sur_son_volume() {
     for seed in SEEDS {
         let (grid, map) = maze(seed);
         let monsters = sown(&grid, &map);
-        assert_eq!(monsters.len(), FIGURES.len());
+        assert_eq!(monsters.len(), POPULATION);
 
         for (rank, monster) in monsters.iter().enumerate() {
             for other in monsters.iter().skip(rank + 1) {
@@ -341,7 +354,7 @@ fn lone(grid: &Grid, map: &World, at: (u32, u32, u32)) -> Monster {
         phase: 0.0,
         hindered: 0,
         recoil: None,
-        life: LIFE,
+        life: TOUGH,
     }
 }
 
@@ -700,11 +713,11 @@ fn trois_coups_abattent_une_creature() {
     let mut monster = lone(&grid, &map, plain_case(&grid));
     let push = Vec3::new(1.0, 0.0, 0.0);
 
-    for coup in 1..LIFE {
+    for coup in 1..TOUGH {
         monster.knock(push);
         assert!(
             !monster.fallen(),
-            "la créature tombe au coup {coup} alors qu'elle en encaisse {LIFE}"
+            "la créature tombe au coup {coup} alors qu'elle en encaisse {TOUGH}"
         );
         assert!(
             monster.recoil.is_some(),
@@ -715,7 +728,7 @@ fn trois_coups_abattent_une_creature() {
     monster.knock(push);
     assert!(
         monster.fallen(),
-        "la créature tient encore après {LIFE} coups"
+        "la créature tient encore après {TOUGH} coups"
     );
     assert_eq!(monster.motion, Motion::Dead, "elle ne joue pas sa mort");
     assert_eq!(monster.phase, 0.0, "son cycle de mort ne part pas du début");
@@ -749,11 +762,11 @@ fn un_seul_coup_est_paye() {
         let mut monster = lone(&grid, &map, plain_case(&grid));
         monster.figure = figure;
 
-        for coup in 1..LIFE {
+        for coup in 1..TOUGH {
             assert_eq!(
                 monster.knock(push),
                 None,
-                "{} : le coup {coup} a payé une créature qui encaisse {LIFE} coups",
+                "{} : le coup {coup} a payé une créature qui encaisse {TOUGH} coups",
                 figure.name
             );
         }
@@ -814,7 +827,7 @@ fn une_creature_tombee_ne_marche_plus() {
 
     let (grid, map) = maze(SEEDS[0]);
     let mut monster = lone(&grid, &map, plain_case(&grid));
-    for _ in 0..LIFE {
+    for _ in 0..TOUGH {
         monster.knock(Vec3::new(1.0, 0.0, 0.0));
     }
 
@@ -849,7 +862,7 @@ fn le_cycle_de_mort_garde_sa_derniere_trame() {
 
     let (grid, map) = maze(SEEDS[0]);
     let mut monster = lone(&grid, &map, plain_case(&grid));
-    for _ in 0..LIFE {
+    for _ in 0..TOUGH {
         monster.knock(Vec3::new(1.0, 0.0, 0.0));
     }
 
@@ -882,7 +895,7 @@ fn une_creature_abattue_finit_par_s_effacer() {
 
     let (grid, map) = maze(SEEDS[0]);
     let mut monster = lone(&grid, &map, plain_case(&grid));
-    for _ in 0..LIFE {
+    for _ in 0..TOUGH {
         monster.knock(Vec3::new(1.0, 0.0, 0.0));
     }
     assert!(
@@ -1121,7 +1134,8 @@ fn un_cap_oblique_ne_fait_pas_deriver() {
     // ci-dessous mesurable : ce qu'on éprouve est que la dérive s'arrête, pas la
     // longueur du couloir où la créature est née. Calibrée sur un lieu, la borne
     // redevient fausse au premier semis qui déplace une naissance — elle l'a été.
-    let mut monsters = population(&[grid.start()], &grid, &map).expect("planches valides");
+    let mut monsters =
+        population(&[grid.start()], &mut Rng::new(1), &grid, &map).expect("planches valides");
     let monster = &mut monsters[0];
     // En biais sur les deux axes : aucune composante ne s'annule, donc le décor
     // l'arrête toujours par l'un sans l'arrêter par l'autre.
@@ -1320,6 +1334,12 @@ fn la_tache_couvre_l_empreinte_des_pieds() {
 /// **La mesure se prend sans demi-tour**, en passant par le corps directement : la
 /// politique de marche remet le compteur à zéro en se retournant, donc elle
 /// tronquerait les séries qu'on cherche à mesurer.
+///
+/// **Et la créature est posée, cap compris, au lieu de venir de la population** : ce
+/// qu'on mesure est la marche **normale**, le long d'un couloir. Un cap tiré en biais
+/// la colle contre une paroi, où elle reste des centaines d'images — relevé à sept cent
+/// trois, là où un cahot de décor va jusqu'à six. La série cesse alors d'être un cahot
+/// et la mesure ne dit plus rien du décor.
 #[test]
 fn la_patience_depasse_les_accrocs_du_decor() {
     /// Le pas d'une image, à soixante par seconde.
@@ -1328,8 +1348,7 @@ fn la_patience_depasse_les_accrocs_du_decor() {
     const FRAMES: usize = 900;
 
     let (grid, map) = maze(SEEDS[0]);
-    let mut monsters = sown(&grid, &map);
-    let monster = &mut monsters[0];
+    let mut monster = lone(&grid, &map, plain_case(&grid));
     let step = monster.step(DT);
 
     let (mut worst, mut run) = (0u32, 0u32);
@@ -1916,6 +1935,159 @@ fn le_volume_touchable_ne_retrecit_jamais() {
             "{} : son volume touchable {touch:?} est plus étroit que son gabarit de \
              marche {HALF:?}",
             figure.name
+        );
+    }
+}
+
+/// La population tient son compte, et les trois silhouettes s'y répartissent également.
+///
+/// **Les deux dans la même épreuve parce que c'est le découplage même** : un compte qui
+/// vaudrait le nombre de silhouettes passerait la seconde moitié et raterait la
+/// première, et un compte tenu par une seule silhouette répétée seize fois ferait
+/// l'inverse. C'est leur conjonction qui dit que le compte ne tient plus à la table.
+///
+/// **Le tour de rôle borne l'écart à un**, seize ne se divisant pas par trois : un
+/// tirage de silhouette, lui, laisserait l'écart aller jusqu'à seize.
+#[test]
+fn la_population_tient_son_compte_sur_trois_silhouettes() {
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+        let monsters = sown(&grid, &map);
+
+        assert_eq!(monsters.len(), POPULATION, "graine {seed:#x}");
+
+        let tally = FIGURES.iter().map(|figure| {
+            monsters
+                .iter()
+                .filter(|monster| monster.figure.name == figure.name)
+                .count()
+        });
+        let (fewest, most) = (tally.clone().min(), tally.max());
+        assert!(
+            most.unwrap_or_default() - fewest.unwrap_or_default() <= 1,
+            "graine {seed:#x} : les silhouettes vont de {fewest:?} à {most:?} individus"
+        );
+    }
+}
+
+/// La résistance d'une créature reste à un coup de celle de sa silhouette.
+///
+/// **C'est la condition pour qu'une silhouette se lise** : au-delà, le dessin ne dit
+/// plus combien de coups il faut, et `D31` écarte nommément le tirage franc pour cette
+/// raison. Le plancher compte autant — une créature à zéro naîtrait déjà tombée, et le
+/// recul ne se verrait pas sur celle qui meurt à l'impact.
+#[test]
+fn la_resistance_reste_a_un_coup_de_sa_silhouette() {
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+
+        for monster in sown(&grid, &map) {
+            let (base, life) = (monster.figure.life, monster.life);
+            assert!(
+                life.abs_diff(base) <= SPREAD,
+                "graine {seed:#x} : {} encaisse {life} coups là où sa silhouette en \
+                 annonce {base}",
+                monster.name()
+            );
+            assert!(
+                life > 0,
+                "graine {seed:#x} : {} naît déjà tombée",
+                monster.name()
+            );
+        }
+    }
+}
+
+/// Deux créatures d'une même silhouette n'encaissent pas forcément autant.
+///
+/// **Sans quoi le tirage ne sert à rien** : une variation qui rendrait toujours la base
+/// laisserait la résistance entièrement lisible sur le dessin, ce qui est le barème que
+/// `D31` remplace. La mesure porte par silhouette, puisque trois bases différentes
+/// suffiraient à faire varier l'ensemble sans qu'aucun individu ait été tiré.
+#[test]
+fn la_resistance_varie_d_une_creature_a_l_autre() {
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+        let monsters = sown(&grid, &map);
+
+        let varied = FIGURES.iter().any(|figure| {
+            let mut lives = monsters
+                .iter()
+                .filter(|monster| monster.figure.name == figure.name)
+                .map(|monster| monster.life);
+            let first = lives.next();
+            lives.any(|life| Some(life) != first)
+        });
+
+        assert!(
+            varied,
+            "graine {seed:#x} : dans chaque silhouette, tous les individus encaissent \
+             autant"
+        );
+    }
+}
+
+/// Les caps de naissance se répartissent sur le tour.
+///
+/// **Le réparti sur le rang en donnait trois pour seize créatures**, et c'est le défaut
+/// que cette épreuve garde : `rang × τ ÷ 3` ne prend que trois valeurs, quel que soit le
+/// compte. Huit valeurs distinctes au moins — soit le nombre de secteurs qu'une planche
+/// de vues distingue — disent que le cap vient d'un tirage et non d'un indice.
+#[test]
+fn les_caps_se_repartissent_sur_le_tour() {
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+        let monsters = sown(&grid, &map);
+
+        let mut caps: Vec<_> = monsters.iter().map(|monster| monster.facing).collect();
+        caps.sort_unstable_by(f32::total_cmp);
+        caps.dedup();
+
+        assert!(
+            caps.len() >= 8,
+            "graine {seed:#x} : seize créatures ne portent que {} caps distincts",
+            caps.len()
+        );
+    }
+}
+
+/// La table range la résistance, la prime et le corps dessiné dans le même ordre.
+///
+/// **C'est la justification des trois chiffres, et c'est elle qu'on garde plutôt que
+/// les chiffres** : la résistance suit la corpulence parce qu'une créature massive qui
+/// encaisse plus se lit sans qu'on l'explique, et la prime suit la résistance parce que
+/// `d3` a valu le plus pendant un lot en étant la plus facile à abattre. Une table
+/// reprise sans cet ordre rend le barème muet, et rien d'autre ne le dirait.
+///
+/// **L'ordre et non les valeurs** : régler `d2` à cinq coups ne doit pas faire rougir
+/// cette épreuve, la ranger derrière `d3` doit le faire.
+#[test]
+fn la_table_ordonne_resistance_prime_et_corps() {
+    let mut ranked: Vec<_> = FIGURES.iter().collect();
+    ranked.sort_unstable_by(|left, right| left.trunk.total_cmp(&right.trunk));
+
+    for pair in ranked.windows(2) {
+        let (slighter, stouter) = (pair[0], pair[1]);
+        assert!(
+            slighter.life <= stouter.life,
+            "{} a un corps de {} texels et encaisse {} coups, là où {} en a {} pour \
+             un corps de {}",
+            slighter.name,
+            slighter.trunk,
+            slighter.life,
+            stouter.name,
+            stouter.life,
+            stouter.trunk
+        );
+        assert!(
+            slighter.bounty <= stouter.bounty,
+            "{} encaisse {} coups et vaut {}, là où {} vaut {} pour {} coups",
+            slighter.name,
+            slighter.life,
+            slighter.bounty,
+            stouter.name,
+            stouter.bounty,
+            stouter.life
         );
     }
 }

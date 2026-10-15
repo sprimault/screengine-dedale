@@ -25,6 +25,7 @@ use crate::maze::grid::Grid;
 use crate::monster::{self, Monster};
 use crate::player::{self, Player};
 use crate::probe::Aim;
+use crate::rng::Rng;
 use crate::scatter;
 use crate::scene::View;
 use crate::shot::{self, Outcome};
@@ -277,10 +278,15 @@ impl Game {
         // **Un seul semis pour tout ce qui se pose**, demandé en une fois et découpé
         // ici : deux tirages indépendants éliraient tôt ou tard la même case, et les
         // ramassages viendront prendre la tranche qui suit celle des créatures.
-        let spots = scatter::spots(grid, monster::POPULATION);
+        //
+        // **Et un seul générateur, qui est le seul endroit à connaître la graine** :
+        // le semis tire ses cases, la population ses caps et ses résistances, et deux
+        // générateurs posés sur la même graine rendraient deux fois la même suite.
+        let mut rng = Rng::new(grid.seed());
+        let spots = scatter::spots(grid, monster::POPULATION, &mut rng);
         Ok(Self {
             weapon: Weapon::new(camera.yaw)?,
-            monsters: monster::population(&spots, grid, map)?,
+            monsters: monster::population(&spots, &mut rng, grid, map)?,
             marks: Marks::new(),
             respite: 0.0,
             camera,

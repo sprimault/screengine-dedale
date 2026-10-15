@@ -55,12 +55,13 @@ const CLEARANCE: u32 = 6;
 /// appelant qui sert plusieurs familles peut découper la tranche de chacune sans
 /// qu'aucune case se retrouve dans deux.
 ///
-/// Le tirage dérive de la graine de la grille : un même labyrinthe porte le même
-/// semis, ce qui est la propriété sans laquelle un défaut de placement ne se
-/// reproduit pas.
-pub fn spots(grid: &Grid, count: usize) -> Vec<(u32, u32, u32)> {
+/// **Le générateur vient de l'appelant et ne se fabrique pas ici**, parce que ce qui
+/// se pose dans le labyrinthe tire aussi autre chose — une résistance, un cap. Deux
+/// générateurs posés sur la même graine rendraient deux fois la même suite, et cette
+/// coïncidence fait rouvrir la question à chaque relecture. Un seul endroit connaît
+/// donc la graine, et c'est celui qui construit la partie.
+pub fn spots(grid: &Grid, count: usize, rng: &mut Rng) -> Vec<(u32, u32, u32)> {
     let mut pool = far_enough(grid);
-    let mut rng = Rng::new(grid.seed());
 
     // Un mélange partiel plutôt qu'un tirage avec rejet : il tire sans remise par
     // construction, et ne brasse que ce qu'on emporte — trois cases sur cinq cents
