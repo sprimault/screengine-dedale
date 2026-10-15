@@ -190,9 +190,16 @@ se confondre — on les entend avant de les distinguer.
 - **La transparence graduée** — fumée, halo, verre : la transparence du moteur est
   binaire, et un mélange fractionnaire y ramènerait le tri par profondeur que le
   z-buffer a supprimé. Ce qui s'en approche sans le coût est la surface modulée.
-- **Des ennemis qui se poursuivent d'une cellule à l'autre** : cela suppose une
-  navigation, donc une structure que le jeu doit tenir lui-même. La carte donne les
-  portails, pas un graphe de déplacement. À reconsidérer après l'étape 7.
+- **Des ennemis qui poursuivent hors de vue, d'une cellule à l'autre** : cela
+  suppose une navigation, donc une structure que le jeu doit tenir lui-même. La
+  carte donne les portails, pas un graphe de déplacement. À reconsidérer après
+  l'étape 7.
+
+  **La poursuite à vue, elle, est au périmètre**, et c'est la distinction qui
+  décide : une ligne de vue dégagée **est** un chemin, que le rayon du moteur rend
+  sans qu'aucun graphe n'existe. Une créature qui voit le joueur se dirige vers
+  lui ; c'est le moment où elle le perd de vue qui demande ce que la carte ne donne
+  pas.
 - **Une visibilité précalculée** pour accélérer un grand labyrinthe : le moteur la
   refuse par principe, et sa traversée est faite pour s'en passer.
 - **Le multijoueur**, sous toutes ses formes.
