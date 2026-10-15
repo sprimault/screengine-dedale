@@ -19,6 +19,8 @@ mod monster;
 mod pace;
 mod player;
 mod probe;
+mod rng;
+mod scatter;
 mod scene;
 mod sheet;
 mod shot;

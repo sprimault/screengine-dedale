@@ -25,6 +25,7 @@ use crate::maze::grid::Grid;
 use crate::monster::{self, Monster};
 use crate::player::{self, Player};
 use crate::probe::Aim;
+use crate::scatter;
 use crate::scene::View;
 use crate::shot::{self, Outcome};
 use crate::weapon::Weapon;
@@ -273,9 +274,13 @@ impl Game {
     pub fn new(grid: &Grid, map: &World) -> Result<Self, Error> {
         let player = Player::spawn(grid, map);
         let camera = FreeCamera::new(player.eye());
+        // **Un seul semis pour tout ce qui se pose**, demandé en une fois et découpé
+        // ici : deux tirages indépendants éliraient tôt ou tard la même case, et les
+        // ramassages viendront prendre la tranche qui suit celle des créatures.
+        let spots = scatter::spots(grid, monster::POPULATION);
         Ok(Self {
             weapon: Weapon::new(camera.yaw)?,
-            monsters: monster::population(grid, map)?,
+            monsters: monster::population(&spots, grid, map)?,
             marks: Marks::new(),
             respite: 0.0,
             camera,

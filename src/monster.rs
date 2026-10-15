@@ -24,7 +24,6 @@
 //! silhouettes sur trois flotteraient d'un texel et patineraient du double. Elles
 //! vivent donc dans [`FIGURES`], une ligne par silhouette.
 
-use std::collections::VecDeque;
 use std::sync::Arc;
 
 use screengine_play::{
@@ -34,7 +33,7 @@ use screengine_play::{
 
 use crate::blot::blot;
 use crate::body::{self, Body};
-use crate::maze::grid::{Grid, Side};
+use crate::maze::grid::Grid;
 use crate::sheet::{self, FRAME, Motion};
 
 #[cfg(test)]
@@ -825,74 +824,42 @@ fn meets(here: Vec3, there: Vec3) -> bool {
     body::overlaps(here, HALF, there, HALF)
 }
 
-/// Les cases où les créatures naissent : les plus proches de l'entrée par les
-/// passages.
+/// Le nombre de créatures qu'un labyrinthe porte.
 ///
-/// **Un parcours en largeur et non une distance de grille** : deux cases voisines
-/// peuvent être séparées par un mur, donc proches sans être en vue. Ce qui compte
-/// est la proximité **par les couloirs**, et c'est ce qu'un parcours mesure.
-///
-/// **Elles sont dans le champ au lancement, et c'est ce que ce lot demande** : trois
-/// silhouettes dispersées sur cinq cents cases ne se comparent pas, et comparer les
-/// trois planches est précisément ce qui se juge ici. Elles se séparent ensuite
-/// d'elles-mêmes en marchant.
-///
-/// **Les passages verticaux sont écartés** : une créature née dans une cage serait
-/// hors de vue au lancement, et c'est tout — sa pose, elle, se résout comme une
-/// autre, le relèvement de pente étant l'affaire de [`Body::stand`].
-///
-/// Rend moins de cases que de silhouettes si le labyrinthe n'en offre pas assez, ce
-/// qu'aucune taille jouable ne produit ; l'appelant retombe alors sur le départ
-/// plutôt que d'ériger en invariant une commodité de placement.
-fn spots(grid: &Grid) -> Vec<(u32, u32, u32)> {
-    let mut queue = VecDeque::from([grid.start()]);
-    let mut seen = vec![grid.start()];
-    let mut found = Vec::with_capacity(FIGURES.len());
+/// Une par silhouette aujourd'hui, et le compte est ce que le découplage doit
+/// défaire : trois sur cinq cent douze cases donnent une traversée où l'on ne croise
+/// rien, et c'est ce qui a motivé le semis dispersé avant de monter le compte.
+pub const POPULATION: usize = FIGURES.len();
 
-    while let Some(at) = queue.pop_front() {
-        for side in Side::ALL.into_iter().filter(|side| !side.is_vertical()) {
-            if found.len() == FIGURES.len() {
-                return found;
-            }
-            if grid.has_wall(at, side) {
-                continue;
-            }
-            let Some(next) = grid.neighbour(at, side) else {
-                continue;
-            };
-            if seen.contains(&next) {
-                continue;
-            }
-            seen.push(next);
-            queue.push_back(next);
-            found.push(next);
-        }
-    }
-
-    found
-}
-
-/// Peuple le labyrinthe de ses trois silhouettes.
+/// Peuple le labyrinthe aux cases que le semis a tirées.
 ///
-/// **La tache d'ombre se fabrique ici, une fois pour toutes** : c'était la décision
-/// que ce lot devait prendre, et le partage par `Arc` la rend sans coût.
+/// **Les cases viennent du dehors et ne se cherchent plus ici**, parce qu'un seul
+/// semis sert toutes les familles : c'est ce qui garantit qu'aucun ramassage ne
+/// naîtra dans une créature, et le garantir demande un tirage unique.
+///
+/// **Le `zip` est le refus**, et il remplace un repli sur la case de départ : moins
+/// de cases que de silhouettes rend moins de créatures, là où le repli les faisait
+/// naître dans le joueur dès que le compte montait.
+///
+/// **La tache d'ombre se fabrique ici, une fois pour toutes**, et le partage par
+/// `Arc` la rend sans coût.
 ///
 /// # Erreurs
 ///
 /// Si une planche ne se décode pas — elles sont intégrées au binaire, donc jamais en
 /// pratique.
-pub fn population(grid: &Grid, map: &World) -> Result<Vec<Monster>, Error> {
+pub fn population(
+    spots: &[(u32, u32, u32)],
+    grid: &Grid,
+    map: &World,
+) -> Result<Vec<Monster>, Error> {
     let shadow = Arc::new(shadow_texture());
-    let spots = spots(grid);
-    let start = grid.start();
 
     FIGURES
         .iter()
+        .zip(spots)
         .enumerate()
-        .map(|(rank, figure)| {
-            let at = spots.get(rank).copied().unwrap_or(start);
-            Monster::new(figure, Arc::clone(&shadow), rank, grid, map, at)
-        })
+        .map(|(rank, (figure, &at))| Monster::new(figure, Arc::clone(&shadow), rank, grid, map, at))
         .collect()
 }
 

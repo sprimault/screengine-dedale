@@ -34,6 +34,8 @@
 
 use std::collections::VecDeque;
 
+use crate::rng::Rng;
+
 #[cfg(test)]
 mod tests;
 
@@ -231,6 +233,12 @@ pub struct Grid {
     exit: (u32, u32, u32),
     /// Les volées, une par paire d'étages consécutifs.
     stairs: Vec<Stair>,
+    /// La graine dont tout ceci est sorti.
+    ///
+    /// **Gardée pour ce qui se sème dessus, et non pour engendrer deux fois** : le
+    /// semis des créatures et des ramassages doit rejouer à l'identique sur un même
+    /// labyrinthe, et il n'a aucune autre source d'où tirer la même suite.
+    seed: u64,
 }
 
 impl Grid {
@@ -267,6 +275,7 @@ impl Grid {
             start: (0, 0, 0),
             exit: (0, 0, 0),
             stairs: Vec::new(),
+            seed: settings.seed,
         };
 
         for z in 0..levels as i32 {
@@ -296,6 +305,15 @@ impl Grid {
     /// Les volées, une par paire d'étages consécutifs.
     pub fn stairs(&self) -> &[Stair] {
         &self.stairs
+    }
+
+    /// La graine qui a engendré cette grille.
+    ///
+    /// Ce qui se sème dans le labyrinthe en dérive sa propre suite, de façon qu'un
+    /// même labyrinthe porte le même semis — la propriété sans laquelle un défaut
+    /// de placement ne se reproduit pas.
+    pub fn seed(&self) -> u64 {
+        self.seed
     }
 
     /// Le nombre de cases sur chaque axe.
@@ -807,43 +825,5 @@ impl Hunt {
         if self.cell.2 >= levels as i32 {
             self.cell.2 = 0;
         }
-    }
-}
-
-/// Un générateur xorshift64*.
-///
-/// Écrit ici plutôt que pris d'une bibliothèque : une graine, une suite, rien à
-/// configurer, et une dépendance de moins à justifier dans l'audit des licences.
-struct Rng(u64);
-
-impl Rng {
-    /// Un générateur posé sur une graine.
-    fn new(seed: u64) -> Self {
-        // Une graine nulle rend une suite nulle : on la déplace plutôt que de la
-        // refuser, l'appelant ayant le droit d'écrire zéro sans le savoir.
-        Self(if seed == 0 {
-            0x9E37_79B9_7F4A_7C15
-        } else {
-            seed
-        })
-    }
-
-    /// Le prochain mot de la suite.
-    fn next(&mut self) -> u64 {
-        let mut x = self.0;
-        x ^= x >> 12;
-        x ^= x << 25;
-        x ^= x >> 27;
-        self.0 = x;
-        x.wrapping_mul(0x2545_F491_4F6C_DD1D)
-    }
-
-    /// Un entier de zéro à `bound` exclu.
-    ///
-    /// Le reste d'un tirage sur soixante-quatre bits est biaisé, mais d'au plus
-    /// `2⁻⁶¹` pour les bornes employées ici, qui ne dépassent pas six : un rejet
-    /// serait de la cérémonie pour un écart qu'aucune partie ne révélerait.
-    fn below(&mut self, bound: u32) -> u32 {
-        (self.next() % u64::from(bound)) as u32
     }
 }
