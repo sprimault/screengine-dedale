@@ -26,6 +26,7 @@ use std::sync::OnceLock;
 use super::*;
 use crate::maze::export;
 use crate::maze::grid::Settings;
+use crate::scatter;
 use crate::scene::{Scenery, View};
 use crate::test_support::{HEIGHT, SEEDS, WIDTH, context, frame, maze, snapshot};
 use screengine_play::{BYTES_PER_PIXEL, FreeCamera};
@@ -142,6 +143,16 @@ fn footprint(sheet: &Texture, view: u32, frame: u32) -> u32 {
     }
 }
 
+/// La population d'un labyrinthe, semée comme le jeu la sème.
+///
+/// **Elle passe par le semis et non par des cases écrites à la main**, parce que c'est
+/// la combinaison des deux qui se juge : des cases choisies dans l'épreuve ne diraient
+/// rien de ce que le semis pose vraiment, et c'est là que les poses impossibles
+/// apparaissent — au pied d'une cage, contre une paroi, à cheval sur un seuil.
+fn sown(grid: &Grid, map: &World) -> Vec<Monster> {
+    population(&scatter::spots(grid, POPULATION), grid, map).expect("planches du dépôt valides")
+}
+
 /// Les trois créatures naissent hors du solide, quelle que soit la graine.
 ///
 /// **Elles empruntent le chemin du joueur et doivent donc en tirer la même
@@ -156,7 +167,7 @@ fn footprint(sheet: &Texture, view: u32, frame: u32) -> u32 {
 fn le_demon_nait_hors_du_solide() {
     for seed in SEEDS {
         let (grid, map) = maze(seed);
-        let monsters = population(&grid, &map).expect("planches du dépôt valides");
+        let monsters = sown(&grid, &map);
 
         for monster in &monsters {
             let centre = monster.at();
@@ -199,7 +210,7 @@ fn le_demon_nait_pose_sur_son_sol() {
 
     for seed in SEEDS {
         let (grid, map) = maze(seed);
-        let monsters = population(&grid, &map).expect("planches du dépôt valides");
+        let monsters = sown(&grid, &map);
 
         for monster in &monsters {
             let centre = monster.at();
@@ -224,56 +235,18 @@ fn le_demon_nait_pose_sur_son_sol() {
     }
 }
 
-/// Deux créatures naissent sur deux cases, jamais sur la même.
+/// Deux créatures naissent sur deux volumes, jamais sur le même.
 ///
-/// **C'est le marquage des cases vues qui le donne**, et rien d'autre : sans lui, un
-/// parcours qui revient sur ses pas rend deux fois la même case, et deux silhouettes
-/// se superposent.
-///
-/// **Ce que le marquage débranché produit n'est pas un doublon, c'est pire, et c'est
-/// mesuré** : le parcours revient alors sur la case de départ et y pose une
-/// silhouette — donc dans le joueur, qui y naît aussi. Le doublon, lui, demande un
-/// départ à deux passages dont les deux voisines sont reliées par une boucle, et
-/// aucune des soixante-quatre grilles éprouvées ne le présente.
-///
-/// **D'où les deux temps** : les six graines du dépôt vérifient les volumes posés —
-/// ce qu'une épreuve sur les cases seules ne dirait pas, deux cases distinctes
-/// pouvant porter deux corps qui se touchent —, puis soixante-quatre grilles
-/// vérifient les cases rendues.
+/// **Ce qui s'éprouve ici est le volume, et non la case** : que le semis rende des
+/// cases deux à deux distinctes est sa propriété et vit avec lui, mais deux cases
+/// distinctes peuvent porter deux corps qui se touchent — un démon fait près de
+/// quatre unités de large, un passage en fait une. C'est donc la paire posée qui se
+/// mesure, sur les six graines du dépôt dont les cartes existent.
 #[test]
-fn chaque_demon_nait_sur_sa_case() {
-    /// Combien de grilles on engendre pour le second temps.
-    const GRIDS: u64 = 64;
-
-    for seed in 0..GRIDS {
-        let grid = Grid::generate(Settings {
-            extent: (16, 16, 2),
-            seed,
-            stairs: 6,
-            ramps: 2,
-            loops: 8,
-        });
-        let spots = spots(&grid);
-        assert_eq!(spots.len(), FIGURES.len(), "graine {seed}");
-
-        for (rank, spot) in spots.iter().enumerate() {
-            assert!(
-                !spots[..rank].contains(spot),
-                "graine {seed} : le parcours rend deux fois la case {spot:?}, \
-                 donc deux silhouettes s'y superposent"
-            );
-            assert_ne!(
-                *spot,
-                grid.start(),
-                "graine {seed} : une silhouette naît sur la case de départ, \
-                 donc dans le joueur"
-            );
-        }
-    }
-
+fn chaque_demon_nait_sur_son_volume() {
     for seed in SEEDS {
         let (grid, map) = maze(seed);
-        let monsters = population(&grid, &map).expect("planches du dépôt valides");
+        let monsters = sown(&grid, &map);
         assert_eq!(monsters.len(), FIGURES.len());
 
         for (rank, monster) in monsters.iter().enumerate() {
@@ -349,9 +322,9 @@ fn le_sprite_pose_ses_pieds_au_sol() {
 /// serve.
 /// Une créature seule, de la première silhouette, posée sur cette case.
 ///
-/// **La population ne sert pas ici** : elle place trois créatures près de l'entrée et
-/// leur donne des caps répartis, là où le recul se mesure sur une seule, à un endroit
-/// choisi et sans voisine pour la gêner.
+/// **La population ne sert pas ici** : elle place ses créatures où le semis les tire
+/// et leur donne des caps répartis, là où le recul se mesure sur une seule, à un
+/// endroit choisi et sans voisine pour la gêner.
 ///
 /// Le cap est celui que le rang zéro donne, soit le `+X` ; les épreuves qui en veulent
 /// un autre l'écrivent.
@@ -431,7 +404,7 @@ fn un_demon_qui_marche_ne_traverse_pas_le_decor() {
 
     for seed in [SEEDS[0], SEEDS[4]] {
         let (grid, map) = maze(seed);
-        let mut monsters = population(&grid, &map).expect("planches du dépôt valides");
+        let mut monsters = sown(&grid, &map);
 
         for frame in 0..FRAMES {
             stroll(&mut monsters, &map, DT);
@@ -1013,7 +986,7 @@ fn deux_demons_ne_se_marchent_pas_dessus() {
 
     for seed in [SEEDS[0], SEEDS[4]] {
         let (grid, map) = maze(seed);
-        let mut monsters = population(&grid, &map).expect("planches du dépôt valides");
+        let mut monsters = sown(&grid, &map);
 
         for frame in 0..FRAMES {
             stroll(&mut monsters, &map, DT);
@@ -1052,7 +1025,7 @@ fn une_creature_genee_par_une_autre_se_detourne() {
     const DT: f32 = 1.0 / 60.0;
 
     let (grid, map) = maze(SEEDS[0]);
-    let mut monsters = population(&grid, &map).expect("planches du dépôt valides");
+    let mut monsters = sown(&grid, &map);
     let first = monsters[0].facing;
 
     // Gênée à chaque image, sans qu'aucun décor soit en cause.
@@ -1088,7 +1061,7 @@ fn le_decor_retourne_le_demon() {
     const FRAMES: usize = 600;
 
     let (grid, map) = maze(SEEDS[0]);
-    let mut monsters = population(&grid, &map).expect("planches du dépôt valides");
+    let mut monsters = sown(&grid, &map);
     let monster = &mut monsters[0];
     let first = monster.facing;
     let mut turns = 0;
@@ -1144,7 +1117,11 @@ fn un_cap_oblique_ne_fait_pas_deriver() {
     const FRAMES: usize = 900;
 
     let (grid, map) = maze(SEEDS[0]);
-    let mut monsters = population(&grid, &map).expect("planches du dépôt valides");
+    // **La case est écrite et ne vient pas du semis**, et c'est ce qui rend la borne
+    // ci-dessous mesurable : ce qu'on éprouve est que la dérive s'arrête, pas la
+    // longueur du couloir où la créature est née. Calibrée sur un lieu, la borne
+    // redevient fausse au premier semis qui déplace une naissance — elle l'a été.
+    let mut monsters = population(&[grid.start()], &grid, &map).expect("planches valides");
     let monster = &mut monsters[0];
     // En biais sur les deux axes : aucune composante ne s'annule, donc le décor
     // l'arrête toujours par l'un sans l'arrêter par l'autre.
@@ -1200,7 +1177,7 @@ fn un_cap_oblique_ne_fait_pas_deriver() {
 #[test]
 fn image_des_quatre_vues() {
     let (grid, map) = maze(SEEDS[0]);
-    let mut monsters = population(&grid, &map).expect("planches du dépôt valides");
+    let mut monsters = sown(&grid, &map);
 
     for monster in &mut monsters {
         monster.motion = Motion::Walk;
@@ -1256,7 +1233,7 @@ fn image_du_contact() {
         loops: 8,
     })
     .expect("labyrinthe et planches valides");
-    let mut monsters = population(&scenery.maze, &scenery.map).expect("planches du dépôt valides");
+    let mut monsters = sown(&scenery.maze, &scenery.map);
 
     for monster in &mut monsters {
         monster.motion = Motion::Walk;
@@ -1351,7 +1328,7 @@ fn la_patience_depasse_les_accrocs_du_decor() {
     const FRAMES: usize = 900;
 
     let (grid, map) = maze(SEEDS[0]);
-    let mut monsters = population(&grid, &map).expect("planches du dépôt valides");
+    let mut monsters = sown(&grid, &map);
     let monster = &mut monsters[0];
     let step = monster.step(DT);
 
@@ -1514,7 +1491,7 @@ fn le_cycle_de_repos_tourne_avec_le_temps() {
     const DT: f32 = 1.0 / 60.0;
 
     let (grid, map) = maze(SEEDS[0]);
-    let mut monsters = population(&grid, &map).expect("planches du dépôt valides");
+    let mut monsters = sown(&grid, &map);
     let monster = &mut monsters[0];
     assert_eq!(monster.phase, 0.0);
 
@@ -1545,7 +1522,7 @@ fn une_distance_parcourue_fait_passer_a_la_marche() {
     const DT: f32 = 1.0 / 60.0;
 
     let (grid, map) = maze(SEEDS[0]);
-    let mut monsters = population(&grid, &map).expect("planches du dépôt valides");
+    let mut monsters = sown(&grid, &map);
 
     // Les trois, parce que la foulée vient de la table : une phase calculée sur la
     // foulée d'une autre silhouette avancerait du double sans qu'aucune épreuve de
@@ -1841,7 +1818,7 @@ fn une_creature_ne_tourne_pas_sur_place() {
     let mut worst = (f32::MAX, 0usize, "aucune", 0u64);
     for seed in SEEDS {
         let (grid, map) = maze(seed);
-        let mut monsters = population(&grid, &map).expect("planches du dépôt valides");
+        let mut monsters = sown(&grid, &map);
 
         let mut tracks: Vec<Vec<Vec3>> = vec![Vec::new(); monsters.len()];
         for _ in 0..(SPAN / DT) as u32 {
