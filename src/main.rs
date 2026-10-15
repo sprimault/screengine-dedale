@@ -16,6 +16,7 @@ mod hud;
 mod mark;
 mod maze;
 mod monster;
+mod pace;
 mod player;
 mod probe;
 mod scene;
@@ -28,11 +29,14 @@ mod test_support;
 #[cfg(test)]
 mod tests;
 
+use std::time::Instant;
+
 use game::{Game, Run};
 use hud::block;
 use hud::glyph::{self, Glyphs};
 use maze::export;
 use maze::grid::{Grid, Settings, Shape, Side};
+use pace::Pace;
 use probe::Probe;
 use scene::Scenery;
 use screengine_play::{Error, KeyCode, Output, Play};
@@ -57,6 +61,13 @@ const MAZE: Settings = Settings {
     ramps: 2,
     loops: 8,
 };
+
+/// Le nom qui ouvre la barre de titre.
+///
+/// En constante parce que deux titres le portent : celui de l'ouverture, et celui
+/// que chaque pas repose autour du relevé. Écrit deux fois, il survivrait une fois
+/// à un renommage.
+const NAME: &str = "Dédale";
 
 /// L'icône que la fenêtre porte, en PNG.
 ///
@@ -91,6 +102,12 @@ struct Session {
     /// rien et que le rendu seul alimente. Le ranger dans l'un des deux ferait
     /// passer un journal pour un état de jeu.
     probe: Probe,
+    /// Ce qu'une image coûte, et où ce temps part.
+    ///
+    /// **Le second instrument, et il ne mesure pas la même chose** : le relevé
+    /// ci-dessus dit ce que la traversée *rend*, celui-ci ce qu'une image *coûte*.
+    /// Les deux vivent hors du monde et hors de la partie pour la même raison.
+    pace: Pace,
     /// La planche de glyphes, chargée une fois.
     ///
     /// Ni du monde ni de la partie non plus : une ressource, que rien ne modifie
@@ -103,17 +120,22 @@ fn main() -> Result<(), Error> {
     let scenery = Scenery::new(MAZE)?;
     let game = Game::new(&scenery.maze, &scenery.map)?;
 
-    // Le compte dans le titre, faute d'une police : c'est la seule sortie
-    // textuelle du jeu avant l'étape 5. Ce total est celui de la **carte**, et
-    // non ce que le budget d'image plafonne — lequel compte les triangles
-    // préparés d'une image, que la traversée ne tire qu'à quelques centaines.
-    // `Play::max_triangles` le relève s'il le faut ; la mesure qui le dirait
-    // n'est pas prise, donc le défaut reste.
-    let title = format!(
-        "Dédale — {} cellules, {} triangles",
+    // Le compte dans le titre, là où il ne gêne pas : ce qu'on lit en jouant est
+    // écrit à l'écran depuis l'étape 5, et la barre de titre a gardé ce qui ne se
+    // regarde qu'en réglant. Ce total est celui de la **carte**, et non ce que le
+    // budget d'image plafonne — lequel compte les triangles préparés d'une image,
+    // que la traversée ne tire qu'à quelques centaines. `Play::max_triangles` le
+    // relève s'il le faut ; la mesure qui le dirait n'est pas prise, donc le défaut
+    // reste.
+    let scale = format!(
+        "{} cellules, {} triangles",
         scenery.map.cell_count(),
         scenery.map.triangle_count()
     );
+
+    // Le titre d'ouverture n'a pas de relevé à porter : la première image n'est
+    // pas rendue, et la cadence s'y glissera d'elle-même au premier pas.
+    let title = format!("{NAME} — {scale}");
 
     Play::new().title(&title).icon(ICON)?.run_with_output(
         Session {
@@ -121,6 +143,7 @@ fn main() -> Result<(), Error> {
             game,
             run: Run::new(),
             probe: Probe::new(),
+            pace: Pace::new(),
             glyphs: Glyphs::new(),
         },
         |session, tick| {
@@ -147,10 +170,16 @@ fn main() -> Result<(), Error> {
                 }
             }
 
-            if let Some(shot) = session
+            // **Le chronomètre entoure le pas de jeu seul**, et ni le relevé du tir
+            // ni le titre qui suit : un instrument qui mesure son propre affichage
+            // rend un chiffre dont la moitié est à lui.
+            let started = Instant::now();
+            let shot = session
                 .game
-                .step(tick, &session.scenery.map, &mut session.run)
-            {
+                .step(tick, &session.scenery.map, &mut session.run);
+            session.pace.stepped(started.elapsed());
+
+            if let Some(shot) = shot {
                 let aim = session.game.aim();
                 session.probe.fired(&shot, &session.scenery.map, &aim);
             }
@@ -175,9 +204,15 @@ fn main() -> Result<(), Error> {
             // Le titre ne dit plus la mort : elle s'écrit à l'écran, là où on la lit
             // en jouant. Ce qui reste ici est un relevé de développement, que
             // personne ne consulte en jouant.
+            //
+            // **Le relevé de cadence passe devant ce qui est constant**, et c'est la
+            // barre de titre qui l'impose : elle tronque par la fin, et le compte de
+            // cellules ne change jamais là où le temps d'une image est ce qu'on
+            // surveille en réglant.
             tick.set_title(&format!(
-                "{title} — œil {:.2} sur {:.2} d'étage, plafond {:.2}, \
+                "{NAME} — {} — {scale} — œil {:.2} sur {:.2} d'étage, plafond {:.2}, \
                  démon {figure} à {reach:.2}, cellule {}, vue {:?}",
+                session.pace,
                 eye.rem_euclid(export::LEVEL),
                 export::LEVEL,
                 export::CEILING,
@@ -186,6 +221,7 @@ fn main() -> Result<(), Error> {
             ));
         },
         |session, context| {
+            session.pace.opened();
             // Un refus ne vient que de la capacité de triangles, et une image
             // manquante vaut mieux qu'une boucle arrêtée. Ce que la traversée
             // rend — complète, tronquée, ou hors cellule — n'est pas encore
@@ -235,6 +271,12 @@ fn main() -> Result<(), Error> {
             session
                 .probe
                 .refusal(probe::Part::Weapon, hand.is_err(), &session.game.aim());
+
+            // **Le relevé de visibilité est compté dans la part de la scène**, et
+            // c'est assumé : il tient en une comparaison par partie soumise, et
+            // n'écrit dans son fichier qu'au changement d'état. Un jour où cela se
+            // verrait, c'est ce même chiffre qui le dirait.
+            session.pace.submitted();
         },
         overview,
     )
@@ -262,6 +304,11 @@ const GAP: u32 = 10;
 /// `le_releve_voit_l_interface` vérifie que la jauge compte, et qu'elle reste seule
 /// sous le seuil. Ce que le HUD recevra ensuite s'ajoute à ce compte.
 fn overview(session: &mut Session, output: &mut Output<'_>) {
+    // **Ce jalon est le seul endroit d'où la part du moteur se sépare de celle de
+    // l'interface** : la rastérisation a lieu entre les deux rappels, donc le jeu n'en
+    // voit ni le début ni la fin autrement qu'en marquant ses deux bords.
+    session.pace.rasterized();
+
     // Un échantillon du tampon dit si l'image est amputée, ce qu'aucune valeur
     // rendue par la soumission ne dit. La couleur du fond vient de la scène, qui
     // seule sait ce qu'un pixel non peint porte.
@@ -280,6 +327,8 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
         epitaph(output, &session.glyphs);
     }
     hud::reticle::draw(output);
+
+    session.pace.drawn();
 }
 
 /// Les deux lignes de la mort, et l'échelle de chacune.
