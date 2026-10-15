@@ -37,6 +37,16 @@ fn maze(seed: u64) -> Grid {
     })
 }
 
+/// Le semis d'un labyrinthe, sur un générateur posé sur sa graine.
+///
+/// **Le générateur est explicite ici parce qu'il l'est dans le jeu** : la partie en
+/// construit un seul et le passe au semis puis à la population. Ce qui devient
+/// vérifiable est que deux générateurs de même graine rendent le même semis, au lieu
+/// que la fonction le garantisse sans qu'on puisse le voir.
+fn sown(grid: &Grid, count: usize) -> Vec<(u32, u32, u32)> {
+    spots(grid, count, &mut Rng::new(grid.seed()))
+}
+
 /// La distance de parcours de chaque case au départ, par relaxation jusqu'à
 /// stabilité.
 ///
@@ -118,7 +128,7 @@ fn le_semis_tire_dans_le_vivier() {
         let grid = maze(seed);
         let pool = far_enough(&grid);
 
-        for spot in spots(&grid, 8) {
+        for spot in sown(&grid, 8) {
             assert!(
                 pool.contains(&spot),
                 "graine {seed} : la case {spot:?} ne vient pas du vivier"
@@ -137,7 +147,7 @@ fn le_semis_tire_dans_le_vivier() {
 fn le_tirage_brasse_le_vivier() {
     let heads = (0..GRIDS).filter(|&seed| {
         let grid = maze(seed);
-        spots(&grid, 3) == far_enough(&grid)[..3]
+        sown(&grid, 3) == far_enough(&grid)[..3]
     });
 
     assert!(
@@ -155,11 +165,11 @@ fn le_tirage_brasse_le_vivier() {
 fn aucune_case_n_est_semee_deux_fois() {
     for seed in 0..GRIDS {
         let grid = maze(seed);
-        let sown = spots(&grid, 8);
+        let taken = sown(&grid, 8);
 
-        for (rank, spot) in sown.iter().enumerate() {
+        for (rank, spot) in taken.iter().enumerate() {
             assert!(
-                !sown[..rank].contains(spot),
+                !taken[..rank].contains(spot),
                 "graine {seed} : la case {spot:?} est semée deux fois"
             );
         }
@@ -177,7 +187,7 @@ fn le_depart_ne_recoit_rien() {
     for seed in 0..GRIDS {
         let grid = maze(seed);
         assert!(
-            !spots(&grid, 8).contains(&grid.start()),
+            !sown(&grid, 8).contains(&grid.start()),
             "graine {seed} : la case de départ est semée, donc dans le joueur"
         );
     }
@@ -195,7 +205,7 @@ fn aucune_cage_ne_recoit_rien() {
         let grid = maze(seed);
         let cages = stairwells(&grid);
 
-        for spot in spots(&grid, 8) {
+        for spot in sown(&grid, 8) {
             assert!(
                 !cages.contains(&spot),
                 "graine {seed} : la case {spot:?} est une case de cage"
@@ -241,8 +251,8 @@ fn un_meme_labyrinthe_rejoue_le_meme_semis() {
     for seed in 0..GRIDS {
         let grid = maze(seed);
         assert_eq!(
-            spots(&grid, 8),
-            spots(&grid, 8),
+            sown(&grid, 8),
+            sown(&grid, 8),
             "graine {seed} : deux semis d'un même labyrinthe diffèrent"
         );
     }
@@ -269,20 +279,20 @@ fn un_labyrinthe_trop_petit_rend_moins_que_demande() {
 
     let cramped = Grid::generate(settings((2, 2, 1)));
     assert!(
-        spots(&cramped, 3).is_empty(),
+        sown(&cramped, 3).is_empty(),
         "quatre cases n'atteignent pas un dégagement de {CLEARANCE}, \
          donc le semis n'a rien à rendre"
     );
 
     let small = Grid::generate(settings((4, 4, 1)));
-    let sown = spots(&small, 100);
+    let taken = sown(&small, 100);
     assert!(
-        sown.len() < 100,
+        taken.len() < 100,
         "seize cases ne peuvent pas en rendre cent, et le semis en rend {}",
-        sown.len()
+        taken.len()
     );
     assert!(
-        !sown.contains(&small.start()),
+        !taken.contains(&small.start()),
         "le refus ne doit pas se replier sur la case de départ"
     );
 }

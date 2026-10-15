@@ -34,6 +34,7 @@ use screengine_play::{
 use crate::blot::blot;
 use crate::body::{self, Body};
 use crate::maze::grid::Grid;
+use crate::rng::Rng;
 use crate::sheet::{self, FRAME, Motion};
 
 #[cfg(test)]
@@ -91,6 +92,20 @@ struct Figure {
     /// trente-sept. Un volume qui couvrirait l'enveloppe rendrait touchable le vide
     /// entre les membres ; ce qu'on cherche est ce qu'un joueur prend pour le corps.
     trunk: f32,
+    /// Ce qu'elle encaisse de coups, avant la variation de chaque individu.
+    ///
+    /// **Elle suit le corps dessiné, et c'est la mesure qui l'a décidée** : `d2` fait
+    /// trente-sept texels de tronc, `d1` trente et un, `d3` vingt-deux. Une résistance
+    /// qui suit la corpulence se lit à l'écran sans qu'on l'explique, là où trois
+    /// valeurs égales — ce que la constante portait — n'étaient une abstraction
+    /// bâtie sur aucun cas.
+    ///
+    /// **Une base et non la valeur** : chaque créature la décale d'un coup au plus à
+    /// sa naissance. La silhouette reste donc prédictive, ce qui est la condition
+    /// pour qu'une résistance se lise — deux démons identiques qui tomberaient en
+    /// deux coups et en cinq seraient la forme exacte du défaut de l'étape 5, une
+    /// qualité invisible que le barème récompense.
+    life: u32,
     /// Ce qu'elle vaut au compteur, abattue.
     ///
     /// **Une prime par silhouette et non un barème unique**, parce que ce qui la
@@ -109,8 +124,10 @@ struct Figure {
     /// son volume touchable. Le barème récompensait un ratage, et c'est ce qui a fait
     /// mesurer plutôt que payer.
     ///
-    /// **Distinctes malgré tout**, pour que le compteur dise **laquelle** on a abattue :
-    /// un chiffre commun ne le dirait jamais.
+    /// **Elles suivent désormais [`Figure::life`]**, ce que ce champ annonçait : la
+    /// résistance a divergé, donc la prime se range dans son ordre. `d3` est passée du
+    /// plus au moins payant en devenant la plus fragile — elle valait le plus sans
+    /// qu'aucune mesure le dise.
     bounty: u32,
 }
 
@@ -209,7 +226,8 @@ static FIGURES: [Figure; 3] = [
         dead_margin: 2.0,
         stride: 36.0,
         trunk: 31.0,
-        bounty: 100,
+        life: 3,
+        bounty: 150,
     },
     Figure {
         name: "d2",
@@ -221,7 +239,8 @@ static FIGURES: [Figure; 3] = [
         dead_margin: 2.0,
         stride: 16.0,
         trunk: 37.0,
-        bounty: 150,
+        life: 4,
+        bounty: 200,
     },
     Figure {
         name: "d3",
@@ -233,7 +252,8 @@ static FIGURES: [Figure; 3] = [
         dead_margin: 3.0,
         stride: 22.0,
         trunk: 22.0,
-        bounty: 200,
+        life: 2,
+        bounty: 100,
     },
 ];
 
@@ -377,15 +397,17 @@ const VEER: f32 = 2.399_963_2;
 
 /// Combien de coups une créature encaisse avant de tomber.
 ///
-/// **Trois, et ce n'est pas un chiffre de goût** : au premier coup, le recul ne se
-/// verrait jamais puisqu'elle mourrait à l'impact — les points de vie et la
-/// rétroaction sont le même sujet. La cadence étant celle du doigt, le clic se lisant
-/// en front et non en maintien, trois coups se tirent en une demi-seconde.
+/// De combien de coups la résistance d'un individu s'écarte de celle de sa silhouette.
 ///
-/// **Une constante et non un champ par silhouette** : la table serait l'endroit
-/// naturel pour que les trois diffèrent, mais rien ne le demande encore, et un champ
-/// portant trois fois la même valeur est une abstraction bâtie sur aucun cas.
-const LIFE: u32 = 3;
+/// **Un seul coup, et c'est la silhouette qui doit rester prédictive** : la base
+/// porte ce qu'on lit — une créature massive encaisse plus —, et la variation ne fait
+/// que l'empêcher d'être un barème. Plus large, elle rendrait la silhouette muette, ce
+/// que `D31` écarte nommément.
+///
+/// **Et la base ne descend jamais sous deux**, donc un écart d'un coup laisse au moins
+/// un coup à encaisser : le recul ne se verrait pas sur une créature qui tombe à
+/// l'impact, et les points de vie et la rétroaction sont le même sujet.
+const SPREAD: u32 = 1;
 
 /// Combien de temps le cycle de mort met à se jouer, en secondes.
 ///
@@ -479,40 +501,83 @@ pub struct Monster {
     life: u32,
 }
 
-impl Monster {
-    /// Pose une créature de cette silhouette debout sur cette case.
-    ///
-    /// **Le cap vient du rang et non d'une constante** : trois créatures au même cap
-    /// dans le même couloir marchent en file et ne montrent qu'une seule de leurs
-    /// huit vues. Réparties sur le tour, elles en montrent trois dès la première
-    /// image — ce que ce lot existe pour donner à voir.
+/// Les trois planches d'une silhouette, décodées une fois pour toutes celles qui la
+/// portent.
+///
+/// **Le partage se fait par silhouette et non par créature**, et c'est le compte qui
+/// l'a imposé : seize créatures décodaient quarante-huit planches pour trois jeux,
+/// chacune gardant sa copie de ce que sa voisine venait de lire. La tache d'ombre était
+/// déjà partagée par toute la population, pour la même raison et une silhouette plus
+/// tôt.
+struct Sheets {
+    /// Sa planche de repos.
+    idle: Arc<Texture>,
+    /// Celle de sa marche.
+    walk: Arc<Texture>,
+    /// Celle de sa mort.
+    dead: Arc<Texture>,
+}
+
+impl Sheets {
+    /// Décode les trois planches d'une silhouette.
     ///
     /// # Erreurs
     ///
-    /// Si une planche ne se décode pas — elles sont intégrées au binaire, donc jamais
-    /// en pratique, mais un `expect` sur un chemin atteignable n'a pas sa place.
-    fn new(
-        figure: &'static Figure,
-        shadow: Arc<Texture>,
-        rank: usize,
-        grid: &Grid,
-        map: &World,
-        at: (u32, u32, u32),
-    ) -> Result<Self, Error> {
+    /// Si l'une ne se décode pas — elles sont intégrées au binaire, donc jamais en
+    /// pratique.
+    fn load(figure: &Figure) -> Result<Self, Error> {
         Ok(Self {
-            figure,
             idle: Arc::new(load_png_masked(figure.idle)?),
             walk: Arc::new(load_png_masked(figure.walk)?),
             dead: Arc::new(load_png_masked(figure.dead)?),
+        })
+    }
+}
+
+impl Monster {
+    /// Pose une créature de cette silhouette debout sur cette case, cap et résistance
+    /// tirés.
+    ///
+    /// **Le cap se tire, là où il venait du rang.** Le réparti sur le tour existait
+    /// pour montrer trois vues dès la première image, trois créatures naissant côte à
+    /// côte près de l'entrée ; semées à travers le labyrinthe, elles ne se voient plus
+    /// ensemble, et un rang divisé par trois ne donnerait que trois caps pour seize
+    /// créatures.
+    ///
+    /// **Les planches viennent décodées**, puisqu'elles sont celles de sa silhouette et
+    /// non les siennes : c'est ce qui fait qu'elle ne peut plus échouer à naître.
+    fn new(
+        figure: &'static Figure,
+        sheets: &Sheets,
+        shadow: Arc<Texture>,
+        rng: &mut Rng,
+        grid: &Grid,
+        map: &World,
+        at: (u32, u32, u32),
+    ) -> Self {
+        // Le tour entier, au millième de tour : la vue ne distingue que huit secteurs,
+        // donc une résolution plus fine ne se verrait pas, et une plus grossière
+        // alignerait les caps sur les secteurs eux-mêmes.
+        let facing = rng.below(1000) as f32 * core::f32::consts::TAU / 1000.0;
+        // Le décalage porte sur `2 × SPREAD + 1` valeurs centrées sur la base, et la
+        // base vaut au moins deux : la soustraction ne peut donc pas tomber à zéro,
+        // ce qui ferait naître une créature déjà morte.
+        let life = figure.life + rng.below(2 * SPREAD + 1) - SPREAD;
+
+        Self {
+            figure,
+            idle: Arc::clone(&sheets.idle),
+            walk: Arc::clone(&sheets.walk),
+            dead: Arc::clone(&sheets.dead),
             shadow,
             body: Body::stand(HALF, grid, map, at),
-            facing: rank as f32 * core::f32::consts::TAU / FIGURES.len() as f32,
+            facing,
             motion: Motion::Idle,
             phase: 0.0,
             hindered: 0,
             recoil: None,
-            life: LIFE,
-        })
+            life,
+        }
     }
 
     /// Le pas que son cap lui demande pour cette image, avant tout obstacle.
@@ -826,10 +891,14 @@ fn meets(here: Vec3, there: Vec3) -> bool {
 
 /// Le nombre de créatures qu'un labyrinthe porte.
 ///
-/// Une par silhouette aujourd'hui, et le compte est ce que le découplage doit
-/// défaire : trois sur cinq cent douze cases donnent une traversée où l'on ne croise
-/// rien, et c'est ce qui a motivé le semis dispersé avant de monter le compte.
-pub const POPULATION: usize = FIGURES.len();
+/// **Seize pour cinq cent douze cases, réglé à l'écran**, soit une tous les trente-deux
+/// pas environ : assez pour qu'une traversée en croise, trop peu pour que le labyrinthe
+/// devienne une foule. Trois — une par silhouette, ce que le compte valait tant qu'il
+/// était celui de la table — donnait une traversée où l'on ne croisait rien.
+///
+/// **Il ne tient plus au nombre de silhouettes**, et c'est tout l'objet : la table dit
+/// à quoi une créature ressemble, pas combien il y en a.
+pub const POPULATION: usize = 16;
 
 /// Peuple le labyrinthe aux cases que le semis a tirées.
 ///
@@ -837,12 +906,18 @@ pub const POPULATION: usize = FIGURES.len();
 /// semis sert toutes les familles : c'est ce qui garantit qu'aucun ramassage ne
 /// naîtra dans une créature, et le garantir demande un tirage unique.
 ///
-/// **Le `zip` est le refus**, et il remplace un repli sur la case de départ : moins
-/// de cases que de silhouettes rend moins de créatures, là où le repli les faisait
-/// naître dans le joueur dès que le compte montait.
+/// **Une créature par case reçue, et c'est le refus** : moins de cases que de créatures
+/// demandées en rend moins, là où un repli sur la case de départ les faisait naître
+/// dans le joueur dès que le compte montait.
 ///
-/// **La tache d'ombre se fabrique ici, une fois pour toutes**, et le partage par
-/// `Arc` la rend sans coût.
+/// **La silhouette se prend à tour de rôle et ne se tire pas.** Un tirage peut rendre
+/// seize fois la même par malchance, ce qui ruine ce que ce jeu démontre — trois
+/// silhouettes qui ne se confondent pas de loin. Le tour de rôle les répartit également
+/// par construction, et la dispersion est déjà dans les cases, que le semis a brassées.
+///
+/// **La tache d'ombre et les planches se décodent ici, une fois pour toutes** : une
+/// tache pour la population, trois jeux de planches pour les trois silhouettes, et le
+/// partage par `Arc` les rend sans coût quel que soit le compte.
 ///
 /// # Erreurs
 ///
@@ -850,17 +925,32 @@ pub const POPULATION: usize = FIGURES.len();
 /// pratique.
 pub fn population(
     spots: &[(u32, u32, u32)],
+    rng: &mut Rng,
     grid: &Grid,
     map: &World,
 ) -> Result<Vec<Monster>, Error> {
     let shadow = Arc::new(shadow_texture());
-
-    FIGURES
+    let sheets = FIGURES
         .iter()
-        .zip(spots)
+        .map(Sheets::load)
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(spots
+        .iter()
         .enumerate()
-        .map(|(rank, (figure, &at))| Monster::new(figure, Arc::clone(&shadow), rank, grid, map, at))
-        .collect()
+        .map(|(rank, &at)| {
+            let kind = rank % FIGURES.len();
+            Monster::new(
+                &FIGURES[kind],
+                &sheets[kind],
+                Arc::clone(&shadow),
+                rng,
+                grid,
+                map,
+                at,
+            )
+        })
+        .collect())
 }
 
 /// Fait marcher la population : chacune contre le décor, et contre les autres.
