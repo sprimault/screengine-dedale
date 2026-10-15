@@ -333,7 +333,7 @@ fn la_traversee_rend_la_meme_image_contre_un_portail() {
 /// et lacet en degrés.
 ///
 /// **Relevées, non construites**, et c'est leur seule raison d'être ici : les
-/// trente épisodes d'un parcours du 2026-10-03, sur la carte que [`settings`]
+/// trente épisodes d'un même parcours, sur la carte que [`settings`]
 /// engendre — ce sont aussi les réglages du jeu, donc rien n'est à transposer.
 ///
 /// **Le tangage est absent parce qu'il était nul partout**, aux trente épisodes.

@@ -164,8 +164,7 @@ impl Figure {
     /// Celui-ci doit couvrir ce qu'on voit, parce qu'on vise ce qu'on voit — et le
     /// corps dessiné de `d2` fait `1,11` de large là où le volume de marche en fait
     /// `0,70`. Viser son flanc ratait le coup sans que rien ne le dise, ce qui s'est vu
-    /// à l'écran le 2026-10-10 et a d'abord été pris pour une difficulté de la
-    /// créature.
+    /// à l'écran et a d'abord été pris pour une difficulté de la créature.
     ///
     /// **Jamais sous le volume de marche** : `d3` mesure `0,66`, donc moins que les
     /// `0,70` d'aujourd'hui, et un correctif qui la rendrait plus dure à toucher ne

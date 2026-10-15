@@ -60,7 +60,7 @@ fn la_ligne_donne_les_angles_en_degres() {
 /// Un cap accumulé hors du tour s'imprime dedans, et la pose rangée n'y revient
 /// pas.
 ///
-/// **Le cas est relevé, non construit** : la marche du 2026-10-08 a fini sur
+/// **Le cas est relevé, non construit** : une marche a fini sur
 /// `lacet -318.14°`, qui est le cap de 41,86° et se relit par une soustraction
 /// mentale de 360. Le lacet d'une caméra libre s'accumule sans borne, donc un
 /// tour complet dans un sens suffit à l'en sortir.

@@ -118,7 +118,7 @@ impl Aim {
 /// Le cap d'un lacet, en degrés ramenés dans le tour.
 ///
 /// **Le lacet d'une caméra libre s'accumule sans borne**, et un tour complet dans
-/// un sens suffit à l'en sortir : le relevé du 2026-10-08 finissait sur
+/// un sens suffit à l'en sortir : un relevé finissait sur
 /// `-318.14°`, qui est le cap de `41.86°` et se relit par une soustraction
 /// mentale. C'est exactement ce que la conversion en degrés existe pour éviter.
 ///

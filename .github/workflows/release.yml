@@ -186,9 +186,8 @@ jobs:
       # **En `pwsh` et non en `bash`, et c'est mesuré** : les options d'`ISCC`
       # commencent par une barre oblique, que la couche MSYS de Git Bash prend
       # pour un chemin et réécrit. Le doublement qui est censé l'en empêcher est
-      # passé tel quel — « Unknown option: //DCharge=… », vu le 2026-10-10 sur le
-      # premier essai du workflow. PowerShell ne réécrit rien, donc il n'y a rien
-      # à déjouer.
+      # passé tel quel — « Unknown option: //DCharge=… », vu au premier essai du
+      # workflow. PowerShell ne réécrit rien, donc il n'y a rien à déjouer.
       - name: Installateur Windows
         if: matrix.cible == 'windows-x86_64'
         shell: pwsh
@@ -215,8 +214,8 @@ jobs:
       #
       # **Et il vient de `appimagetool`, non d'`AppImageKit`** : le second a
       # renommé tous ses assets en `obsolete-` à sa version 13, donc l'URL qu'on
-      # trouve partout rend un 404 — mesuré le 2026-10-10 sur le premier essai du
-      # workflow. L'outil vit désormais dans son propre dépôt.
+      # trouve partout rend un 404 — mesuré au premier essai du workflow.
+      # L'outil vit désormais dans son propre dépôt.
       #
       # **Extraite plutôt que montée** : une AppImage a besoin de FUSE pour se
       # lancer, et le runner ne l'a pas.
