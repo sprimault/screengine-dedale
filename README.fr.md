@@ -73,13 +73,14 @@ Le détail, et pourquoi la chaîne écrit où elle écrit :
 
 ## Commandes
 
-Clic gauche prend le curseur, clic du milieu le rend, `Échap` quitte.
+Clic gauche prend le curseur, `Échap` le rend — et quitte au second appui.
 
 | Touche | Effet |
 |---|---|
 | `Z` `S`, ou flèches haut et bas | avancer, reculer |
 | `Q` `D`, ou flèches gauche et droite | pivoter sur place |
 | `A` `E` | pas de côté |
+| clic du milieu, ou `Tab` | avance automatique, par bascule — reculer l'arrête |
 | souris | orienter la vue, le curseur pris — jamais nécessaire |
 | clic droit | tirer, au centre du réticule |
 | `R` | relancer une partie, après la mort |

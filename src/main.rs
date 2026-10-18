@@ -157,9 +157,14 @@ fn main() -> Result<(), Error> {
     // ils ne sont lisibles qu'une fois la boucle lancée, donc après ce point. Ce
     // que cela gagne est de la mémoire et rien d'autre — une fenêtre ne dépasse
     // pas l'écran qui la porte, donc le plafond ne touche aucune image.
+    // **La fermeture sur Échap est rendue au jeu**, parce qu'il en fait deux choses :
+    // rendre le curseur, puis fermer. Le défaut de l'étage d'accueil ferme dès
+    // l'événement clavier, donc avant que le pas de jeu ne voie la touche — et le
+    // `pressed(Escape)` du rappel ne s'exécutait jamais, y compris avant ce lot.
     let play = Play::new()
         .title(&title)
         .icon(ICON)?
+        .exit_on_escape(false)
         .resolution(resolution::BASE.0, resolution::BASE.1)
         .max_resolution_from_screens();
 
@@ -194,8 +199,20 @@ fn main() -> Result<(), Error> {
             // seul des trois rappels à recevoir le contexte.
             session.wanted = resolution::fit(tick.window());
 
+            // **`Échap` rend le curseur avant de fermer**, et c'est ce qui a libéré le
+            // bouton du milieu pour l'avance automatique : rendre la souris se demande
+            // d'instinct à cette touche, et il fallait bien que quelque chose le fasse.
+            // Le second appui ferme, la capture étant alors déjà rendue.
+            //
+            // **La lecture se fait ici et non dans la partie**, parce qu'elle décide
+            // aussi de fermer : la partie ne porte pas la fin de la boucle, et un
+            // `Échap` traité des deux côtés se dédoublerait.
             if tick.input().pressed(KeyCode::Escape) {
-                tick.exit();
+                if tick.cursor_captured() {
+                    tick.capture_cursor(false);
+                } else {
+                    tick.exit();
+                }
             }
 
             // **La relance est une course neuve sur la même carte** : le monde ne
