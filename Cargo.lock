@@ -1141,8 +1141,8 @@ checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
 
 [[package]]
 name = "screengine"
-version = "1.4.0"
-source = "git+https://github.com/sprimault/screengine?rev=0633fe76b4941ccc106af719a7512c7c70a76e31#0633fe76b4941ccc106af719a7512c7c70a76e31"
+version = "1.5.0"
+source = "git+https://github.com/sprimault/screengine?rev=53816a3c4ccf52931a072513d33c6f8b39bbf938#53816a3c4ccf52931a072513d33c6f8b39bbf938"
 
 [[package]]
 name = "screengine-dedale"
@@ -1155,8 +1155,8 @@ dependencies = [
 
 [[package]]
 name = "screengine-play"
-version = "1.4.0"
-source = "git+https://github.com/sprimault/screengine?rev=0633fe76b4941ccc106af719a7512c7c70a76e31#0633fe76b4941ccc106af719a7512c7c70a76e31"
+version = "1.5.0"
+source = "git+https://github.com/sprimault/screengine?rev=53816a3c4ccf52931a072513d33c6f8b39bbf938#53816a3c4ccf52931a072513d33c6f8b39bbf938"
 dependencies = [
  "js-sys",
  "png",
