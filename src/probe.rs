@@ -46,8 +46,14 @@ const THRESHOLD: u32 = 90;
 /// **Ce qui diffère du fond a été peint, et le fond n'est pas forcément noir** : le
 /// contrat du moteur dit qu'un pixel qu'aucun triangle n'a peint est infiniment
 /// lointain, donc qu'il prend la couleur du brouillard de lui-même. Comparer au noir
-/// rendrait ce relevé muet dès qu'un brouillard serait réglé — et muet sans rien
+/// rendrait ce relevé muet depuis qu'un brouillard est réglé — et muet sans rien
 /// dire, ce qui est le pire état d'un instrument.
+///
+/// **Et le brouillard lui coûte désormais des points**, ce qui est voulu : une surface
+/// au-delà de sa portée vaut exactement le fond, donc elle compte comme non peinte. Il
+/// n'y a alors plus rien à voir, mais une enfilade plus longue que cette portée fait
+/// baisser le pourcentage sans qu'aucune image soit amputée. C'est la première cause à
+/// regarder si le seuil se met à crier.
 ///
 /// **Une grille de points, pas tous les pixels** : un rendu logiciel coûte déjà
 /// cher, et deux cent cinquante-six sondes suffisent — une image de décor n'a pas de

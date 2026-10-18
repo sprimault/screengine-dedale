@@ -195,6 +195,12 @@ fn accord(scenery: &Scenery, poses: &[Camera]) {
         );
 
         let mut whole = context(budget);
+        // Le même brouillard que `submit`, sans quoi l'oracle ne compare plus deux
+        // traversées mais deux réglages d'image : l'écart serait alors maximal au
+        // loin, c'est-à-dire exactement là où la traversée élimine.
+        whole
+            .set_fog(FOG, FOG_START, FOG_END)
+            .expect("brouillard réglé");
         whole.set_camera(pose).expect("caméra posée");
         whole
             .submit_world(Affine3::IDENTITY, &scenery.map, |rank| {
@@ -487,6 +493,10 @@ fn perte(scenery: &Scenery, tronques: &[(f32, f32, Visibility)]) -> Vec<(f32, f3
             .expect("scène soumise par la traversée");
 
         let mut whole = context(budget);
+        // Le même brouillard que `submit`, pour la raison dite plus haut.
+        whole
+            .set_fog(FOG, FOG_START, FOG_END)
+            .expect("brouillard réglé");
         whole.set_camera(camera).expect("caméra posée");
         whole
             .submit_world(Affine3::IDENTITY, &scenery.map, |rank| {
@@ -554,5 +564,52 @@ fn seule_la_verticale_tronque_la_traversee() {
         droites.is_empty(),
         "la traversée tronque hors de la verticale : {}",
         resume(&droites)
+    );
+}
+
+/// Hors de toute cellule, l'image entière vaut la couleur du fond — et le fond est le
+/// brouillard.
+///
+/// **C'est la cohérence dont dépend le relevé de visibilité**, et elle se perdrait en
+/// silence : il compte les points qui diffèrent du fond, et une teinte de brouillard qui
+/// ne serait plus celle de `BACKGROUND` lui ferait compter toute l'image comme peinte.
+/// Il cesserait de voir une image amputée sans rien dire, ce qui est le pire état d'un
+/// instrument.
+///
+/// **La pose hors cellule est ce qui donne un fond pur** : le moteur ne soumet alors
+/// aucune géométrie, donc chaque pixel est resté au fond, et la clause du contrat — un
+/// pixel qu'aucun triangle n'a peint est infiniment lointain, donc il prend la couleur
+/// du brouillard — s'y lit directement.
+#[test]
+fn hors_cellule_l_image_entiere_vaut_le_fond() {
+    let scenery = Scenery::new(crate::MAZE).expect("décor d'épreuve");
+    let mut context = context(0);
+
+    let seen = submit(
+        &mut context,
+        &scenery,
+        &View {
+            camera: Camera {
+                position: Vec3::new(-100.0, -100.0, -100.0),
+                ..Camera::DEFAULT
+            },
+            cell: 0,
+        },
+    )
+    .expect("scène soumise hors cellule");
+    assert_eq!(
+        seen,
+        Visibility::NoCell,
+        "la pose choisie est dans le décor"
+    );
+
+    let pixels = frame(&mut context);
+    let stray = pixels
+        .chunks_exact(4)
+        .position(|pixel| pixel[..3] != BACKGROUND);
+
+    assert_eq!(
+        stray, None,
+        "un pixel du fond ne porte pas la couleur du brouillard {FOG:?}"
     );
 }

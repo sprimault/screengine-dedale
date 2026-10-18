@@ -17,7 +17,7 @@
 use std::sync::Arc;
 
 use screengine_play::{
-    Affine3, Camera, Context, CoreError, Error, Texture, Visibility, World, load_png,
+    Affine3, Camera, Color, Context, CoreError, Error, Texture, Visibility, World, load_png,
 };
 
 use crate::maze::export;
@@ -41,17 +41,50 @@ const WALL: &[u8] = include_bytes!("../assets/textures/mur-42.png");
 /// justifiera à l'étape 8, quand il y aura une image à lui donner.
 const FLOOR: &[u8] = include_bytes!("../assets/textures/sol-pave.png");
 
+/// La teinte du brouillard, vers laquelle tout s'éteint avec la distance.
+///
+/// **Presque noire, et bleutée d'un rien** : le registre du jeu est celui d'un
+/// souterrain, donc ce qui se perd au loin se perd dans le noir et non dans une brume
+/// claire. Le bleu léger est ce qui distingue cette obscurité d'un pixel éteint — sans
+/// lui, le fond et le brouillard seraient le même noir, et on ne saurait pas en
+/// regardant si le lointain est fermé ou simplement vide.
+///
+/// Elle se juge à l'écran, comme toute cote d'ambiance.
+pub const FOG: Color = Color::new(0x0A, 0x0C, 0x14, 0xFF);
+
+/// Où le brouillard commence à mordre, en unités de monde depuis l'œil.
+///
+/// **Une case et demie**, une case valant quatre unités — trois de cellule et une de
+/// passage. En deçà, rien ne s'éteint : le mur d'en face d'un couloir doit garder sa
+/// matière, sinon c'est le décor proche qui perd sa lisibilité au lieu que le lointain
+/// gagne sa profondeur.
+pub const FOG_START: f32 = 6.0;
+
+/// Où il est total, en unités de monde depuis l'œil.
+///
+/// **Cinq cases et demie**, ce que `docs/conception.md` appelle fermer la vue au bout de
+/// quelques cellules. Le dégagement du semis est à six cases, choisi pour rester
+/// au-delà de ce que le brouillard laisse voir — les deux cotes se lisent ensemble, et
+/// celle-ci ne doit pas le rattraper.
+///
+/// **Au-delà, un mur vaut exactement le fond**, et le relevé de visibilité le compte
+/// alors comme un point non peint. C'est voulu — il n'y a plus rien à voir —, mais une
+/// enfilade plus longue que cette cote fait baisser son pourcentage sans que l'image
+/// soit amputée. Si le relevé se met à crier, c'est le premier endroit à regarder.
+pub const FOG_END: f32 = 22.0;
+
 /// Ce qu'un pixel porte quand aucun triangle ne l'a peint.
 ///
 /// **Ce n'est pas un réglage mais une conséquence**, et le contrat du moteur la
 /// nomme : un pixel qu'aucun triangle n'a peint est infiniment lointain, donc il
-/// prend la couleur du brouillard de lui-même. Aucun n'étant réglé, le fond est
-/// noir — et il cessera de l'être à l'étape 8, qui en règlera un.
+/// prend la couleur du brouillard de lui-même. Elle se **dérive** donc de la teinte
+/// ci-dessus, et ne s'écrit pas à côté : les deux valeurs doivent être la même, et
+/// deux constantes jumelles divergent au premier réglage.
 ///
 /// **Publiée pour le relevé**, qui compte les points peints d'une image et a besoin
-/// de savoir à quoi ressemble le vide. Un relevé qui supposerait le noir deviendrait
-/// muet le jour où un brouillard arrive, sans rien dire.
-pub const BACKGROUND: [u8; 3] = [0x00, 0x00, 0x00];
+/// de savoir à quoi ressemble le vide. Un relevé qui supposerait le noir serait devenu
+/// muet le jour où ce brouillard est arrivé, sans rien dire.
+pub const BACKGROUND: [u8; 3] = [FOG.r, FOG.g, FOG.b];
 
 /// L'état du monde : la carte chargée, et ce qu'il faut pour la dessiner.
 ///
@@ -120,6 +153,11 @@ pub fn submit(
     scenery: &Scenery,
     view: &View,
 ) -> Result<Visibility, CoreError> {
+    // **Le brouillard se pose ici et à chaque image**, avec la caméra : c'est un
+    // réglage d'image, refusé une fois la soumission commencée, et le poser une seule
+    // fois obligerait à savoir laquelle est la première — ce que cette fonction, qui ne
+    // garde rien, ne peut pas savoir. L'appel est une écriture de quatre champs.
+    context.set_fog(FOG, FOG_START, FOG_END)?;
     context.set_camera(view.camera)?;
     context.submit_world_visible(
         Affine3::IDENTITY,
