@@ -105,6 +105,11 @@ balayage, mais la direction vient des passages de la grille — tout droit tant 
 le couloir le permet, demi-tour en cul-de-sac. Le trajet est déterministe, donc il
 boucle : une créature qu'on a vue passer repassera.
 
+**Et elles viennent dès qu'elles voient le joueur**, à vue dégagée et à portée,
+puis reprennent leur circuit en le perdant. La portée se lit contre le brouillard
+de l'étape 8 — détecter plus loin qu'on ne voit ferait arriver une créature de
+l'invisible.
+
 **Trois silhouettes qui ne se confondent pas de loin** : c'est le critère qui a
 décidé des planches, et il tient encore ici.
 
@@ -397,9 +402,11 @@ Dépend de 14 et de 15.
 - **La transparence graduée** — fumée, halo, verre : la transparence du moteur est
   binaire, et un mélange fractionnaire y ramènerait le tri par profondeur que le
   z-buffer a supprimé. Ce qui s'en approche sans le coût est la surface modulée.
-- **Des ennemis qui poursuivent hors de vue, d'une cellule à l'autre** : ce qu'il
-  faudrait est un **chemin vers une cible qui bouge**, à refaire à chaque image, là
-  où une patrouille ne choisit qu'une sortie parmi celles de sa case. La grille,
+- **Des ennemis qui poursuivent hors de vue, d'une cellule à l'autre** — ils
+  viennent **à vue** depuis l'étape 3, et c'est le *hors de vue* qui reste
+  écarté : ce qu'il faudrait est un **chemin vers une cible qui bouge**, à refaire
+  à chaque image, là où venir à vue ne demande qu'une direction et où une
+  patrouille ne choisit qu'une sortie parmi celles de sa case. La grille,
   elle, porte bien le voisinage, et l'étape 3 s'en sert déjà — c'est le coût du
   parcours qui écarte la poursuite, pas l'absence de structure. **À reconsidérer
   après l'étape 13**, qui fera entrer des démons pendant la partie : les pièces de

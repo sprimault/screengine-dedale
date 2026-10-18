@@ -383,6 +383,41 @@ pub fn cover(grid: &Grid, at: (u32, u32, u32)) -> u32 {
 /// dégagement vertical — une hauteur d'œil, un mètre. Il ne prend donc pas de
 /// demi-étendue : relever une boîte au-dessus d'une pente dépend de sa taille,
 /// et c'est au seul qui en pose une de le calculer.
+/// L'étage qu'une cote verticale occupe, à partir de zéro.
+///
+/// **La division par la hauteur d'étage et sa partie entière**, ce qui tient parce que
+/// les sols sont aux multiples de cette hauteur : un œil à cinq unités est à l'étage
+/// un, un sol à zéro virgule trois à l'étage zéro, et la hauteur de l'œil au-dessus de
+/// son plancher ne change pas le rang.
+///
+/// **Une rampe fait exception, et c'est sans conséquence** : un corps à mi-pente rend
+/// l'étage du bas jusqu'à la moitié, celui du haut ensuite. Ce qui s'en sert cherche
+/// où regarder, et un corps sur une rampe est à portée des deux niveaux de toute façon.
+///
+/// **Signé, et la descente de l'étape 12 le demandera** : un dénivelé se soustrait, donc
+/// il doit pouvoir passer sous zéro. Le cas arrive déjà si une cote tombe sous le sol.
+pub fn level_of(z: f32) -> i32 {
+    (z / LEVEL).floor() as i32
+}
+
+/// La case qui contient ce point, sans vérifier qu'elle existe dans la grille.
+///
+/// **Elle ne borne pas, et c'est à l'appelant de le faire** : un point hors du
+/// labyrinthe rend une case hors de ses cotes, et saturer ici rendrait une case
+/// plausible pour une position qui ne l'est pas. Ce qui s'en sert passe le résultat à
+/// la grille, qui refuse d'elle-même.
+///
+/// **Elle est l'inverse de [`ground`] aux cotes près** : celle-ci rend le centre d'une
+/// case, celle-là la case d'un point. Les deux partagent la même convention — une case
+/// de `CELL` unités, la première commençant à l'origine.
+pub fn cell_at(point: [f32; 3]) -> (i32, i32, i32) {
+    (
+        (point[0] / CELL).floor() as i32,
+        (point[1] / CELL).floor() as i32,
+        level_of(point[2]),
+    )
+}
+
 pub fn ground(grid: &Grid, at: (u32, u32, u32)) -> [f32; 3] {
     let centre = [(at.0 as f32 + 0.5) * CELL, (at.1 as f32 + 0.5) * CELL];
     let Some(stair) = flight_of(grid, at) else {

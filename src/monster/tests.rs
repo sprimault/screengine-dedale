@@ -359,6 +359,7 @@ fn lone(grid: &Grid, map: &World, at: (u32, u32, u32)) -> Monster {
         hindered: 0,
         goal: at,
         entered: Side::Down,
+        hunt: None,
         recoil: None,
         life: TOUGH,
     }
@@ -426,7 +427,7 @@ fn un_demon_qui_marche_ne_traverse_pas_le_decor() {
         let mut monsters = sown(&grid, &map);
 
         for frame in 0..FRAMES {
-            stroll(&mut monsters, &grid, &map, DT);
+            stroll(&mut monsters, &grid, &map, None, DT);
 
             for monster in &monsters {
                 assert_ne!(
@@ -487,7 +488,7 @@ fn un_recul_pousse_de_la_distance_annoncee() {
     // image qui lui appartient encore.
     let frames = (RECOIL_TIME / DT).ceil() as usize;
     for _ in 0..frames {
-        monster.walk(&grid, &map, DT);
+        monster.walk(&grid, &map, None, DT);
     }
 
     let gone = monster.at() - before;
@@ -521,7 +522,7 @@ fn la_distance_d_un_recul_ne_depend_pas_de_la_cadence() {
         let before = monster.at();
         monster.knock(push);
         for _ in 0..(RECOIL_TIME / dt).ceil() as usize {
-            monster.walk(&grid, &map, dt);
+            monster.walk(&grid, &map, None, dt);
         }
         let gone = monster.at() - before;
         Vec3::new(gone.x, gone.y, 0.0).dot(push)
@@ -559,7 +560,7 @@ fn un_recul_ne_touche_ni_la_patience_ni_le_cycle() {
     let (patience, motion, phase) = (monster.hindered, monster.motion, monster.phase);
 
     monster.knock(Vec3::new(1.0, 0.0, 0.0));
-    monster.walk(&grid, &map, DT);
+    monster.walk(&grid, &map, None, DT);
 
     assert_eq!(
         monster.hindered, patience,
@@ -598,7 +599,7 @@ fn un_coup_vertical_ne_souleve_rien() {
     let before = monster.at();
     monster.knock(Vec3::new(1.0, 0.0, -1.0));
     for _ in 0..(RECOIL_TIME / DT).ceil() as usize {
-        monster.walk(&grid, &map, DT);
+        monster.walk(&grid, &map, None, DT);
     }
     let gone = monster.at() - before;
     assert!(
@@ -619,7 +620,7 @@ fn un_coup_pendant_un_recul_le_relance() {
 
     let push = Vec3::new(1.0, 0.0, 0.0);
     monster.knock(push);
-    monster.walk(&grid, &map, 1.0 / 60.0);
+    monster.walk(&grid, &map, None, 1.0 / 60.0);
     monster.knock(push);
 
     let recoil = monster.recoil.expect("le coup a relancé le recul");
@@ -675,12 +676,12 @@ fn une_creature_reculee_ne_traverse_pas_le_decor() {
                     (dy as f32).atan2(dx as f32)
                 };
                 for _ in 0..60 {
-                    monster.walk(&grid, &map, DT);
+                    monster.walk(&grid, &map, None, DT);
                 }
 
                 monster.knock(crate::test_support::unit(side));
                 for _ in 0..(RECOIL_TIME / DT).ceil() as usize {
-                    monster.walk(&grid, &map, DT);
+                    monster.walk(&grid, &map, None, DT);
                     assert_ne!(
                         monster.body.cell(),
                         0,
@@ -839,7 +840,7 @@ fn une_creature_tombee_ne_marche_plus() {
 
     let before = monster.at();
     for _ in 0..60 {
-        monster.walk(&grid, &map, DT);
+        monster.walk(&grid, &map, None, DT);
     }
 
     let gone = monster.at() - before;
@@ -876,7 +877,7 @@ fn le_cycle_de_mort_garde_sa_derniere_trame() {
     // empêchait.
     let last = sheet::column(Motion::Dead, 1.0);
     for _ in 0..(10.0 * DEAD_PERIOD / DT) as usize {
-        monster.walk(&grid, &map, DT);
+        monster.walk(&grid, &map, None, DT);
     }
 
     assert_eq!(
@@ -912,14 +913,14 @@ fn une_creature_abattue_finit_par_s_effacer() {
     // À une image de la fin du cycle, elle est encore là.
     let frames = (DEAD_PERIOD / DT).ceil() as usize;
     for _ in 0..frames - 1 {
-        monster.walk(&grid, &map, DT);
+        monster.walk(&grid, &map, None, DT);
     }
     assert!(
         !monster.spent(),
         "la chute s'interrompt avant ses {DEAD_PERIOD} secondes"
     );
 
-    monster.walk(&grid, &map, DT);
+    monster.walk(&grid, &map, None, DT);
     assert!(
         monster.spent(),
         "la chute est jouée et la créature reste, à la phase {}",
@@ -955,7 +956,7 @@ fn une_creature_reste_sur_son_etage() {
         let born: Vec<u32> = monsters.iter().map(|monster| monster.goal.2).collect();
 
         for frame in 0..FRAMES {
-            stroll(&mut monsters, &grid, &map, DT);
+            stroll(&mut monsters, &grid, &map, None, DT);
 
             for (rank, monster) in monsters.iter().enumerate() {
                 assert_eq!(
@@ -1009,7 +1010,7 @@ fn une_creature_repasse_par_son_circuit() {
     let mut trail = Vec::new();
     for _ in 0..FRAMES {
         let before = (monster.goal, monster.entered);
-        monster.walk(&grid, &map, DT);
+        monster.walk(&grid, &map, None, DT);
         if (monster.goal, monster.entered) != before {
             trail.push((monster.goal, monster.entered));
         }
@@ -1077,8 +1078,8 @@ fn un_cap_de_travers_se_redresse() {
     // **Deux pas, et le premier ne compte pas** : la créature naît en visant sa propre
     // case, donc elle y est déjà et le cap n'a rien vers quoi pointer. Le premier pas
     // lui choisit une sortie, le second l'oriente dessus.
-    monster.walk(&grid, &map, DT);
-    monster.walk(&grid, &map, DT);
+    monster.walk(&grid, &map, None, DT);
+    monster.walk(&grid, &map, None, DT);
 
     // Un cap axial a son sinus ou son cosinus nul ; à quarante-cinq degrés, les deux
     // valent `0,707`. **La tolérance porte le décalage à droite** : viser un point à
@@ -1775,7 +1776,7 @@ fn une_creature_ne_tourne_pas_sur_place() {
 
         let mut tracks: Vec<Vec<Vec3>> = vec![Vec::new(); monsters.len()];
         for _ in 0..(SPAN / DT) as u32 {
-            stroll(&mut monsters, &grid, &map, DT);
+            stroll(&mut monsters, &grid, &map, None, DT);
             for (rank, monster) in monsters.iter().enumerate() {
                 tracks[rank].push(monster.at());
             }
@@ -2058,7 +2059,7 @@ fn aucune_creature_ne_reste_immobile() {
 
     for frame in 0..FRAMES {
         let before: Vec<Vec3> = monsters.iter().map(|monster| monster.at()).collect();
-        stroll(&mut monsters, &grid, &map, DT);
+        stroll(&mut monsters, &grid, &map, None, DT);
 
         for (rank, monster) in monsters.iter().enumerate() {
             let gone = monster.at() - before[rank];
@@ -2077,4 +2078,202 @@ fn aucune_creature_ne_reste_immobile() {
             );
         }
     }
+}
+
+/// À vue dégagée et à portée, la créature vient vers le joueur.
+///
+/// **L'œil est posé devant elle, dans la case qu'elle vise** : c'est le seul endroit
+/// dont on sache qu'aucun mur ne l'en sépare, sans quoi l'épreuve mesurerait le décor et
+/// non la détection.
+///
+/// **Ce qui est exigé est l'approche, pas le cap** : un cap juste qu'un mur annulerait
+/// ne serait pas une poursuite. La distance doit baisser.
+#[test]
+fn a_vue_la_creature_vient_vers_le_joueur() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+    /// Combien d'images on la laisse approcher.
+    const FRAMES: usize = 120;
+
+    let (grid, map) = maze(SEEDS[0]);
+    let mut monster = lone(&grid, &map, plain_case(&grid));
+
+    // Un premier pas pour qu'elle se donne un but, puis l'œil au centre de ce but.
+    monster.walk(&grid, &map, None, DT);
+    let goal = crate::maze::export::ground(&grid, monster.goal);
+    let eye = Vec3::new(goal[0], goal[1], goal[2] + 1.5);
+
+    assert!(
+        monster.sees(&map, eye),
+        "la créature ne voit pas un œil posé dans la case qu'elle vise"
+    );
+
+    let before = monster.at() - eye;
+    for _ in 0..FRAMES {
+        monster.walk(&grid, &map, Some(eye), DT);
+    }
+    let after = monster.at() - eye;
+
+    assert!(
+        after.dot(after) < before.dot(before),
+        "en {FRAMES} images, la créature n'a pas approché : {:.2} contre {:.2}",
+        after.dot(after).sqrt(),
+        before.dot(before).sqrt()
+    );
+}
+
+/// La portée tranche des deux côtés du seuil, et sur les trois axes.
+///
+/// **Sans décor, et c'est pourquoi la portée est à part du rayon** : posé assez loin
+/// dans un labyrinthe, un œil finit toujours derrière un mur, et l'épreuve mesurerait
+/// alors le décor au lieu de la distance. Ce qui se garde ici est le seuil seul.
+///
+/// **Les deux côtés comptent** : sans le cas qui passe, une portée nulle serait verte ;
+/// sans celui qui ne passe pas, une portée infinie le serait aussi.
+///
+/// **Et les trois axes**, parce que la verticale est celle qu'on oublie : une portée
+/// mesurée à plat laisserait voir un joueur deux étages plus haut.
+#[test]
+fn la_portee_tranche_des_deux_cotes() {
+    let here = Vec3::new(10.0, 20.0, 3.0);
+
+    for axis in [
+        Vec3::new(1.0, 0.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
+        Vec3::new(0.0, 0.0, 1.0),
+    ] {
+        for (gap, within) in [(SIGHT - 1.0, true), (SIGHT + 1.0, false)] {
+            assert_eq!(
+                within_sight(here, here + axis * gap),
+                within,
+                "à {gap} unités sur l'axe {axis:?}, la portée dit le contraire"
+            );
+        }
+    }
+}
+
+/// Aucune créature ne voit le joueur depuis sa case de naissance.
+///
+/// **C'est le dégagement du semis qui le garantit**, et la conséquence serait franche :
+/// une partie qui commence par une attaque, avant même d'avoir vu un couloir. Les deux
+/// cotes se lisent l'une contre l'autre — six cases de dégagement, seize unités de
+/// portée — et c'est la **distance de parcours** qui sépare, là où la portée est à vol
+/// d'oiseau. Une case à vingt-six pas peut être à cinq unités, `H39` l'a mesuré.
+///
+/// **Sur les six graines**, parce que la topologie décide : un semis qui tire loin par
+/// les couloirs peut tirer près à vol d'oiseau, et un seul décor ne le dirait pas.
+#[test]
+fn aucune_creature_ne_voit_le_depart() {
+    let eye = crate::player::EYE_ABOVE;
+
+    for seed in SEEDS {
+        let (grid, map) = maze(seed);
+        let monsters = sown(&grid, &map);
+
+        let start = crate::maze::export::ground(&grid, grid.start());
+        let player = Vec3::new(start[0], start[1], start[2] + eye);
+
+        for monster in &monsters {
+            assert!(
+                !monster.sees(&map, player),
+                "graine {seed:#x} : {} voit le départ depuis {:?}",
+                monster.name(),
+                monster.at()
+            );
+        }
+    }
+}
+
+/// Une créature qui poursuit couvre plus de terrain qu'une qui patrouille.
+///
+/// **Les deux marchent le même nombre d'images dans le même décor**, et c'est ce qui
+/// isole la vitesse : la seule différence est l'œil qu'on leur donne ou non. Comparer à
+/// une distance écrite d'avance mesurerait aussi la longueur du couloir où elles sont
+/// nées.
+///
+/// **Le rapport est exigé et non la seule inégalité** : un pas un centième plus long
+/// passerait une comparaison franche sans que la course se voie. La tolérance est large
+/// parce que le décor filtre les deux trajets — ce qu'on garde est un ordre de grandeur,
+/// pas la constante elle-même.
+#[test]
+fn la_poursuite_presse_le_pas() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+    /// Combien d'images chacune marche.
+    const FRAMES: usize = 60;
+
+    let (grid, map) = maze(SEEDS[0]);
+    let at = plain_case(&grid);
+
+    // L'œil au centre de la case visée : la vue y est dégagée, et c'est la même case
+    // pour les deux puisqu'elles partent identiques.
+    let mut walker = lone(&grid, &map, at);
+    walker.walk(&grid, &map, None, DT);
+    let goal = crate::maze::export::ground(&grid, walker.goal);
+    let eye = Vec3::new(goal[0], goal[1], goal[2] + crate::player::EYE_ABOVE);
+
+    let mut runner = lone(&grid, &map, at);
+    runner.walk(&grid, &map, Some(eye), DT);
+
+    let (from_walker, from_runner) = (walker.at(), runner.at());
+    for _ in 0..FRAMES {
+        walker.walk(&grid, &map, None, DT);
+        runner.walk(&grid, &map, Some(eye), DT);
+    }
+
+    let (walked, ran) = (walker.at() - from_walker, runner.at() - from_runner);
+    let (strolled, chased) = (walked.dot(walked).sqrt(), ran.dot(ran).sqrt());
+
+    assert!(
+        chased > strolled * 1.5,
+        "en {FRAMES} images, la poursuite a couvert {chased:.2} contre {strolled:.2} \
+         en patrouille : la course ne se voit pas"
+    );
+}
+
+/// Perdue de vue, la créature va encore vers le dernier endroit connu, puis renonce.
+///
+/// **C'est la clause qui fait qu'on ne se décroche pas en passant un angle** : sans
+/// elle, une image sans vue suffit à être oublié, et la détection n'a aucun poids.
+///
+/// **L'œil disparaît d'un coup**, ce qui est plus net qu'un décor à contourner : on lui
+/// donne une vue dégagée, puis plus rien. Ce qu'on mesure est la mémoire, pas la
+/// capacité du décor à masquer.
+///
+/// **Les trois moments comptent** : elle approche encore juste après la perte, elle
+/// approche encore à la moitié de la mémoire, et elle a renoncé au-delà. Sans le
+/// dernier, une mémoire infinie passerait — ce qui est précisément la poursuite hors de
+/// vue, restée hors périmètre.
+#[test]
+fn la_memoire_survit_un_temps_a_la_perte_de_vue() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+
+    let (grid, map) = maze(SEEDS[0]);
+    let mut monster = lone(&grid, &map, plain_case(&grid));
+
+    monster.walk(&grid, &map, None, DT);
+    let goal = crate::maze::export::ground(&grid, monster.goal);
+    let eye = Vec3::new(goal[0], goal[1], goal[2] + crate::player::EYE_ABOVE);
+    monster.walk(&grid, &map, Some(eye), DT);
+
+    assert!(monster.hunt.is_some(), "la vue n'a rien laissé en mémoire");
+
+    // La moitié de la mémoire sans rien voir : elle doit encore y aller.
+    for _ in 0..(MEMORY / 2.0 / DT) as usize {
+        monster.walk(&grid, &map, None, DT);
+    }
+    assert!(
+        monster.hunt.is_some(),
+        "à la moitié de {MEMORY} seconde(s), la créature a déjà renoncé"
+    );
+
+    // Et au-delà, elle renonce — sinon c'est une poursuite sans fin.
+    for _ in 0..(MEMORY / DT) as usize {
+        monster.walk(&grid, &map, None, DT);
+    }
+    assert!(
+        monster.hunt.is_none(),
+        "après {MEMORY} seconde(s) sans vue, la créature poursuit toujours"
+    );
 }
