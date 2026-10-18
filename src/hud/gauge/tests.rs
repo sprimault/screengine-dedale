@@ -26,13 +26,17 @@ fn drawn(width: u32, height: u32, share: f32) -> Canvas {
 
 /// La jauge se pose au coin bas gauche, et son coin vient du tampon.
 ///
-/// **Deux tampons de proportions différentes, et c'est ce qui le fait mordre** : une
+/// **Trois tampons de proportions différentes, et c'est ce qui le fait mordre** : une
 /// ordonnée écrite en constante tombe juste le jour où on l'écrit et se décolle du bas
 /// au premier changement de résolution, sans que rien ne le dise. Ce qui est vérifié
 /// est le pixel le plus bas et le plus à gauche du remplissage, sur une jauge pleine.
+///
+/// **Tous assez larges pour la porter**, la jauge ayant une longueur en pixels et non
+/// une part de la largeur : sous `INSET + SPAN`, elle se refuse entière, et l'épreuve
+/// mesurerait alors un refus au lieu d'un ancrage.
 #[test]
 fn le_coin_de_la_jauge_vient_du_tampon() {
-    for (width, height) in [(320, 180), (160, 100), (64, 48)] {
+    for (width, height) in [(320, 180), (200, 48), (1280, 720)] {
         let canvas = drawn(width, height, 1.0);
         let bottom = height - INSET - 1;
 
@@ -58,7 +62,7 @@ fn le_coin_de_la_jauge_vient_du_tampon() {
 #[test]
 fn une_part_se_traduit_en_largeur() {
     let (width, height) = (320, 180);
-    let span = width / SHARE;
+    let span = SPAN;
     let row = height - INSET - THICK;
 
     for (share, filled) in [(0.0, 0), (0.25, span / 4), (0.5, span / 2), (1.0, span)] {
@@ -89,7 +93,7 @@ fn une_part_se_traduit_en_largeur() {
 #[test]
 fn une_jauge_pleine_s_arrete_a_son_bord() {
     let (width, height) = (320, 180);
-    let span = width / SHARE;
+    let span = SPAN;
     let canvas = drawn(width, height, 1.0);
     let row = height - INSET - THICK;
 
@@ -136,8 +140,8 @@ fn un_lisere_borde_la_jauge() {
 ///
 /// **Chaque refus se vérifie avec le premier cas qui passe** : sans lui, un refus de
 /// tout passerait. Et la largeur minimale ne se recopie pas, elle se cherche : elle
-/// dépend de trois constantes dont l'une par une division, donc un nombre écrit ici
-/// serait juste aujourd'hui et faux au premier réglage.
+/// dépend de trois constantes, donc un nombre écrit ici serait juste aujourd'hui et
+/// faux au premier réglage.
 #[test]
 fn un_tampon_trop_petit_ne_recoit_rien() {
     let short = THICK + 2 * INSET - 1;
@@ -155,14 +159,14 @@ fn un_tampon_trop_petit_ne_recoit_rien() {
         short + 1
     );
 
-    let narrow = (1..64)
+    let narrow = (1..2 * SPAN)
         .find(|width| {
             drawn(*width, 180, 1.0)
                 .pixels()
                 .iter()
                 .any(|byte| *byte != 0)
         })
-        .expect("une largeur sous soixante-quatre porte la jauge");
+        .expect("une largeur sous le double de la jauge la porte");
     assert!(
         drawn(narrow - 1, 180, 1.0)
             .pixels()
