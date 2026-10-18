@@ -238,9 +238,12 @@ fn main() -> Result<(), Error> {
             // ni le titre qui suit : un instrument qui mesure son propre affichage
             // rend un chiffre dont la moitié est à lui.
             let started = Instant::now();
-            let shot = session
-                .game
-                .step(tick, &session.scenery.map, &mut session.run);
+            let shot = session.game.step(
+                tick,
+                &session.scenery.maze,
+                &session.scenery.map,
+                &mut session.run,
+            );
             session.pace.stepped(started.elapsed());
 
             if let Some(shot) = shot {

@@ -296,3 +296,45 @@ fn un_labyrinthe_trop_petit_rend_moins_que_demande() {
         "le refus ne doit pas se replier sur la case de départ"
     );
 }
+
+/// Le semis donne autant de cases à chaque étage, ou tout ce qu'il peut.
+///
+/// **C'est la patrouille qui l'exige**, et rien avant elle ne l'exigeait : tant qu'une
+/// créature pouvait monter un escalier sans qu'une ligne le sache, une répartition
+/// inégale se corrigeait d'elle-même. Depuis qu'elle tient son étage, les onze d'en
+/// haut et les cinq d'en bas de la mesure resteraient là où ils sont.
+///
+/// **Un étage peut rendre moins que sa part**, et c'est le cas prévu : le dégagement
+/// autour du départ ne retire des cases qu'à l'étage du joueur. Ce qui est exigé est
+/// donc sa part **ou tout son vivier**, jamais un report sur l'autre étage — qui
+/// rendrait le compte total au prix de ce que l'épreuve garde.
+///
+/// **Soixante-quatre labyrinthes**, comme les autres propriétés de ce module : un seul
+/// décor ne dirait rien d'une répartition, le vivier de chaque étage dépendant du
+/// creusement.
+#[test]
+fn chaque_etage_recoit_sa_part() {
+    /// Ce que la partie demande, et qui se divise en deux étages.
+    const COUNT: usize = 16;
+
+    for seed in 0..GRIDS {
+        let grid = maze(seed);
+        let (_, _, levels) = grid.extent();
+        let spots = sown(&grid, COUNT);
+
+        let pool = far_enough(&grid);
+        for level in 0..levels {
+            let got = spots.iter().filter(|cell| cell.2 == level).count();
+            let stock = pool.iter().filter(|cell| cell.2 == level).count();
+            let share =
+                COUNT / levels as usize + usize::from((level as usize) < COUNT % levels as usize);
+
+            assert_eq!(
+                got,
+                share.min(stock),
+                "graine {seed} : l'étage {level} reçoit {got} cases pour une part de \
+                 {share} et un vivier de {stock}"
+            );
+        }
+    }
+}

@@ -32,8 +32,9 @@ use screengine_play::{
 };
 
 use crate::blot::blot;
-use crate::body::{self, Body};
-use crate::maze::grid::Grid;
+use crate::body::Body;
+use crate::maze::export;
+use crate::maze::grid::{Grid, Side};
 use crate::rng::Rng;
 use crate::sheet::{self, FRAME, Motion};
 
@@ -342,58 +343,59 @@ const IDLE_PERIOD: f32 = 1.5;
 /// planche par le déplacement.
 const SPEED: f32 = 1.4;
 
-/// En deçà de quelle part du pas demandé la créature se tient pour arrêtée.
+/// À quelle distance du centre d'une case la créature la tient pour atteinte.
 ///
-/// **Le critère porte sur la distance et jamais sur un axe.** Le balayage rend la
-/// surface de **moindre pénétration**, donc l'axe qui arrête n'est pas celui qu'on
-/// croit : une créature poussée contre un mur de face peut se voir arrêtée par le
-/// sol, et une décision conditionnée à l'axe du cap ne se déclencherait jamais —
-/// elle dériverait le long de la paroi en avançant toujours.
+/// **Un huitième de case, et ce n'est pas une tolérance de confort** : la créature
+/// vise un point, et un seuil nul ne se franchit jamais — le pas vaut deux centimètres
+/// et demi à soixante images par seconde, donc elle osciperait autour du centre sans
+/// jamais y être. Ce qu'on veut est qu'elle engage le passage suivant, pas qu'elle
+/// touche un point.
 ///
-/// **Le seuil se mesure sur la glissade la plus favorable, pas au jugé.** Un cap à
-/// quarante-cinq degrés contre une paroi axiale garde `cos 45°`, soit `0,707`, de
-/// son pas : sous ce chiffre, la créature longe les murs indéfiniment sans être
-/// détournée — relevé, neuf cents images sans un seul détour. Au-dessus, elle se
-/// retourne dès qu'elle perd franchement sa route, et continue de longer tant
-/// qu'elle ne perd presque rien.
-const STALLED: f32 = 0.8;
+/// **Et le virage se coupe d'autant**, ce qui est voulu : tourner au centre exact
+/// donnerait un angle droit que personne ne marche. La glissade du corps rattrape ce
+/// que la coupe laisse passer.
+const ARRIVED: f32 = export::CELL / 8.0;
 
-/// Combien d'images de suite la créature doit être gênée avant de se détourner.
+/// De combien une créature serre à sa droite dans un passage, en unités de monde.
 ///
-/// **Une image gênée ne vaut pas un obstacle**, et c'est ce qui se voyait à
-/// l'écran : en ligne droite, le franchissement d'un joint de dalle ou la reprise
-/// d'une pente coûte un pas isolé, et la créature pivotait sans rien avoir
-/// rencontré. Un mur, lui, gêne toutes les images jusqu'à ce qu'on s'en détourne.
+/// **Deux créatures ne peuvent pas viser le même point**, et c'est tout l'objet : au
+/// milieu exact, celles qui se croisent convergent, chacune annule le pas de l'autre —
+/// l'évitement étant symétrique —, et aucune ne cède. Mesuré sur la graine `0x1`, deux
+/// silhouettes immobiles trois secondes durant, que le demi-tour de la patience
+/// renvoyait converger dans l'autre sens.
 ///
-/// **Mesuré sur une marche de quinze secondes** : le décor produit des séries
-/// d'images gênées qui vont jusqu'à **six**, sans qu'aucun mur soit en cause — un
-/// joint de dalle, la reprise d'une pente. Six était donc exactement le seuil que
-/// la marche normale atteint, et la créature pivotait sur un accroc.
+/// **À droite du sens de marche, et non d'un côté tiré par créature.** Un décalage
+/// propre à chacune ne sépare rien quand deux créatures se font face avec des valeurs
+/// de même signe : leurs sens étant opposés, elles se rangent alors du même côté. La
+/// droite, elle, est relative au trajet, donc deux sens contraires se rangent toujours
+/// l'un en face de l'autre — c'est la règle de circulation, et elle n'a besoin d'aucun
+/// état.
+///
+/// **Quatre dixièmes, et le passage le permet** : il fait trois unités de large, un
+/// gabarit en occupe `0,70`, et le centre d'un corps peut s'écarter de `1,15` avant de
+/// toucher la paroi. Deux trajectoires opposées se croisent donc à `0,80` d'écart pour
+/// `0,70` nécessaires, en restant à `0,75` du milieu.
+const DRIFT: f32 = 0.4;
+
+/// Combien d'images de suite la créature doit ne plus approcher avant de rechoisir.
+///
+/// **Une image sans approcher ne vaut pas un obstacle**, et c'est ce qui se voyait à
+/// l'écran du temps de l'errance : le franchissement d'un joint de dalle ou la reprise
+/// d'une pente coûte un pas isolé, et la créature changeait d'avis sans rien avoir
+/// rencontré. Une autre créature en travers, elle, dure jusqu'à ce qu'on s'en détourne.
+///
+/// **Mesuré sur une marche de quinze secondes** : le décor produit des séries d'images
+/// gênées qui vont jusqu'à **six**, sans qu'aucun mur soit en cause. Six était donc
+/// exactement le seuil que la marche normale atteint.
 ///
 /// Le double, soit un cinquième de seconde : au-delà de ce que le décor produit en
-/// ligne droite, et bien en deçà de ce qu'un mur impose — contre une paroi, la gêne
-/// ne cesse pas tant qu'on ne s'en détourne pas.
+/// ligne droite, et bien en deçà de ce qu'une créature arrêtée impose.
+///
+/// **Ce qu'elle garde a changé de nature avec la patrouille** : le décor ne la détourne
+/// plus, puisqu'elle suit les passages au lieu de buter dessus. Ce qui reste à
+/// débloquer est une autre créature en travers du couloir — l'évitement annule le pas,
+/// et sans cette garde deux créatures face à face s'y tiendraient indéfiniment.
 const PATIENCE: u32 = 12;
-
-/// De combien la créature se détourne quand sa patience est épuisée, en radians.
-///
-/// **L'angle d'or, et ce n'est pas une coquetterie : c'est la seule famille d'angles
-/// qui ne referme pas le trajet.** Un demi-tour est involutif — il remet la créature
-/// sur sa propre trace, donc elle refait le chemin qui vient de l'arrêter et bute au
-/// même endroit. Et tout angle qui **divise le tour** referme un polygone : quatre
-/// quarts de tour parcourus sur la même distance décrivent un carré, et la créature
-/// revient exactement à son départ. Les deux ont été mesurés dans cet ordre.
-///
-/// **La mesure, sur la graine `0x2`** : au demi-tour, `d2` faisait un aller-retour de
-/// `0,49` toutes les vingt-une images et ne visitait qu'une zone de `0,54` là où une
-/// case en fait quatre ; au quart de tour, `0,85`. Avec cet angle-ci, aucun cap ne
-/// revient jamais — la suite est équirépartie sur le cercle —, donc aucune boucle
-/// fermée n'existe pour l'y enfermer.
-///
-/// **Déterministe, et c'est ce qui l'emporte sur un tirage** : une direction au hasard
-/// sortirait aussi, mais demanderait une graine dans chaque créature et ferait perdre
-/// ce que la graine du labyrinthe achète — un défaut qui se rejoue.
-const VEER: f32 = 2.399_963_2;
 
 /// Combien de coups une créature encaisse avant de tomber.
 ///
@@ -486,11 +488,26 @@ pub struct Monster {
     motion: Motion,
     /// Où en est son cycle, en tours.
     phase: f32,
-    /// Depuis combien d'images de suite le décor la gêne.
+    /// Depuis combien d'images de suite elle n'approche plus de sa case visée.
     ///
-    /// **Remis à zéro dès qu'un pas passe**, ce qui est tout l'objet : ce qu'on
-    /// cherche est un obstacle qui dure, pas un accroc isolé.
+    /// **Remis à zéro dès qu'elle gagne du terrain**, ce qui est tout l'objet : ce
+    /// qu'on cherche est un obstacle qui dure, pas un accroc isolé.
     hindered: u32,
+    /// La case qu'elle vise, et le côté de celle-ci par lequel elle y entrera.
+    ///
+    /// **La patrouille tient dans ces deux valeurs**, et rien d'autre n'est gardé : pas
+    /// de chemin calculé d'avance, pas de file de cases. La créature va au centre d'une
+    /// case voisine, et en choisit une autre en arrivant — ce qui suffit à suivre un
+    /// couloir, et ce qui laisse le labyrinthe décider du trajet plutôt qu'une
+    /// structure qu'il faudrait tenir à jour quand le décor change.
+    ///
+    /// **Le côté d'entrée est ce qui empêche le va-et-vient** : il s'exclut du choix
+    /// suivant tant qu'une autre sortie existe, donc la créature traverse les couloirs
+    /// au lieu d'osciller entre deux cases. Dans un cul-de-sac, il redevient éligible
+    /// et c'est le demi-tour.
+    goal: (u32, u32, u32),
+    /// Par quel côté de [`Monster::goal`] elle y entre.
+    entered: Side,
     /// Le recul en cours, s'il y en a un.
     recoil: Option<Recoil>,
     /// Ce qu'elle peut encore encaisser, ou zéro si elle est tombée.
@@ -564,6 +581,15 @@ impl Monster {
         // ce qui ferait naître une créature déjà morte.
         let life = figure.life + rng.below(2 * SPREAD + 1) - SPREAD;
 
+        // **Elle naît en visant sa propre case**, et le premier pas la renvoie aussitôt
+        // choisir : `remaining` y vaut moins que le seuil d'arrivée, donc la patrouille
+        // démarre d'elle-même à la première image. Lui choisir une sortie ici
+        // demanderait de recopier ce que `reroute` fait déjà, et le côté d'entrée
+        // n'aurait aucune valeur juste à donner — elle n'est entrée par nulle part.
+        //
+        // **Le côté d'entrée part vers le bas**, qui est exclu du choix comme toute
+        // cage : il n'écarte donc aucune sortie horizontale, et le premier cap reste
+        // celui que le tirage a donné.
         Self {
             figure,
             idle: Arc::clone(&sheets.idle),
@@ -575,6 +601,8 @@ impl Monster {
             motion: Motion::Idle,
             phase: 0.0,
             hindered: 0,
+            goal: at,
+            entered: Side::Down,
             recoil: None,
             life,
         }
@@ -585,72 +613,32 @@ impl Monster {
         Vec3::new(self.facing.cos(), self.facing.sin(), 0.0) * (SPEED * dt)
     }
 
-    /// Vrai si ce pas la porterait dans le volume d'une autre créature.
-    ///
-    /// **Son propre rang s'écarte par l'indice et non par la distance** : une boîte
-    /// recouvre toujours la sienne, et un écart nul ne se distingue pas du cas qu'on
-    /// cherche.
-    fn crowded(&self, crowd: &[Monster], rank: usize, dt: f32) -> bool {
-        let here = self.body.centre();
-        let wanted = here + self.step(dt);
-
-        crowd.iter().enumerate().any(|(other, monster)| {
-            // **Une créature tombée n'encombre plus** : elle est au sol, et s'arrêter
-            // devant un cadavre resté debout en volume ferait buter les vivantes sur
-            // rien de visible.
-            if other == rank || monster.fallen() {
-                return false;
-            }
-            let there = monster.body.centre();
-
-            // **Un pas qui éloigne passe, même s'il laisse un recouvrement**, et c'est
-            // la clause qui empêche l'enchevêtrement définitif : refuser tout pas dont
-            // l'arrivée recouvre encore, c'est refuser aussi ceux qui en sortent —
-            // vingt-huit centimètres de recul s'évacuent par une douzaine de pas de
-            // deux centimètres et demi, dont pas un seul ne passerait. Deux créatures
-            // bloquées l'une dans l'autre ne repartaient jamais, et le détour de la
-            // patience n'y changeait rien, le recouvrement étant le même des deux
-            // côtés.
-            //
-            // **Le cas courant ne bouge pas** : hors recouvrement, un pas qui en crée un
-            // rapproche forcément, donc il reste refusé.
-            meets(wanted, there) && !recedes(here, wanted, there)
-        })
-    }
-
-    /// Marche droit devant, et se détourne quand le décor l'arrête.
+    /// Suit les passages de son étage, d'une case à la suivante.
     ///
     /// **Le déplacement passe par le corps**, avec son propre gabarit : la glissade,
-    /// la chute et le franchissement sont ceux du joueur, et c'est ce que
-    /// l'extraction du corps a acheté. Une créature monte donc un escalier sans
-    /// qu'une ligne d'ici le sache.
+    /// la chute et le franchissement sont ceux du joueur, et c'est ce que l'extraction
+    /// du corps a acheté. Une créature descend donc une rampe sans qu'une ligne d'ici
+    /// le sache — mais elle ne l'emprunte jamais de son plein gré, les cages étant
+    /// exclues du choix par [`onward`].
     ///
-    /// **Arrêtée veut dire se détourner, quel que soit l'axe qui a arrêté**, et c'est
-    /// le piège de cette fonction : le balayage rend la surface de moindre pénétration,
-    /// donc la normale qui arrête n'est pas forcément celle du cap. Le critère porte
-    /// sur la **distance horizontale réellement franchie** contre celle demandée —
-    /// voir [`STALLED`], et l'angle du détour est celui de [`VEER`], qui n'est pas un
-    /// demi-tour et explique pourquoi.
+    /// **Elle ne se détourne plus de ce qui l'arrête, elle va quelque part.** C'est tout
+    /// ce qui sépare cette marche de l'errance qui la précédait : le cap pointait vers
+    /// une direction libre et un seuil le faisait pivoter quand le décor y mettait un
+    /// mur, là où il pointe désormais vers un point de passage que le labyrinthe a
+    /// ouvert. Le mur n'est plus sur le chemin, donc rien n'a plus à l'en détourner.
     ///
-    /// **La composante verticale ne compte pas** dans ce critère : la pesanteur en
-    /// ajoute une à chaque image, et une créature qui descend une rampe parcourt plus
-    /// que son pas horizontal sans avoir rien franchi de neuf.
+    /// **Rien ne l'arrête non plus** : ni le décor, qu'elle longe, ni une autre
+    /// créature, qu'elle traverse. C'est la frontière du moteur appliquée telle quelle —
+    /// seule la géométrie de cellule arrête, et un volume mobile n'en est pas —, et
+    /// c'est ce que le jeu fera aussi des caisses et des ramassages posés au sol. Une
+    /// exception pour les démons entre eux coûtait des blocages symétriques sans rien
+    /// acheter de cohérent.
     ///
-    /// **Ce qu'elle coûte, vu à l'écran et assumé : la créature marche parfois en
-    /// crabe.** La vue vient du **cap**, le déplacement de ce que la glissade a
-    /// laissé passer ; en longeant une paroi de biais, les deux divergent et la
-    /// silhouette avance de travers. Faire suivre la vue au déplacement réel la
-    /// ferait pivoter à chaque frottement, ce qui se verrait davantage — et faire
-    /// suivre le cap au déplacement reviendrait à longer les murs indéfiniment, ce
-    /// que [`STALLED`] existe précisément pour empêcher.
-    ///
-    /// **Une autre créature sur le chemin annule le pas, elle ne le dévie pas.** Le
-    /// pas nul épuise la patience comme une paroi le ferait, donc la créature
-    /// s'arrête un cinquième de seconde puis se détourne — aucune politique de plus
-    /// n'était à écrire. La chute, elle, continue de s'appliquer : [`Body::advance`]
-    /// la porte, et une créature gênée par une autre au bord d'un palier doit tomber
-    /// comme les autres.
-    fn walk(&mut self, map: &World, dt: f32, crowded: bool) {
+    /// **Ce qui reste de l'ancienne patience** garde un cas et un seul : une créature
+    /// qui n'approche plus de son but pendant un cinquième de seconde repart vers la
+    /// case qu'elle vient de quitter. Rien du décor ne devrait le déclencher, et c'est
+    /// une garde plutôt qu'une politique.
+    fn walk(&mut self, grid: &Grid, map: &World, dt: f32) {
         // **Une créature tombée ne marche plus, mais elle tombe encore** : le corps
         // reçoit un pas nul, donc la pesanteur s'applique et un cadavre abattu au bord
         // d'un palier rejoint le sol. Sa phase avance avec l'horloge, puisqu'il ne
@@ -666,32 +654,124 @@ impl Monster {
             return;
         }
 
+        // **Le cap se reprend du but à chaque image**, et c'est ce qui règle la marche
+        // en crabe : il pointait vers une direction libre, donc une glissade le laissait
+        // diverger du déplacement réel et la silhouette avançait de travers. Visant un
+        // point, il revient de lui-même sur ce qui est parcouru — et l'argument qui
+        // écartait cette correction, « on longerait les murs indéfiniment », tombe avec
+        // l'errance qui le portait.
+        self.facing = self.bearing(grid);
+
         let step = self.step(dt);
         // **Le pas demandé reste celui du cap, même annulé**, et c'est ce qui fait
         // tomber le critère du bon côté : comparé à zéro, un pas nul paraîtrait
         // franchi en entier, la patience se remettrait à zéro, et deux créatures se
         // pousseraient indéfiniment sans jamais se détourner.
-        let moved = match crowded {
-            true => Vec3::new(0.0, 0.0, 0.0),
-            false => step,
-        };
-
         let before = self.body.centre();
-        self.body.advance(map, moved, dt);
+        let approach = self.remaining(grid);
+        self.body.advance(map, step, dt);
         let after = self.body.centre();
 
-        let gone = Vec3::new(after.x - before.x, after.y - before.y, 0.0);
-        let wanted = step.dot(step);
-        self.hindered = match gone.dot(gone) < wanted * STALLED * STALLED {
-            true => self.hindered + 1,
-            false => 0,
+        // **Ce qui se mesure est l'approche du but, non la distance franchie.** Les deux
+        // divergent dès qu'on glisse le long d'une paroi en virant : le pas passe
+        // entièrement et pourtant on ne gagne rien sur le but. C'est cette seconde chose
+        // qui doit faire rechoisir.
+        let left = self.remaining(grid);
+        self.hindered = match left < approach {
+            true => 0,
+            false => self.hindered + 1,
         };
-        if self.hindered >= PATIENCE {
-            self.facing = (self.facing + VEER).rem_euclid(core::f32::consts::TAU);
-            self.hindered = 0;
+
+        // **Atteindre son but et renoncer sont deux gestes distincts**, et c'est la
+        // position qui les sépare : arrivée, la créature est sur la case et choisit la
+        // suivante depuis elle ; bloquée, elle est encore en chemin, donc la seule case
+        // dont elle soit sûre est celle qu'elle vient de quitter.
+        if left <= ARRIVED {
+            self.reroute(grid);
+        } else if self.hindered >= PATIENCE {
+            self.turn_back(grid);
         }
 
+        let gone = Vec3::new(after.x - before.x, after.y - before.y, 0.0);
         self.advance(gone.dot(gone).sqrt(), dt);
+    }
+
+    /// Choisit la case suivante depuis celle qu'elle vient d'atteindre.
+    ///
+    /// **Sans effet quand la case n'offre aucune sortie** : la créature garde alors son
+    /// but, donc elle reste où elle est. Un labyrinthe engendré n'en produit pas, et une
+    /// créature immobile vaut mieux qu'une panique dans un rappel de jeu.
+    fn reroute(&mut self, grid: &Grid) {
+        if let Some((next, side)) = onward(grid, self.goal, self.entered, self.facing) {
+            self.goal = next;
+            self.entered = side;
+        }
+        self.hindered = 0;
+    }
+
+    /// Repart vers la case qu'elle vient de quitter, sa route étant barrée.
+    ///
+    /// **C'est le seul demi-tour de la patrouille**, et il ne se déclenche que sur une
+    /// gêne qui dure : une créature arrêtée par une autre dans un couloir ne peut ni
+    /// passer ni contourner, donc revenir est la seule issue. En arrivant, le côté
+    /// d'entrée exclura la case où elle était bloquée, et elle prendra une autre sortie.
+    ///
+    /// **Le voisin se relit de la grille plutôt que de se garder** : le côté d'entrée le
+    /// désigne déjà, et garder la case précédente serait un troisième état à tenir
+    /// d'accord avec les deux autres.
+    fn turn_back(&mut self, grid: &Grid) {
+        if let Some(back) = grid.neighbour(self.goal, self.entered) {
+            self.goal = back;
+            self.entered = self.entered.facing();
+        }
+        self.hindered = 0;
+    }
+
+    /// L'écart horizontal qui la sépare du centre de la case visée.
+    ///
+    /// **Le point se reprend de la grille plutôt que de se garder**, et c'est un choix :
+    /// une cote cachée à côté de la case serait une seconde source de vérité, qui
+    /// divergerait le jour où l'une des deux bougerait seule. Le calcul est une
+    /// recherche dans les six volées et deux multiplications.
+    ///
+    /// **Horizontal, parce que la cote verticale n'est pas la sienne** : le point visé
+    /// est un sol, la créature se tient dessus, et compter l'écart vertical dirait
+    /// qu'elle n'arrive jamais.
+    /// **Le décalage se prend du côté d'entrée et non du cap courant** : pris de
+    /// celui-ci, il tournerait avec lui à chaque correction et la trajectoire
+    /// serpenterait au lieu de longer.
+    ///
+    /// Le sens de marche est l'opposé du côté par lequel on entre — on entre par
+    /// l'ouest en allant vers l'est —, et la droite d'un vecteur `(x, y)` est
+    /// `(y, −x)`.
+    fn offset(&self, grid: &Grid) -> (f32, f32) {
+        let here = self.body.centre();
+        let there = export::ground(grid, self.goal);
+
+        let (dx, dy, _) = self.entered.facing().step();
+        let aside = (dy as f32 * DRIFT, -(dx as f32) * DRIFT);
+
+        (there[0] + aside.0 - here.x, there[1] + aside.1 - here.y)
+    }
+
+    /// Le cap qui mène au centre de la case visée, en radians.
+    ///
+    /// **Rend le cap courant quand on y est déjà**, ce qui arrive au pas où le but vient
+    /// d'être atteint : un `atan2` de deux zéros rendrait zéro, donc la créature se
+    /// tournerait vers l'est pour une image avant de reprendre son chemin, et cela se
+    /// verrait.
+    fn bearing(&self, grid: &Grid) -> f32 {
+        let (dx, dy) = self.offset(grid);
+        match dx.abs() < f32::EPSILON && dy.abs() < f32::EPSILON {
+            true => self.facing,
+            false => dy.atan2(dx),
+        }
+    }
+
+    /// Ce qui lui reste à parcourir jusqu'au centre de la case visée.
+    fn remaining(&self, grid: &Grid) -> f32 {
+        let (dx, dy) = self.offset(grid);
+        (dx * dx + dy * dy).sqrt()
     }
 
     /// Imprime un recul dans cette direction, et rend la main au coup suivant.
@@ -861,32 +941,63 @@ impl Monster {
     }
 }
 
-/// Vrai si ce pas éloigne du point donné.
+/// La case voisine vers laquelle poursuivre, et le côté par lequel on y entrera.
 ///
-/// **Les carrés se comparent sans racine** : ce qui est demandé est un ordre, pas une
-/// distance, et la racine est monotone.
+/// **Le plus proche du cap, et c'est ce qui fait une patrouille plutôt qu'une
+/// errance** : la créature va tout droit tant que le couloir le permet, prend le
+/// moindre écart quand il tourne, et fait demi-tour au fond d'un cul-de-sac. Aucun
+/// tirage n'intervient — une direction au hasard demanderait une graine par créature,
+/// et ferait perdre ce que la graine du labyrinthe achète, un défaut qui se rejoue.
 ///
-/// **Strictement, et c'est une prudence et non une mesure** : un pas qui garde l'écart
-/// ne sort de rien, donc il n'a pas de raison de passer. L'égalité à la place n'a fait
-/// bouger aucune épreuve — deux créatures de même cap se séparent par d'autres voies,
-/// le décor ne les arrêtant pas au même instant —, donc ce `>` ne se prévaut d'aucun cas
-/// qu'il serait seul à traiter.
-fn recedes(here: Vec3, wanted: Vec3, from: Vec3) -> bool {
-    let (before, after) = (here - from, wanted - from);
-    after.dot(after) > before.dot(before)
+/// **Les cages sont exclues**, et c'est ce qui tient l'étage : [`Side::is_vertical`] les
+/// nomme, donc la clause se lit au lieu de se déduire d'une cote. Une créature reste
+/// ainsi sur le niveau où elle est née, ce qui est la seule façon de savoir où la
+/// chercher — et le relevé de titre dit le dénivelé pour la même raison.
+///
+/// **Le côté d'entrée s'exclut tant qu'autre chose existe** : sans cela, « le plus
+/// proche du cap » renverrait la créature d'où elle vient dès qu'un couloir tourne de
+/// plus d'un quart, et deux cases se partageraient toute sa patrouille.
+///
+/// **Rien ne rend `None` sur un labyrinthe engendré** : le générateur n'y laisse aucune
+/// case isolée. Le cas est traité parce qu'un décor écrit à la main pourrait en porter
+/// une, et qu'une créature immobile vaut mieux qu'une panique dans un rappel de jeu.
+fn onward(
+    grid: &Grid,
+    at: (u32, u32, u32),
+    entered: Side,
+    facing: f32,
+) -> Option<((u32, u32, u32), Side)> {
+    let open = |side: Side| {
+        (!side.is_vertical() && !grid.has_wall(at, side))
+            .then(|| grid.neighbour(at, side))
+            .flatten()
+            .map(|next| (next, side))
+    };
+
+    // Le demi-tour en dernier recours : on l'écarte du choix, et on n'y revient que si
+    // la case n'offre rien d'autre.
+    Side::ALL
+        .into_iter()
+        .filter(|side| *side != entered)
+        .filter_map(open)
+        .min_by(|(_, here), (_, there)| {
+            deviation(facing, *here).total_cmp(&deviation(facing, *there))
+        })
+        .or_else(|| open(entered))
+        .map(|(next, side)| (next, side.facing()))
 }
 
-/// Vrai si deux corps centrés là se recouvrent.
+/// De combien un côté s'écarte d'un cap, en radians, entre zéro et un demi-tour.
 ///
-/// **Le gabarit est celui du module et non un champ du corps** : toutes les
-/// créatures le partagent, et une boîte par silhouette n'aurait pas de mesure pour
-/// la justifier — le volume tient à ce qui doit passer dans un couloir, pas au
-/// dessin.
-///
-/// **Ce qui reste ici est donc le gabarit, pas le test** : l'inégalité vit auprès de
-/// la boîte depuis que le joueur en demande une seconde avec des gabarits inégaux.
-fn meets(here: Vec3, there: Vec3) -> bool {
-    body::overlaps(here, HALF, there, HALF)
+/// **Replié sur un demi-tour, parce que c'est un écart et non une rotation** : sans ce
+/// repli, un cap juste au-dessus du tour complet paraîtrait aux antipodes du côté qu'il
+/// désigne, et le choix partirait à l'opposé une fois sur deux.
+fn deviation(facing: f32, side: Side) -> f32 {
+    let (dx, dy, _) = side.step();
+    let gap = (dy as f32).atan2(dx as f32) - facing;
+    let turn = core::f32::consts::TAU;
+    let folded = gap.rem_euclid(turn);
+    folded.min(turn - folded)
 }
 
 /// Le nombre de créatures qu'un labyrinthe porte.
@@ -953,26 +1064,29 @@ pub fn population(
         .collect())
 }
 
-/// Fait marcher la population : chacune contre le décor, et contre les autres.
+/// Fait patrouiller la population, chacune sur son étage.
 ///
-/// **Qu'une créature en arrête une autre est une règle du jeu**, et il fallait
-/// l'écrire : le moteur n'arrête que la géométrie de cellule, un démon n'a ni
-/// portail ni adjacence, donc deux silhouettes se traversaient sans qu'aucune clause
-/// soit en défaut. C'est la même frontière que pour le tir.
+/// **Une créature n'en arrête plus une autre**, et c'est un retour à la frontière du
+/// moteur plutôt qu'un renoncement : seule la géométrie de cellule arrête, un démon n'a
+/// ni portail ni adjacence, et le jeu ne testera pas davantage une caisse ou un
+/// ramassage posé au sol. Les traiter à part était une exception, et elle coûtait cher.
 ///
-/// **Elles se séparent sur leur volume et non sur leur dessin.** Deux vignettes font
-/// près de quatre unités de large, soit plus qu'un couloir n'en laisse : séparées
-/// ainsi, deux créatures s'y coinceraient pour de bon, chacune empêchant l'autre de
-/// passer. Elles se frôlent donc, et leurs dessins se chevauchent — ce que le
-/// z-tampon départage, et le volume n'est pas le dessin.
+/// **Ce qu'elle coûtait, mesuré** : deux créatures qui se croisent visent le même point
+/// de passage, donc elles convergent ; l'évitement étant symétrique, chacune annulait le
+/// pas de l'autre et aucune ne cédait. Relevé sur la graine `0x1`, deux silhouettes
+/// immobiles trois secondes durant, qu'un demi-tour renvoyait converger dans l'autre
+/// sens. Un décalage par créature n'y suffisait pas non plus, deux sens opposés pouvant
+/// se ranger du même côté.
 ///
-/// **Chacune décide contre les poses déjà avancées de cette image**, l'ordre de la
-/// liste faisant foi. Les faire toutes décider contre la pose d'avant laisserait deux
-/// créatures se croiser dans le même pas, qui est précisément le cas qu'on écarte.
-pub fn stroll(monsters: &mut [Monster], map: &World, dt: f32) {
-    for rank in 0..monsters.len() {
-        let crowded = monsters[rank].crowded(monsters, rank, dt);
-        monsters[rank].walk(map, dt, crowded);
+/// **Et la poursuite l'aurait de toute façon défait** : plusieurs créatures venant vers
+/// le joueur convergent par construction, donc l'évitement y produirait des démons qui
+/// s'éloignent au moment où ils devraient arriver.
+///
+/// **Ce qui reste du croisement est visuel** : elles serrent à droite, donc deux
+/// trajectoires opposées se frôlent au lieu de se superposer. Voir [`DRIFT`].
+pub fn stroll(monsters: &mut [Monster], grid: &Grid, map: &World, dt: f32) {
+    for monster in monsters {
+        monster.walk(grid, map, dt);
     }
 }
 

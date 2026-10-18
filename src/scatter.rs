@@ -52,12 +52,27 @@ mod tests;
 /// qui se règle contre le brouillard, et ce dégagement qui se règle contre elle.
 const CLEARANCE: u32 = 6;
 
-/// Les cases où semer, deux à deux distinctes et loin du départ.
+/// Les cases où semer, deux à deux distinctes, loin du départ et réparties par étage.
 ///
 /// Rend `count` cases, ou moins si le labyrinthe n'en offre pas assez — un petit
 /// décor, ou un dégagement qui ne laisse rien. L'ordre est celui du tirage, donc un
 /// appelant qui sert plusieurs familles peut découper la tranche de chacune sans
 /// qu'aucune case se retrouve dans deux.
+///
+/// **Autant par étage, et c'est la patrouille qui l'a rendu nécessaire.** Un semis
+/// tiré sur le vivier entier suit la topologie et non une intention : mesuré sur la
+/// graine du jeu, onze créatures en haut et cinq en bas. Tant qu'une créature pouvait
+/// monter un escalier sans qu'une ligne le sache, le déséquilibre se corrigeait de
+/// lui-même ; depuis qu'elle tient son étage, il est **définitif**.
+///
+/// **Le reste va aux étages du bas**, quand le compte ne se divise pas : c'est là que
+/// le joueur commence, et un étage de plus que l'autre se remarque moins près de
+/// l'entrée qu'au bout d'une descente.
+///
+/// **Un étage peut en rendre moins que sa part**, et il la garde pour lui : le
+/// dégagement autour du départ ne retire des cases qu'à l'étage du joueur, donc c'est
+/// toujours celui-là qui est le plus pauvre. Reporter son manque sur l'autre rendrait
+/// le compte total au prix de ce que ce lot cherche.
 ///
 /// **Le générateur vient de l'appelant et ne se fabrique pas ici**, parce que ce qui
 /// se pose dans le labyrinthe tire aussi autre chose — une résistance, un cap. Deux
@@ -65,18 +80,39 @@ const CLEARANCE: u32 = 6;
 /// coïncidence fait rouvrir la question à chaque relecture. Un seul endroit connaît
 /// donc la graine, et c'est celui qui construit la partie.
 pub fn spots(grid: &Grid, count: usize, rng: &mut Rng) -> Vec<(u32, u32, u32)> {
-    let mut pool = far_enough(grid);
+    let (_, _, levels) = grid.extent();
+    let pool = far_enough(grid);
 
-    // Un mélange partiel plutôt qu'un tirage avec rejet : il tire sans remise par
-    // construction, et ne brasse que ce qu'on emporte — trois cases sur cinq cents
-    // ne demandent pas de mélanger cinq cents.
+    let mut spots = Vec::with_capacity(count);
+    for level in 0..levels {
+        let mut floor: Vec<(u32, u32, u32)> = pool
+            .iter()
+            .copied()
+            .filter(|cell| cell.2 == level)
+            .collect();
+
+        // La part de cet étage : le quotient pour tous, et une unité de plus aux
+        // premiers tant qu'il reste du reste à distribuer.
+        let levels = levels as usize;
+        let share = count / levels + usize::from((level as usize) < count % levels);
+        spots.extend(take(&mut floor, share, rng));
+    }
+    spots
+}
+
+/// Tire `count` cases du vivier, sans remise, et les rend.
+///
+/// **Un mélange partiel plutôt qu'un tirage avec rejet** : il tire sans remise par
+/// construction, et ne brasse que ce qu'on emporte — huit cases sur deux cent
+/// cinquante ne demandent pas d'en mélanger deux cent cinquante.
+fn take(pool: &mut Vec<(u32, u32, u32)>, count: usize, rng: &mut Rng) -> Vec<(u32, u32, u32)> {
     let taken = count.min(pool.len());
     for slot in 0..taken {
         let pick = slot + rng.below((pool.len() - slot) as u32) as usize;
         pool.swap(slot, pick);
     }
     pool.truncate(taken);
-    pool
+    std::mem::take(pool)
 }
 
 /// Les cases assez loin du départ pour y semer, dans l'ordre de la grille.

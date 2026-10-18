@@ -100,6 +100,11 @@ Les planches de vues de `assets/`, choisies selon l'angle sous lequel on regarde
 créature, en quadrilatères orientés caméra. Déplacement par le balayage, tache
 d'ombre modulée au sol.
 
+**Elles patrouillent, chacune sur son étage** : le déplacement reste celui du
+balayage, mais la direction vient des passages de la grille — tout droit tant que
+le couloir le permet, demi-tour en cul-de-sac. Le trajet est déterministe, donc il
+boucle : une créature qu'on a vue passer repassera.
+
 **Trois silhouettes qui ne se confondent pas de loin** : c'est le critère qui a
 décidé des planches, et il tient encore ici.
 
@@ -392,10 +397,12 @@ Dépend de 14 et de 15.
 - **La transparence graduée** — fumée, halo, verre : la transparence du moteur est
   binaire, et un mélange fractionnaire y ramènerait le tri par profondeur que le
   z-buffer a supprimé. Ce qui s'en approche sans le coût est la surface modulée.
-- **Des ennemis qui poursuivent hors de vue, d'une cellule à l'autre** : cela
-  suppose une navigation, donc une structure que le jeu doit tenir lui-même. La
-  carte donne les portails, pas un graphe de déplacement. **À reconsidérer après
-  l'étape 13**, qui fera entrer des démons pendant la partie : les pièces de
+- **Des ennemis qui poursuivent hors de vue, d'une cellule à l'autre** : ce qu'il
+  faudrait est un **chemin vers une cible qui bouge**, à refaire à chaque image, là
+  où une patrouille ne choisit qu'une sortie parmi celles de sa case. La grille,
+  elle, porte bien le voisinage, et l'étape 3 s'en sert déjà — c'est le coût du
+  parcours qui écarte la poursuite, pas l'absence de structure. **À reconsidérer
+  après l'étape 13**, qui fera entrer des démons pendant la partie : les pièces de
   l'étape 11 rendent la question plus pressante — une salle est l'endroit où une
   poursuite se jouerait — et les boucles qu'elles créent donnent au joueur
   l'échappatoire qui la rend tenable.
