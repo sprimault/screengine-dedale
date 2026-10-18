@@ -16,10 +16,21 @@ entre les deux qui informe.
 renumérotent jamais. Une étape qui apparaît s'ajoute à la fin, quelle que soit sa
 place logique.
 
-**Le jeu est jouable à la fin de l'étape 7.** Ce qui suit — l'ambiance, la vue de
-dessus, le son — n'est pas de la finition : c'est ce que ce jeu existe pour
-montrer du moteur. Mais une boucle de jeu d'abord, parce qu'on ne règle pas une
-ambiance dans un décor qu'on ne parcourt pas.
+**Le jeu est jouable à la fin de l'étape 7, et prenant à la fin de l'étape 16.**
+Ce qui suit l'étape 7 — l'ambiance, la vue de dessus, le son — n'est pas de la
+finition : c'est ce que ce jeu existe pour montrer du moteur. Mais une boucle de
+jeu d'abord, parce qu'on ne règle pas une ambiance dans un décor qu'on ne
+parcourt pas.
+
+**Ce qui sépare les deux n'est pas de la finition non plus.** Les étapes 1 à 7
+font une boucle qui fonctionne ; ce sont l'éclairage tamisé, le plan qui se
+révèle, le cri hors champ, et le choix de descendre ou de fouiller encore qui
+font qu'on y revient.
+
+Il ne faut donc pas s'attendre à ressentir quoi que ce soit avant l'étape 8, et
+ne rien conclure du jeu avant. Un décor aux planches provisoires, sans lumière
+cuite, ne porte ni la profondeur ni la tension qu'on lui cherche — et le juger
+dans cet état conduit à régler contre ce qui n'est pas encore là.
 
 **Le moteur ne bouge pas pour nous.** Chaque étape dit ce qu'elle demande au
 moteur, et la réponse est toujours « rien de neuf » : la version épinglée porte
