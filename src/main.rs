@@ -264,7 +264,17 @@ fn main() -> Result<(), Error> {
             // de contrôle, lui, continue de se dessiner, ce qui rend l'écran noir
             // difficile à lire autrement.
             let eye = session.game.view().camera.position.z;
-            let (figure, reach) = session.game.nearest();
+            // **Le dénivelé ne s'écrit que s'il est non nul**, et c'est ce qui le rend
+            // supportable dans un titre que la barre tronque déjà : le cas courant est
+            // la créature du même étage, qui ne coûte alors rien. Il s'écrit signé,
+            // donc négatif vers le bas, et c'est dans ce sens qu'on le lit — sous les
+            // pieds.
+            let (figure, reach, levels) = session.game.nearest();
+            let depth = match levels {
+                0 => String::new(),
+                1 | -1 => format!(" ({levels:+} étage)"),
+                _ => format!(" ({levels:+} étages)"),
+            };
             // Le titre ne dit plus la mort : elle s'écrit à l'écran, là où on la lit
             // en jouant. Ce qui reste ici est un relevé de développement, que
             // personne ne consulte en jouant.
@@ -275,7 +285,7 @@ fn main() -> Result<(), Error> {
             // surveille en réglant.
             tick.set_title(&format!(
                 "{NAME} — {} — {scale} — œil {:.2} sur {:.2} d'étage, plafond {:.2}, \
-                 démon {figure} à {reach:.2}, cellule {}, vue {:?}",
+                 démon {figure} à {reach:.2}{depth}, cellule {}, vue {:?}",
                 session.pace,
                 eye.rem_euclid(export::LEVEL),
                 export::LEVEL,

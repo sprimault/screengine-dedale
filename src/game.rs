@@ -21,6 +21,7 @@ use screengine_play::{Affine3, Error, FreeCamera, KeyCode, MouseButton, Tick, Ve
 
 use crate::body;
 use crate::mark::Marks;
+use crate::maze::export;
 use crate::maze::grid::Grid;
 use crate::monster::{self, Monster};
 use crate::player::{self, Player};
@@ -71,6 +72,23 @@ const BITE: u32 = 10;
 /// l'inertie du lacet de l'arme, et il vaut un facteur vingt-trois entre les deux
 /// cadences.
 const RESPITE: f32 = 1.0;
+
+/// L'étage qu'une cote verticale occupe, à partir de zéro.
+///
+/// **La division par la hauteur d'étage et sa partie entière**, ce qui tient parce que
+/// les sols sont aux multiples de cette hauteur : un œil à cinq unités est à l'étage
+/// un, un sol à zéro virgule trois à l'étage zéro, et la hauteur de l'œil au-dessus de
+/// son plancher ne change pas le rang.
+///
+/// **Une rampe fait exception, et c'est sans conséquence** : un corps à mi-pente rend
+/// l'étage du bas jusqu'à la moitié, celui du haut ensuite. Le relevé sert à savoir où
+/// chercher, et une créature sur une rampe est à portée des deux niveaux de toute façon.
+///
+/// **À part pour être éprouvée** : c'est une fonction d'entrées vers des sorties, là où
+/// le relevé qui l'emploie lit une population que le tirage construit.
+fn level_of(z: f32) -> i32 {
+    (z / export::LEVEL).floor() as i32
+}
 
 /// Ce que l'avance automatique fait de la commande d'avance, et ce qu'elle devient.
 ///
@@ -614,14 +632,32 @@ impl Game {
     /// **Le nom va avec la distance depuis qu'elles sont trois** : les cotes de
     /// cadrage diffèrent d'une silhouette à l'autre, donc dire laquelle flotte
     /// demande de pouvoir la nommer. Sans population, le titre rend `aucune`.
-    pub fn nearest(&self) -> (&'static str, f32) {
+    ///
+    /// **Et le dénivelé va avec les deux depuis que le semis porte sur les étages** :
+    /// la distance est euclidienne, donc elle traverse les planchers. Mesuré sur la
+    /// graine du jeu — la plus proche était à 5,7 unités, sous les pieds du joueur, à
+    /// vingt-six pas de parcours, pendant qu'une créature du même étage était à sept pas
+    /// et neuf unités. On cherchait autour de soi quelqu'un qui n'y était pas.
+    ///
+    /// **Le dénivelé plutôt qu'un filtre sur l'étage** : ne retenir que les créatures du
+    /// même niveau rendrait le relevé muet sur celle d'en dessous, qui existe et qu'on
+    /// croisera en descendant. Ce qui manquait est de savoir où regarder, pas de voir
+    /// moins.
+    ///
+    /// Il est en **étages**, signé, négatif vers le bas, et vaut zéro au même niveau.
+    pub fn nearest(&self) -> (&'static str, f32, i32) {
+        let eye = level_of(self.camera.position.z);
         self.monsters
             .iter()
             .map(|monster| {
                 let gap = monster.at() - self.camera.position;
-                (monster.name(), gap.dot(gap).sqrt())
+                (
+                    monster.name(),
+                    gap.dot(gap).sqrt(),
+                    level_of(monster.at().z) - eye,
+                )
             })
-            .min_by(|(_, here), (_, there)| here.total_cmp(there))
-            .unwrap_or(("aucune", 0.0))
+            .min_by(|(_, here, _), (_, there, _)| here.total_cmp(there))
+            .unwrap_or(("aucune", 0.0, 0))
     }
 }

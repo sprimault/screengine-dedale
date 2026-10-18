@@ -345,3 +345,39 @@ fn hors_du_mode_la_commande_passe_telle_quelle() {
         );
     }
 }
+
+/// L'étage se lit de la cote verticale, et la hauteur de l'œil ne le décale pas.
+///
+/// **Les cotes viennent de la mesure qui a motivé le lot**, sur la graine du jeu :
+/// l'œil du joueur à cinq unités est à l'étage un, la créature la plus proche posée au
+/// sol du rez-de-chaussée à l'étage zéro. C'est ce dénivelé d'un étage qui manquait au
+/// relevé, et qui faisait chercher autour de soi quelqu'un qui était dessous.
+///
+/// **Le sol et le plafond du même étage y tombent ensemble**, ce qui est la clause qui
+/// fait mordre : un étage mesure 3,5 unités et son plafond est à 3,25, donc une borne
+/// prise à la hauteur de plafond plutôt qu'à celle d'étage rangerait le haut d'une
+/// pièce à l'étage du dessus.
+#[test]
+fn l_etage_se_lit_de_la_cote_verticale() {
+    assert_eq!(level_of(0.0), 0, "le sol du rez-de-chaussée");
+    assert_eq!(level_of(1.5), 0, "l'œil au rez-de-chaussée");
+    assert_eq!(
+        level_of(export::CEILING),
+        0,
+        "le plafond du rez-de-chaussée"
+    );
+    assert_eq!(level_of(export::LEVEL), 1, "le sol du premier");
+    assert_eq!(level_of(5.0), 1, "l'œil du joueur, à la pose de la mesure");
+    assert_eq!(level_of(2.0 * export::LEVEL), 2);
+}
+
+/// Sous le rez-de-chaussée, l'étage est négatif plutôt que replié sur zéro.
+///
+/// **La descente de l'étape 12 le demandera**, et un `u32` l'aurait interdit : un
+/// dénivelé se soustrait, donc il doit pouvoir passer sous zéro. Le cas arrive dès
+/// aujourd'hui si une cote tombe sous le sol — un corps qui traverse.
+#[test]
+fn sous_le_rez_de_chaussee_l_etage_est_negatif() {
+    assert_eq!(level_of(-0.1), -1);
+    assert_eq!(level_of(-export::LEVEL), -1);
+}
