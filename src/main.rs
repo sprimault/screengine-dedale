@@ -148,7 +148,18 @@ fn main() -> Result<(), Error> {
             pace: Pace::new(),
             glyphs: Glyphs::new(),
         },
-        |session, tick| {
+        // `move` parce que les rappels de l'étage d'accueil sont bornés `'static` :
+        // la boucle leur survit sur wasm, où le lancement rend la main avant qu'elle
+        // tourne. Seul celui-ci capture quelque chose — le compte de la carte, qui
+        // ne sert plus ailleurs.
+        move |session, tick| {
+            // **Ce que l'image précédente a coûté arrive ici**, et nulle part
+            // ailleurs : l'étage d'accueil ne le rend qu'au pas de jeu, une image
+            // étant close quand le rappel qui l'a soumise est déjà rendu.
+            if let Some(frame) = tick.frame_time() {
+                session.pace.timed(frame);
+            }
+
             if tick.input().pressed(KeyCode::Escape) {
                 tick.exit();
             }
@@ -223,7 +234,6 @@ fn main() -> Result<(), Error> {
             ));
         },
         |session, context| {
-            session.pace.opened();
             // Un refus ne vient que de la capacité de triangles, et une image
             // manquante vaut mieux qu'une boucle arrêtée. Ce que la traversée
             // rend — complète, tronquée, ou hors cellule — n'est pas encore
@@ -275,10 +285,11 @@ fn main() -> Result<(), Error> {
                 .refusal(probe::Part::Weapon, hand.is_err(), &session.game.aim());
 
             // **Le relevé de visibilité est compté dans la part de la scène**, et
-            // c'est assumé : il tient en une comparaison par partie soumise, et
-            // n'écrit dans son fichier qu'au changement d'état. Un jour où cela se
-            // verrait, c'est ce même chiffre qui le dirait.
-            session.pace.submitted();
+            // c'est assumé : l'étage d'accueil borne cette part sur ce rappel entier,
+            // et le relevé tient en une comparaison par partie soumise, qui n'écrit
+            // dans son fichier qu'au changement d'état. Un jour où cela se verrait,
+            // c'est ce même chiffre qui le dirait.
+            session.pace.rendered();
         },
         overview,
     )
@@ -306,11 +317,6 @@ const GAP: u32 = 10;
 /// `le_releve_voit_l_interface` vérifie que la jauge compte, et qu'elle reste seule
 /// sous le seuil. Ce que le HUD recevra ensuite s'ajoute à ce compte.
 fn overview(session: &mut Session, output: &mut Output<'_>) {
-    // **Ce jalon est le seul endroit d'où la part du moteur se sépare de celle de
-    // l'interface** : la rastérisation a lieu entre les deux rappels, donc le jeu n'en
-    // voit ni le début ni la fin autrement qu'en marquant ses deux bords.
-    session.pace.rasterized();
-
     // Un échantillon du tampon dit si l'image est amputée, ce qu'aucune valeur
     // rendue par la soumission ne dit. La couleur du fond vient de la scène, qui
     // seule sait ce qu'un pixel non peint porte.
@@ -329,8 +335,6 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
         epitaph(output, &session.glyphs);
     }
     hud::reticle::draw(output);
-
-    session.pace.drawn();
 }
 
 /// Les deux lignes de la mort, et l'échelle de chacune.

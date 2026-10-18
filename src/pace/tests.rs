@@ -4,14 +4,15 @@
 //! Les épreuves de l'instrument de cadence : ses parts, ses moyennes, son pire, et
 //! ce qu'il refuse de publier.
 //!
-//! **Ce qui s'éprouve est le cumul, jamais le chronométrage.** Les quatre jalons de
-//! [`Pace`] lisent l'horloge, qu'aucune épreuve ne peut reposer ; ce qui en découle
+//! **Ce qui s'éprouve est le cumul, jamais le chronométrage.** [`Pace`] lit l'horloge
+//! pour borner son relevé, et aucune épreuve ne peut la reposer ; ce qui en découle
 //! — la somme des parts, la division par les images, le seuil au-delà duquel un
 //! relevé se tait — est une fonction des durées qu'on verse, et c'est là que les
 //! défauts se logent.
 //!
-//! **Une exception, et elle est exacte** : le pas de jeu est versé et non mesuré,
-//! donc son rattachement à l'image qui suit s'éprouve sur [`Pace`] lui-même.
+//! **Deux exceptions, et elles sont exactes** : le pas de jeu est versé et non mesuré,
+//! et une image ne se compte qu'une fois quelle que soit la relecture de ses durées.
+//! Les deux s'éprouvent donc sur [`Pace`] lui-même.
 //!
 //! Chacune a été vérifiée en la faisant échouer une fois, sur un code falsifié.
 
@@ -20,6 +21,19 @@ use super::*;
 /// Une durée en millisecondes entières.
 fn ms(count: u64) -> Duration {
     Duration::from_millis(count)
+}
+
+/// Ce qu'une image a coûté hors pas de jeu, les trois parts à la même durée.
+///
+/// Égales parce qu'aucune épreuve de [`Pace`] ne les distingue : ce qui s'y vérifie est
+/// le rattachement des pas et le compte d'images, et leur répartition s'éprouve sur
+/// [`Counts`], où elle se verse part par part.
+fn timing(each: u64) -> FrameTime {
+    FrameTime {
+        submit: ms(each),
+        fill: ms(each),
+        screen: ms(each),
+    }
 }
 
 /// Un cumul garni d'images, chacune donnée par ses quatre parts en millisecondes.
@@ -149,22 +163,42 @@ fn les_pas_se_rattachent_a_l_image_qui_suit() {
     let mut pace = Pace::new();
     pace.stepped(ms(2));
     pace.stepped(ms(3));
-    pace.opened();
-    pace.submitted();
-    pace.rasterized();
-    pace.drawn();
+    pace.rendered();
+    pace.timed(timing(1));
 
     assert_eq!(pace.counts.game, ms(5));
     assert_eq!(pace.stepping, Duration::ZERO);
 
     pace.stepped(ms(7));
-    pace.opened();
-    pace.submitted();
-    pace.rasterized();
-    pace.drawn();
+    pace.rendered();
+    pace.timed(timing(1));
 
     assert_eq!(pace.counts.game, ms(12));
     assert_eq!(pace.counts.frames, 2);
+}
+
+/// Une image relue deux fois ne se compte qu'une.
+///
+/// **C'est une clause de l'étage d'accueil, pas une précaution** : il rend les durées
+/// de la dernière image rendue, et plusieurs pas se jouent pour une seule image quand
+/// la machine prend du retard — ils lisent alors tous la même valeur. Les verser
+/// chacune gonflerait le compte d'images sans gonfler le temps, donc une cadence
+/// inventée au moment précis où la machine décroche.
+///
+/// Un pas de jeu entre les deux lectures, pour que le second versement se verrait à la
+/// part de jeu autant qu'au compte.
+#[test]
+fn une_image_relue_ne_se_compte_qu_une_fois() {
+    let mut pace = Pace::new();
+    pace.stepped(ms(2));
+    pace.rendered();
+    pace.timed(timing(4));
+
+    pace.stepped(ms(3));
+    pace.timed(timing(4));
+
+    assert_eq!(pace.counts.frames, 1);
+    assert_eq!(pace.counts.game, ms(2));
 }
 
 /// L'instrument dit qu'il attend, tant qu'aucun relevé n'est clos.
