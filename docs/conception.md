@@ -45,7 +45,7 @@ une graine, et le même se rejoue.
 | Ambiance sombre | lightmaps cuites tamisées, brouillard, tubes modulés |
 | **Son** | **le jeu** — le moteur n'a ni horloge ni sortie audio |
 | Mesurer ce qu'une image coûte | l'étage d'accueil rend la soumission, le remplissage et l'écran de la dernière image ; **le jeu** y ajoute la part du pas de jeu, et la moyenne comme le pire |
-| **Navigation d'un monstre d'une cellule à l'autre** | **le jeu** — la carte donne les portails, pas un graphe |
+| **Navigation d'un monstre d'une cellule à l'autre** | **le jeu** — la carte du moteur donne les portails, la grille du générateur donne le voisinage, et c'est elle que la patrouille suit |
 | Faire suivre la résolution interne à la fenêtre | l'étage d'accueil rend la fenêtre au pas de jeu et pose la résolution au rendu ; **le jeu** choisit le plafond, qui est un budget d'image et non une cote d'écran |
 | **Cotes de l'interface à cette résolution** | **le jeu** — les constantes du HUD sont des cotes à la hauteur d'ouverture, qu'un facteur multiplie |
 

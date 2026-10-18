@@ -24,7 +24,6 @@
 use std::sync::OnceLock;
 
 use super::*;
-use crate::maze::export;
 use crate::maze::grid::Settings;
 use crate::scatter;
 use crate::scene::{Scenery, View};
@@ -265,7 +264,7 @@ fn chaque_demon_nait_sur_son_volume() {
         for (rank, monster) in monsters.iter().enumerate() {
             for other in monsters.iter().skip(rank + 1) {
                 assert!(
-                    !meets(monster.at(), other.at()),
+                    !crate::body::overlaps(monster.at(), HALF, other.at(), HALF),
                     "graine {seed:#x} : {} et {} naissent au même endroit, \
                      en {:?} et {:?}",
                     monster.name(),
@@ -341,6 +340,11 @@ fn le_sprite_pose_ses_pieds_au_sol() {
 ///
 /// Le cap est celui que le rang zéro donne, soit le `+X` ; les épreuves qui en veulent
 /// un autre l'écrivent.
+///
+/// **Elle vise sa propre case**, comme à la naissance : le premier pas la renvoie
+/// choisir une sortie, donc la patrouille démarre d'elle-même et aucune épreuve n'a à
+/// lui écrire un but. Celles qui veulent une direction imposée posent le cap, qui
+/// décide du choix.
 fn lone(grid: &Grid, map: &World, at: (u32, u32, u32)) -> Monster {
     Monster {
         figure: &FIGURES[0],
@@ -353,6 +357,8 @@ fn lone(grid: &Grid, map: &World, at: (u32, u32, u32)) -> Monster {
         motion: Motion::Idle,
         phase: 0.0,
         hindered: 0,
+        goal: at,
+        entered: Side::Down,
         recoil: None,
         life: TOUGH,
     }
@@ -420,7 +426,7 @@ fn un_demon_qui_marche_ne_traverse_pas_le_decor() {
         let mut monsters = sown(&grid, &map);
 
         for frame in 0..FRAMES {
-            stroll(&mut monsters, &map, DT);
+            stroll(&mut monsters, &grid, &map, DT);
 
             for monster in &monsters {
                 assert_ne!(
@@ -481,7 +487,7 @@ fn un_recul_pousse_de_la_distance_annoncee() {
     // image qui lui appartient encore.
     let frames = (RECOIL_TIME / DT).ceil() as usize;
     for _ in 0..frames {
-        monster.walk(&map, DT, false);
+        monster.walk(&grid, &map, DT);
     }
 
     let gone = monster.at() - before;
@@ -515,7 +521,7 @@ fn la_distance_d_un_recul_ne_depend_pas_de_la_cadence() {
         let before = monster.at();
         monster.knock(push);
         for _ in 0..(RECOIL_TIME / dt).ceil() as usize {
-            monster.walk(&map, dt, false);
+            monster.walk(&grid, &map, dt);
         }
         let gone = monster.at() - before;
         Vec3::new(gone.x, gone.y, 0.0).dot(push)
@@ -553,7 +559,7 @@ fn un_recul_ne_touche_ni_la_patience_ni_le_cycle() {
     let (patience, motion, phase) = (monster.hindered, monster.motion, monster.phase);
 
     monster.knock(Vec3::new(1.0, 0.0, 0.0));
-    monster.walk(&map, DT, false);
+    monster.walk(&grid, &map, DT);
 
     assert_eq!(
         monster.hindered, patience,
@@ -592,7 +598,7 @@ fn un_coup_vertical_ne_souleve_rien() {
     let before = monster.at();
     monster.knock(Vec3::new(1.0, 0.0, -1.0));
     for _ in 0..(RECOIL_TIME / DT).ceil() as usize {
-        monster.walk(&map, DT, false);
+        monster.walk(&grid, &map, DT);
     }
     let gone = monster.at() - before;
     assert!(
@@ -613,7 +619,7 @@ fn un_coup_pendant_un_recul_le_relance() {
 
     let push = Vec3::new(1.0, 0.0, 0.0);
     monster.knock(push);
-    monster.walk(&map, 1.0 / 60.0, false);
+    monster.walk(&grid, &map, 1.0 / 60.0);
     monster.knock(push);
 
     let recoil = monster.recoil.expect("le coup a relancé le recul");
@@ -669,12 +675,12 @@ fn une_creature_reculee_ne_traverse_pas_le_decor() {
                     (dy as f32).atan2(dx as f32)
                 };
                 for _ in 0..60 {
-                    monster.walk(&map, DT, false);
+                    monster.walk(&grid, &map, DT);
                 }
 
                 monster.knock(crate::test_support::unit(side));
                 for _ in 0..(RECOIL_TIME / DT).ceil() as usize {
-                    monster.walk(&map, DT, false);
+                    monster.walk(&grid, &map, DT);
                     assert_ne!(
                         monster.body.cell(),
                         0,
@@ -833,7 +839,7 @@ fn une_creature_tombee_ne_marche_plus() {
 
     let before = monster.at();
     for _ in 0..60 {
-        monster.walk(&map, DT, false);
+        monster.walk(&grid, &map, DT);
     }
 
     let gone = monster.at() - before;
@@ -870,7 +876,7 @@ fn le_cycle_de_mort_garde_sa_derniere_trame() {
     // empêchait.
     let last = sheet::column(Motion::Dead, 1.0);
     for _ in 0..(10.0 * DEAD_PERIOD / DT) as usize {
-        monster.walk(&map, DT, false);
+        monster.walk(&grid, &map, DT);
     }
 
     assert_eq!(
@@ -906,14 +912,14 @@ fn une_creature_abattue_finit_par_s_effacer() {
     // À une image de la fin du cycle, elle est encore là.
     let frames = (DEAD_PERIOD / DT).ceil() as usize;
     for _ in 0..frames - 1 {
-        monster.walk(&map, DT, false);
+        monster.walk(&grid, &map, DT);
     }
     assert!(
         !monster.spent(),
         "la chute s'interrompt avant ses {DEAD_PERIOD} secondes"
     );
 
-    monster.walk(&map, DT, false);
+    monster.walk(&grid, &map, DT);
     assert!(
         monster.spent(),
         "la chute est jouée et la créature reste, à la phase {}",
@@ -921,251 +927,168 @@ fn une_creature_abattue_finit_par_s_effacer() {
     );
 }
 
-/// Deux créatures enchevêtrées finissent par se séparer.
+/// Une créature reste sur l'étage où elle est née.
 ///
-/// **Le corpus commence en recouvrement**, et c'est tout ce qui la distingue de
-/// `deux_demons_ne_se_marchent_pas_dessus` : celle-là part de poses qui ne se recouvrent
-/// jamais, donc elle ne voit pas l'état bloqué — elle vérifie qu'on n'y entre pas, pas
-/// qu'on en sort. Le recul, lui, y fait entrer, puisqu'il ignore l'évitement.
+/// **C'est la clause que la patrouille ajoute**, et elle décide de tout le reste : le
+/// relevé de titre dit le dénivelé à la créature la plus proche, et il ne sert à
+/// chercher que si elle est encore là où il l'annonce. Une population qui se mélangerait
+/// d'un étage à l'autre rendrait cette indication inutile en quelques minutes.
 ///
-/// **Deux caps sont éprouvés, et le second est le cas dégénéré** : opposés, les pas
-/// éloignent donc le dégagement est immédiat ; identiques, aucun pas n'éloigne jamais —
-/// elles avancent du même écart — et ce qui les sépare est la patience, qui en retourne
-/// une. Sans ce second cas, un correctif qui ne traiterait que l'évident passerait.
+/// **Le corps emprunte pourtant les cages sans rien en savoir** : la glissade et le
+/// franchissement sont ceux du joueur, donc rien dans le déplacement n'interdit de
+/// monter. Ce qui tient l'étage est le choix de sortie, qui écarte les côtés verticaux
+/// — et c'est pour cela que l'épreuve porte sur le trajet complet et non sur le choix.
+///
+/// **Quinze secondes, et sur deux graines** : une créature née près d'une cage la
+/// rencontre dans les premières secondes, et deux décors valent mieux qu'un pour un
+/// tirage de cases qui décide où elles naissent.
 #[test]
-fn deux_creatures_enchevetrees_se_separent() {
+fn une_creature_reste_sur_son_etage() {
     /// Le pas d'une image, à soixante par seconde.
     const DT: f32 = 1.0 / 60.0;
-    /// Combien d'images elles ont pour se dégager.
-    ///
-    /// Trois secondes : la patience en coûte douze au pire, et le reste est la marche
-    /// qui écarte. Ce qui est cherché est un blocage, pas une cadence.
-    const FRAMES: usize = 180;
-
-    for (seed, caps) in [
-        (SEEDS[0], [0.0, core::f32::consts::PI]),
-        (SEEDS[4], [0.0, 0.0]),
-    ] {
-        let (grid, map) = maze(seed);
-        let at = plain_case(&grid);
-
-        // Sur la même case, donc au même centre : le recouvrement est total, ce qui est
-        // pire que ce qu'un recul produit.
-        let mut crowd = vec![lone(&grid, &map, at), lone(&grid, &map, at)];
-        crowd[0].facing = caps[0];
-        crowd[1].facing = caps[1];
-        assert!(
-            meets(crowd[0].at(), crowd[1].at()),
-            "graine {seed:#x} : les deux créatures ne partent pas enchevêtrées"
-        );
-
-        let mut freed = None;
-        for frame in 0..FRAMES {
-            stroll(&mut crowd, &map, DT);
-            if !meets(crowd[0].at(), crowd[1].at()) {
-                freed = Some(frame);
-                break;
-            }
-        }
-
-        assert!(
-            freed.is_some(),
-            "graine {seed:#x}, caps {caps:?} : après {FRAMES} images, les deux \
-             créatures sont toujours enchevêtrées, en {:?} et {:?}",
-            crowd[0].at(),
-            crowd[1].at()
-        );
-    }
-}
-
-/// Deux créatures ne se marchent pas dessus.
-///
-/// **Le moteur ne l'empêche pas et ne le peut pas** : il n'arrête que la géométrie
-/// de cellule, et un démon n'a ni portail ni adjacence. Sans la règle du jeu, deux
-/// silhouettes se traversent — ce qui se voit, et se voit mal.
-///
-/// **Elle part du régime réel**, sur une marche de quinze secondes : les trois
-/// naissent sur des cases voisines du départ et se croisent donc dans les premières
-/// secondes, ce qu'un départ écarté n'éprouverait pas.
-///
-/// **Ce qu'elle ne couvre pas, et c'est nommé** : le joueur. Le contact entre lui et
-/// une créature est une règle de l'étape 4, et rien ici ne l'anticipe.
-#[test]
-fn deux_demons_ne_se_marchent_pas_dessus() {
-    /// Le pas d'une image, à soixante par seconde.
-    const DT: f32 = 1.0 / 60.0;
-    /// Combien d'images elles marchent.
+    /// Combien d'images elles patrouillent.
     const FRAMES: usize = 900;
 
     for seed in [SEEDS[0], SEEDS[4]] {
         let (grid, map) = maze(seed);
         let mut monsters = sown(&grid, &map);
+        let born: Vec<u32> = monsters.iter().map(|monster| monster.goal.2).collect();
 
         for frame in 0..FRAMES {
-            stroll(&mut monsters, &map, DT);
+            stroll(&mut monsters, &grid, &map, DT);
 
             for (rank, monster) in monsters.iter().enumerate() {
-                for other in monsters.iter().skip(rank + 1) {
-                    assert!(
-                        !meets(monster.at(), other.at()),
-                        "graine {seed:#x} : à l'image {frame}, {} et {} occupent le \
-                         même volume, en {:?} et {:?}",
-                        monster.name(),
-                        other.name(),
-                        monster.at(),
-                        other.at()
-                    );
-                }
+                assert_eq!(
+                    monster.goal.2,
+                    born[rank],
+                    "graine {seed:#x} : à l'image {frame}, {} vise l'étage {} alors \
+                     qu'elle est née au {}",
+                    monster.name(),
+                    monster.goal.2,
+                    born[rank]
+                );
             }
         }
     }
 }
 
-/// Une créature gênée par une autre finit par se détourner.
+/// Une créature repasse par le même circuit, indéfiniment.
 ///
-/// **C'est le pendant de la règle précédente**, et sans lui elle serait un piège :
-/// deux créatures qui s'arrêtent l'une devant l'autre sans jamais se détourner
-/// resteraient face à face indéfiniment, ce qui est pire que de se traverser.
+/// **C'est ce qui fait une patrouille plutôt qu'une promenade** : une créature qu'on a
+/// vue passer repassera, donc un couloir qu'on a trouvé vide le reste tant qu'on l'y
+/// regarde, et celui où l'on en a croisé une en portera une autre. Un trajet qui ne se
+/// répéterait pas rendrait le labyrinthe imprévisible sans le rendre plus vivant.
 ///
-/// **Ce qui le donne est que le pas demandé reste celui du cap**, même annulé : le
-/// critère d'arrêt compare ce qui a été franchi à ce qui était demandé, donc une
-/// image gênée par une autre créature s'épuise comme une image contre un mur. Comparé
-/// au pas réellement tenté, qui est nul, un pas nul paraîtrait franchi en entier et
-/// la patience ne s'épuiserait jamais.
+/// **Ce qui le garantit est le déterminisme du choix** : depuis une case, avec un côté
+/// d'entrée et un cap qui vient de ce côté, la sortie retenue est toujours la même. Les
+/// états possibles étant en nombre fini, le trajet **boucle** nécessairement — et
+/// l'épreuve le vérifie plutôt que de le supposer, un choix qui dépendrait d'un tirage
+/// ou d'un flottant instable rendant une suite qui dérive.
+///
+/// **La vérification porte sur la suite d'états et non sur les positions** : celles-ci
+/// portent le bruit de la glissade, et deux passages sur la même case n'y tombent pas au
+/// même centième. Ce qui se répète est la décision, qui est ce qu'on éprouve.
 #[test]
-fn une_creature_genee_par_une_autre_se_detourne() {
+fn une_creature_repasse_par_son_circuit() {
     /// Le pas d'une image, à soixante par seconde.
     const DT: f32 = 1.0 / 60.0;
-
-    let (grid, map) = maze(SEEDS[0]);
-    let mut monsters = sown(&grid, &map);
-    let first = monsters[0].facing;
-
-    // Gênée à chaque image, sans qu'aucun décor soit en cause.
-    for _ in 0..PATIENCE {
-        monsters[0].walk(&map, DT, true);
-    }
-
-    assert_ne!(
-        monsters[0].facing, first,
-        "gênée pendant {PATIENCE} images, la créature garde son cap {first} : \
-         deux silhouettes se feraient face indéfiniment"
-    );
-}
-
-/// Le décor finit par l'arrêter, et elle se détourne.
-///
-/// **Le critère porte sur la distance et non sur un axe**, et c'est ce que cette
-/// épreuve paie : le balayage rend la surface de moindre pénétration, donc une
-/// créature poussée contre un mur peut se voir arrêtée par le sol. Conditionné à
-/// l'axe du cap, le détour ne se déclencherait jamais — elle dériverait le long
-/// de la paroi en avançant toujours, et cette épreuve le dirait.
-///
-/// **Elle marche seule, sans foule**, et c'est voulu : ce qu'on mesure est ce que le
-/// décor impose, et un détour dû à une autre créature le masquerait.
-///
-/// **Ce qui est exigé est qu'elle reparte**, pas seulement qu'elle tourne : un cap
-/// changé qui laisserait la créature collée au mur serait un détour pour rien.
-#[test]
-fn le_decor_retourne_le_demon() {
-    /// Le pas d'une image, à soixante par seconde.
-    const DT: f32 = 1.0 / 60.0;
-    /// Combien d'images on lui laisse pour buter puis repartir.
-    const FRAMES: usize = 600;
+    /// Combien d'images on la suit : de quoi boucler plusieurs fois.
+    ///
+    /// **Une case coûte cent soixante-dix images** — quatre unités à `1,4` par seconde —,
+    /// et le circuit relevé sur cette graine en fait quarante-huit, soit plus de deux
+    /// minutes de jeu par tour. Il en faut donc trois pour que l'épreuve ait un tour à
+    /// comparer à un autre, et c'est ce que cette durée achète.
+    const FRAMES: usize = 30_000;
 
     let (grid, map) = maze(SEEDS[0]);
     let mut monsters = sown(&grid, &map);
     let monster = &mut monsters[0];
-    let first = monster.facing;
-    let mut turns = 0;
-    let mut farthest: f32 = 0.0;
 
-    let origin = monster.at();
+    // Un état par décision, et non un par image : entre deux choix, la créature
+    // traverse une case sans rien décider.
+    let mut trail = Vec::new();
     for _ in 0..FRAMES {
-        let before = monster.facing;
-        monster.walk(&map, DT, false);
-        if monster.facing != before {
-            turns += 1;
+        let before = (monster.goal, monster.entered);
+        monster.walk(&grid, &map, DT);
+        if (monster.goal, monster.entered) != before {
+            trail.push((monster.goal, monster.entered));
         }
-        let gap = monster.at() - origin;
-        farthest = farthest.max(gap.dot(gap).sqrt());
     }
 
     assert!(
-        turns > 0,
-        "en {FRAMES} images, le démon ne s'est jamais détourné : parti au cap \
-         {first}, il y est encore"
+        trail.len() > 8,
+        "en {FRAMES} images la créature n'a pris que {} décisions : elle ne \
+         patrouille pas",
+        trail.len()
     );
+
+    // Le premier état qui revient ouvre le cycle ; ce qui suit doit le refaire.
+    let (start, again) = trail
+        .iter()
+        .enumerate()
+        .find_map(|(rank, state)| {
+            trail[rank + 1..]
+                .iter()
+                .position(|seen| seen == state)
+                .map(|gap| (rank, rank + 1 + gap))
+        })
+        .expect("aucun état ne revient : le trajet ne boucle pas");
+
+    let cycle = again - start;
+    let repeats = (trail.len() - again) / cycle;
     assert!(
-        farthest > export::CELL,
-        "le démon n'a jamais dépassé {farthest} du départ : il tourne sur place \
-         au lieu de repartir"
+        repeats > 0,
+        "le cycle de {cycle} décisions n'a pas eu la place de se répéter"
     );
+
+    for turn in 0..repeats {
+        let from = again + turn * cycle;
+        assert_eq!(
+            &trail[start..start + cycle],
+            &trail[from..from + cycle],
+            "au passage {turn}, la créature ne refait pas le même circuit"
+        );
+    }
 }
 
-/// Un cap oblique ne laisse pas la créature dériver le long d'un mur.
+/// Un cap de travers se redresse sur le passage visé.
 ///
-/// **C'est elle qui paie le seuil de [`STALLED`]**, et aucune autre : poussée de
-/// travers contre une paroi, la créature garde la composante tangentielle de son
-/// pas — `cos 45°`, soit `0,707` — donc elle avance, mais le long du mur et non vers
-/// son cap. À un seuil de `0,5`, elle longe indéfiniment sans jamais se détourner,
-/// et c'est ce que cette épreuve a relevé : neuf cents images sans un seul détour.
+/// **C'est ce qui a remplacé le seuil de dérive**, et c'est un renversement : le cap
+/// pointait vers une direction libre, donc un cap oblique collait la créature contre une
+/// paroi qu'elle longeait indéfiniment — relevé à neuf cents images sans un seul détour
+/// avant que le seuil ne soit réglé. Il pointe désormais vers un point de passage, donc
+/// un cap de travers se corrige de lui-même dès la première image.
 ///
-/// **Ce qu'elle ne paie pas, et qu'il faut savoir** : le choix de porter le critère
-/// sur la **distance** plutôt que sur l'axe du cap. Remplacé par un test du seul
-/// axe `X`, les trois épreuves de marche restent vertes — ce décor finit toujours
-/// par présenter une paroi perpendiculaire à `X`, si bien que les deux critères se
-/// déclenchent tous deux, plus tard pour l'un que pour l'autre. Le choix reste le
-/// juste, le balayage rendant la surface de moindre pénétration, mais il est tenu
-/// par le raisonnement et non par une épreuve.
+/// **La créature est posée avec un cap à quarante-cinq degrés**, qui ne mène vers aucun
+/// passage d'un décor aligné sur les axes : c'est le pire cas que l'ancienne marche
+/// connaissait, et il doit maintenant disparaître en un pas.
 ///
-/// Ce qui est exigé est qu'elle **s'arrête de dériver** : sur une longue course, la
-/// distance au point de départ reste bornée, là où une dérive non corrigée
-/// l'emmènerait au bout du couloir.
+/// **Ce qui est exigé est l'alignement sur un axe**, et non une valeur précise : le
+/// passage retenu dépend du décor sous la créature, que cette épreuve ne choisit pas.
 #[test]
-fn un_cap_oblique_ne_fait_pas_deriver() {
+fn un_cap_de_travers_se_redresse() {
     /// Le pas d'une image, à soixante par seconde.
     const DT: f32 = 1.0 / 60.0;
-    /// Combien d'images la créature marche en biais.
-    const FRAMES: usize = 900;
 
     let (grid, map) = maze(SEEDS[0]);
-    // **La case est écrite et ne vient pas du semis**, et c'est ce qui rend la borne
-    // ci-dessous mesurable : ce qu'on éprouve est que la dérive s'arrête, pas la
-    // longueur du couloir où la créature est née. Calibrée sur un lieu, la borne
-    // redevient fausse au premier semis qui déplace une naissance — elle l'a été.
-    let mut monsters =
-        population(&[grid.start()], &mut Rng::new(1), &grid, &map).expect("planches valides");
-    let monster = &mut monsters[0];
-    // En biais sur les deux axes : aucune composante ne s'annule, donc le décor
-    // l'arrête toujours par l'un sans l'arrêter par l'autre.
+    let mut monster = lone(&grid, &map, plain_case(&grid));
     monster.facing = core::f32::consts::FRAC_PI_4;
 
-    let origin = monster.at();
-    let mut turns = 0;
-    let mut farthest: f32 = 0.0;
+    // **Deux pas, et le premier ne compte pas** : la créature naît en visant sa propre
+    // case, donc elle y est déjà et le cap n'a rien vers quoi pointer. Le premier pas
+    // lui choisit une sortie, le second l'oriente dessus.
+    monster.walk(&grid, &map, DT);
+    monster.walk(&grid, &map, DT);
 
-    for _ in 0..FRAMES {
-        let before = monster.facing;
-        monster.walk(&map, DT, false);
-        if monster.facing != before {
-            turns += 1;
-        }
-        let gap = monster.at() - origin;
-        farthest = farthest.max(gap.dot(gap).sqrt());
-    }
-
+    // Un cap axial a son sinus ou son cosinus nul ; à quarante-cinq degrés, les deux
+    // valent `0,707`. **La tolérance porte le décalage à droite** : viser un point à
+    // `0,4` du milieu, à une case de distance, incline le cap de `atan(0,4 / 4)`, soit
+    // six degrés — et davantage à mesure qu'on approche.
+    let (sin, cos) = (monster.facing.sin().abs(), monster.facing.cos().abs());
     assert!(
-        turns > 0,
-        "parti en biais, le démon ne s'est jamais détourné en {FRAMES} images"
-    );
-    // Ce qu'une marche de quinze secondes couvrirait sans jamais être retournée :
-    // la borne est large, et c'est une dérive qu'on cherche, pas une cadence.
-    let loose = SPEED * DT * FRAMES as f32 / 2.0;
-    assert!(
-        farthest < loose,
-        "parti en biais, le démon s'est éloigné de {farthest} du départ : \
-         il dérive le long des parois au lieu d'être retourné"
+        sin.min(cos) < 0.3,
+        "le cap est resté à {} : il ne suit pas le passage visé",
+        monster.facing
     );
 }
 
@@ -1331,15 +1254,20 @@ fn la_tache_couvre_l_empreinte_des_pieds() {
 /// d'une pente —, et la patience valait six. Elle se déclenchait donc sur le cahot
 /// le plus long que la marche normale produise.
 ///
-/// **La mesure se prend sans demi-tour**, en passant par le corps directement : la
-/// politique de marche remet le compteur à zéro en se retournant, donc elle
-/// tronquerait les séries qu'on cherche à mesurer.
+/// **Ce qu'elle mesure a changé avec la patrouille, pas pourquoi elle existe** : le
+/// compteur portait sur la distance franchie contre celle demandée, il porte désormais
+/// sur l'**approche du but**. Les deux divergent en virant le long d'une paroi — le pas
+/// passe en entier et pourtant on ne gagne rien sur le but —, et c'est bien la seconde
+/// qui doit faire rechoisir.
 ///
-/// **Et la créature est posée, cap compris, au lieu de venir de la population** : ce
-/// qu'on mesure est la marche **normale**, le long d'un couloir. Un cap tiré en biais
-/// la colle contre une paroi, où elle reste des centaines d'images — relevé à sept cent
-/// trois, là où un cahot de décor va jusqu'à six. La série cesse alors d'être un cahot
-/// et la mesure ne dit plus rien du décor.
+/// **La mesure se prend sans demi-tour**, en refaisant ici le cycle de la marche : la
+/// politique remet le compteur à zéro en se retournant, donc elle tronquerait les
+/// séries qu'on cherche à mesurer. Le but se renouvelle à l'arrivée comme elle le
+/// ferait, sans quoi la créature tournerait autour d'une case prise.
+///
+/// **Le cap n'est plus tiré en biais**, et c'est la patrouille qui l'a réglé : il
+/// pointe vers le but, donc la créature ne se colle plus à une paroi pour des centaines
+/// d'images — c'était le cas qui faussait la mesure, relevé à sept cent trois.
 #[test]
 fn la_patience_depasse_les_accrocs_du_decor() {
     /// Le pas d'une image, à soixante par seconde.
@@ -1349,31 +1277,37 @@ fn la_patience_depasse_les_accrocs_du_decor() {
 
     let (grid, map) = maze(SEEDS[0]);
     let mut monster = lone(&grid, &map, plain_case(&grid));
-    let step = monster.step(DT);
 
     let (mut worst, mut run) = (0u32, 0u32);
     for _ in 0..FRAMES {
-        let before = monster.at();
+        monster.facing = monster.bearing(&grid);
+        let before = monster.remaining(&grid);
+        let step = monster.step(DT);
         monster.body.advance(&map, step, DT);
-        let after = monster.at();
+        let left = monster.remaining(&grid);
 
-        let gone = Vec3::new(after.x - before.x, after.y - before.y, 0.0);
-        // Une fois contre le mur du fond, elle y reste : on ne compte donc que
-        // les séries qui se terminent, c'est-à-dire les cahots.
-        match gone.dot(gone) < step.dot(step) * STALLED * STALLED {
-            true => run += 1,
-            false => {
+        match left < before {
+            true => {
                 worst = worst.max(run);
                 run = 0;
             }
+            false => run += 1,
+        }
+
+        // L'arrivée rend la main au choix suivant, et remet le compteur à zéro comme
+        // la marche le fait : une série coupée là n'est pas un cahot.
+        if left <= ARRIVED {
+            monster.reroute(&grid);
+            worst = worst.max(run);
+            run = 0;
         }
     }
 
     assert!(
         PATIENCE > worst,
-        "le décor produit des séries de {worst} images gênées sans qu'aucun mur \
-         soit en cause, et la patience vaut {PATIENCE} : la créature pivote sur \
-         un cahot"
+        "le décor produit des séries de {worst} images sans approche sans qu'aucun \
+         obstacle soit en cause, et la patience vaut {PATIENCE} : la créature \
+         rechoisit sur un cahot"
     );
 }
 
@@ -1841,7 +1775,7 @@ fn une_creature_ne_tourne_pas_sur_place() {
 
         let mut tracks: Vec<Vec<Vec3>> = vec![Vec::new(); monsters.len()];
         for _ in 0..(SPAN / DT) as u32 {
-            stroll(&mut monsters, &map, DT);
+            stroll(&mut monsters, &grid, &map, DT);
             for (rank, monster) in monsters.iter().enumerate() {
                 tracks[rank].push(monster.at());
             }
@@ -2089,5 +2023,58 @@ fn la_table_ordonne_resistance_prime_et_corps() {
             stouter.bounty,
             stouter.life
         );
+    }
+}
+
+/// Aucune créature ne reste immobile pendant une promenade entière.
+///
+/// **C'est la garde du blocage, et elle est née d'un défaut mesuré** : l'évitement
+/// arrêtait deux créatures qui convergeaient vers le même point de passage, chacune
+/// annulant le pas de l'autre, et le blocage était symétrique — relevé sur cette graine,
+/// deux silhouettes figées trois secondes durant à l'image 5590.
+///
+/// **Elle regarde chaque image et chaque créature**, là où
+/// `une_creature_ne_tourne_pas_sur_place` juge l'étendue visitée sur trois secondes :
+/// celle-ci voit un arrêt franc, celle-là une promenade qui n'aboutit nulle part. Les
+/// deux défauts se ressemblent à l'écran et n'ont pas la même cause.
+///
+/// **Une image immobile est permise, une série ne l'est pas** : un franchissement de
+/// joint ou une reprise de pente coûte un pas, et c'est ce que la patience tolère.
+#[test]
+fn aucune_creature_ne_reste_immobile() {
+    /// Le pas d'une image, à soixante par seconde.
+    const DT: f32 = 1.0 / 60.0;
+    /// Combien d'images la population marche.
+    const FRAMES: u32 = 6000;
+    /// Combien d'images immobiles de suite valent un blocage.
+    ///
+    /// Le double de la patience : au-delà, la garde qui doit dénouer a eu deux fois sa
+    /// chance.
+    const STUCK: u32 = 2 * PATIENCE;
+
+    let (grid, map) = maze(SEEDS[0]);
+    let mut monsters = sown(&grid, &map);
+    let mut still = vec![0u32; monsters.len()];
+
+    for frame in 0..FRAMES {
+        let before: Vec<Vec3> = monsters.iter().map(|monster| monster.at()).collect();
+        stroll(&mut monsters, &grid, &map, DT);
+
+        for (rank, monster) in monsters.iter().enumerate() {
+            let gone = monster.at() - before[rank];
+            still[rank] = match gone.dot(gone) < 1e-12 {
+                true => still[rank] + 1,
+                false => 0,
+            };
+            assert!(
+                still[rank] < STUCK,
+                "à l'image {frame}, {} n'a pas bougé depuis {} images, en {:?} \
+                 visant {:?}",
+                monster.name(),
+                still[rank],
+                monster.at(),
+                monster.goal
+            );
+        }
     }
 }

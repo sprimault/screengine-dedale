@@ -356,7 +356,17 @@ impl Game {
     /// un tir est un événement d'un seul pas, là où la pose et la cellule sont des
     /// états. Le garder en champ obligerait à l'effacer, donc à décider quand — et
     /// le relevé, qui est son seul lecteur aujourd'hui, vit dans la boucle.
-    pub fn step(&mut self, tick: &mut Tick<'_>, map: &World, run: &mut Run) -> Option<Outcome> {
+    /// **La grille vient avec la carte**, et elle ne se range pas dans la partie : elle
+    /// est du **monde**, rechargeable à chaud avec lui, et un champ de plus ici la
+    /// ferait survivre à un décor remplacé. Les créatures s'en servent comme du graphe
+    /// que la carte du moteur ne porte pas.
+    pub fn step(
+        &mut self,
+        tick: &mut Tick<'_>,
+        grid: &Grid,
+        map: &World,
+        run: &mut Run,
+    ) -> Option<Outcome> {
         // La vue ne suit la souris que le curseur pris, et il ne l'est pas à
         // l'ouverture : une fenêtre qui s'en emparerait laisserait chercher
         // comment le récupérer. Le clic gauche le prend, et c'est `Échap` qui le
@@ -400,11 +410,13 @@ impl Game {
         // mur elle vaut zéro, donc l'arme s'arrête d'elle-même.
         self.weapon.advance(travel, self.camera.yaw, tick.dt());
 
-        // Les créatures marchent pour leur compte : elles ne poursuivent personne, la
-        // navigation d'une cellule à l'autre demandant un graphe que la carte ne
-        // donne pas. Chacune avance droit et se détourne de ce qui l'arrête — une
-        // paroi, ou une autre créature.
-        monster::stroll(&mut self.monsters, map, tick.dt());
+        // Les créatures patrouillent pour leur compte : chacune suit les passages de
+        // son étage, sans poursuivre personne. **La grille leur sert de graphe**, et
+        // c'est elle que la carte du moteur ne porte pas — les portails y sont, pas le
+        // voisinage. Ce que la poursuite demanderait en plus est un chemin vers une
+        // cible qui bouge, à refaire à chaque image, et c'est ce qui la laisse hors
+        // périmètre.
+        monster::stroll(&mut self.monsters, grid, map, tick.dt());
 
         // **Une créature dont la chute est jouée quitte la partie**, et il n'en reste
         // rien : son ombre s'est éteinte au coup fatal, son sprite part avec elle. Le
