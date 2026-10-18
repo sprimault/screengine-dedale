@@ -193,11 +193,16 @@ fn une_image_coupee_en_compte_la_moitie() {
 /// ici ferait croire que le coût n'a pas bougé. L'épitaphe, elle, n'en fait pas partie
 /// — elle ne s'écrit que la course finie, quand il n'y a plus d'épisode à relever.
 ///
-/// **Quatre points, dont trois pour le compteur**, mesuré en lui donnant sa plaque : il
-/// est trois fois plus coûteux que la jauge alors qu'il couvre moins de pixels, parce
-/// que les deux cent cinquante-six points du relevé sont répartis en grille et qu'un
-/// bandeau de sept pixels de haut en traverse moins de rangées qu'une plaque de vingt.
-/// Reste très loin du seuil, et c'est ce que l'écart dit.
+/// **Six points**, mesuré en donnant au compteur sa plaque. Le compteur y pèse plus que
+/// la jauge à surface moindre, parce que les deux cent cinquante-six points du relevé
+/// sont répartis en grille et qu'un bandeau de sept pixels de haut traverse moins de
+/// rangées qu'une plaque de vingt.
+///
+/// **Le tampon d'épreuve est deux fois plus étroit que la résolution d'ouverture**, et
+/// la jauge ayant une longueur en pixels, elle y couvre la moitié de la largeur là où
+/// elle en couvre le quart en jouant. Le chiffre d'ici est donc le double du coût réel,
+/// ce qui va dans le sens de la garde. Reste très loin du seuil, et c'est ce que
+/// l'écart dit.
 #[test]
 fn le_releve_voit_l_interface() {
     let background = [0x30, 0x34, 0x3C];
@@ -226,8 +231,8 @@ fn le_releve_voit_l_interface() {
         "le relevé ne voit pas le compteur, qu'il compte pourtant comme peint"
     );
     assert_eq!(
-        after, 4,
-        "l'interface coûte {after} points au relevé et non quatre : elle a grandi, \
+        after, 6,
+        "l'interface coûte {after} points au relevé et non six : elle a grandi, \
          donc l'ordre du rappel de sortie est à relire contre le seuil de {THRESHOLD}"
     );
 }

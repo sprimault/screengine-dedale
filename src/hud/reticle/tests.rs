@@ -12,18 +12,16 @@
 //! reprend du tampon à chaque image. Deux tampons de tailles différentes sont ce qui
 //! l'attrape.
 //!
-//! **Les tampons d'ici sont tous sous la hauteur d'ouverture, donc au facteur un**, et
-//! les cotes attendues sont celles des constantes sans multiplication. C'est voulu :
-//! l'arithmétique du centre se lit mieux sur le cas neutre, et le facteur a son
-//! épreuve à part, qui est la seule à payer un grand tampon.
+//! **Les cotes attendues sont celles des constantes, sans multiplication**, et c'est
+//! ce que le module garantit : le réticule garde sa taille en pixels quelle que soit la
+//! résolution, pour garder sa taille à l'écran quand la fenêtre grandit. Une épreuve
+//! qui dériverait ses attentes de la hauteur du tampon laisserait passer exactement ce
+//! qu'on refuse.
 //!
 //! Chacune a été vérifiée en la faisant échouer une fois, sur un code falsifié.
 
 use super::*;
 use crate::test_support::Canvas;
-
-/// Le facteur des tampons de ces épreuves, sous la hauteur d'ouverture.
-const UNIT: u32 = 1;
 
 /// Un tampon noir, et le réticule dessiné dedans.
 ///
@@ -127,71 +125,65 @@ fn un_lisere_borde_chaque_bras() {
 /// la fonction, et il se vérifie sur le dernier côté qui ne passe pas.
 #[test]
 fn un_tampon_trop_petit_ne_recoit_rien() {
-    let reach = span(UNIT);
-    let side = reach - 1;
+    let side = SPAN - 1;
     let canvas = drawn(side, side);
     assert!(
         canvas.pixels().iter().all(|byte| *byte == 0),
-        "un tampon de {side}×{side} a reçu des pixels alors qu'il faut {reach}"
+        "un tampon de {side}×{side} a reçu des pixels alors qu'il faut {SPAN}"
     );
 
     // Et le premier qui passe en reçoit : sans ce second cas, un refus de tout
     // passerait.
-    let canvas = drawn(reach, reach);
+    let canvas = drawn(SPAN, SPAN);
     assert!(
         canvas.pixels().iter().any(|byte| *byte != 0),
-        "un tampon de {reach}×{reach} n'a rien reçu alors qu'il est à la taille"
+        "un tampon de {SPAN}×{SPAN} n'a rien reçu alors qu'il est à la taille"
     );
 }
 
-/// Le réticule grandit avec le tampon, et son vide avec lui.
+/// Le réticule garde ses cotes quand le tampon grandit, et c'est ce qui lui donne une
+/// taille constante à l'écran.
 ///
-/// **C'est la clause que ce lot ajoute**, et le symptôme qu'elle garde se voit sans se
-/// mesurer : un réticule figé en pixels se perd au centre d'une image trois fois plus
-/// haute, là où il doit dire où part le rayon.
+/// **La clause se lit à l'envers de l'intuition** : la résolution interne suit la
+/// fenêtre à facteur d'agrandissement constant, donc un réticule qui grandirait avec le
+/// tampon grandirait deux fois à l'écran — une loupe. Une cote en pixels donne
+/// gratuitement l'inverse, et c'est ce qu'on veut d'un repère de visée.
 ///
-/// **Le vide est mesuré autant que le bras**, et c'est ce qui fait mordre l'épreuve :
-/// multiplier la longueur sans le vide rapprocherait les quatre bras du centre, donc
-/// recouvrirait exactement ce que le vide existe pour laisser voir.
-///
-/// La hauteur est celle d'un facteur deux, et le tampon est le plus petit qui la porte
-/// — une épreuve de dessin n'a pas à payer une image entière.
+/// **Trois hauteurs très écartées**, dont deux bien au-delà de l'ouverture : c'est ce
+/// qui attrape une cote dérivée du tampon, qui passerait inaperçue sur deux tampons
+/// voisins.
 #[test]
-fn le_reticule_suit_la_hauteur_du_tampon() {
-    let height = 2 * crate::resolution::BASE.1;
-    let canvas = drawn(span(2), height);
-    let unit = crate::hud::scale(height);
-    assert_eq!(unit, 2, "la hauteur choisie ne donne pas le facteur deux");
+fn le_reticule_garde_ses_cotes_sur_un_grand_tampon() {
+    for (width, height) in [(64, 48), (1280, 720), (1920, 1080)] {
+        let canvas = drawn(width, height);
+        let (cx, cy) = (width / 2, height / 2);
 
-    let (cx, cy) = (span(2) / 2, height / 2);
+        // Le dernier pixel du vide, le liseré, puis le bras : chacun à sa cote de
+        // constante, quelle que soit la taille du tampon.
+        assert_eq!(
+            canvas.pixel(cx + GAP - 1, cy),
+            [0, 0, 0, 0],
+            "sur {width}×{height}, quelque chose est peint à {} du centre",
+            GAP - 1
+        );
+        assert_eq!(
+            canvas.pixel(cx + GAP, cy),
+            EDGE,
+            "sur {width}×{height}, le liseré n'est pas à {GAP} pixels du centre"
+        );
+        assert_eq!(
+            canvas.pixel(cx + GAP + 1, cy),
+            INK,
+            "sur {width}×{height}, le bras droit ne commence pas à {} du centre",
+            GAP + 1
+        );
 
-    // Les trois pixels qui se suivent sur la droite du centre : le vide, le liseré qui
-    // précède le bras, puis le bras. Le dernier seul laisserait passer un bras allongé
-    // qui aurait mangé son vide, et le liseré est ce qui dit que lui aussi a suivi.
-    let gap = GAP * unit;
-    assert_eq!(
-        canvas.pixel(cx + gap - unit, cy),
-        [0, 0, 0, 0],
-        "le vide n'a pas suivi le facteur : quelque chose est peint à {} du centre",
-        gap - unit
-    );
-    assert_eq!(
-        canvas.pixel(cx + gap, cy),
-        EDGE,
-        "le liseré du bras droit n'est pas à {gap} pixels du centre"
-    );
-    assert_eq!(
-        canvas.pixel(cx + gap + unit, cy),
-        INK,
-        "le bras droit ne commence pas à {} pixels du centre",
-        gap + unit
-    );
-
-    // Et il est épais du facteur : un trait d'un pixel se perdrait sur une image que
-    // l'on agrandit.
-    assert_eq!(
-        canvas.pixel(cx + GAP * unit + unit, cy + unit - 1),
-        INK,
-        "le bras droit n'est pas épais de {unit} pixels"
-    );
+        // Et il est épais d'un seul pixel : le pixel d'en dessous est son liseré, non
+        // son encre. Deux diraient qu'une cote a suivi la hauteur.
+        assert_eq!(
+            canvas.pixel(cx + GAP + 1, cy + 1),
+            EDGE,
+            "sur {width}×{height}, le bras droit est plus épais qu'un pixel"
+        );
+    }
 }
