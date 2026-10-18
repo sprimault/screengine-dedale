@@ -8,24 +8,17 @@
 //! remplissage. Ce qu'un rendu logiciel tient est donc un arbitrage du jeu, pris une
 //! fois ici plutôt que dispersé dans la boucle.
 //!
-//! **Aucune cote d'écran n'est écrite ici, et le plafond se dérive du moteur.** La
-//! borne qu'il publie est la seule qui fasse autorité — au-delà, ses formats en virgule
-//! fixe débordent avant que rien ne le signale —, donc le plafond la reprend telle
-//! quelle au lieu de choisir un nombre qui serait faux au premier écran différent. Ce
-//! qu'il coûte se paie une fois, en mémoire, et le contrat dit que c'est le cas de
-//! bureau, « là précisément où la mémoire ne compte pas ».
+//! **Aucune cote d'écran n'est écrite ici, et le plafond du contexte ne vient même plus
+//! de ce module** : l'étage d'accueil le prend de l'enveloppe des écrans, bornée par la
+//! borne du moteur, parce qu'eux seuls la connaissent — les écrans ne sont lisibles
+//! qu'une fois la boucle lancée, donc après le moment où le plafond se règle. Ce qu'il
+//! décide est la mémoire, jamais l'image.
 //!
 //! **Ce qui tient la cadence n'est donc pas le plafond mais le grain** : un facteur
 //! d'agrandissement minimum, qui est le parti pris que `docs/conception.md` écrit — la
 //! résolution interne basse remontée en entier. Un plafond employé comme budget
 //! reviendrait à figer une cote, et le jeu perdrait son grain dès qu'une fenêtre
 //! tiendrait sous elle.
-//!
-//! **Ce que l'écran ne dit pas, et qui manque pour aller plus loin** : l'étage
-//! d'accueil ne publie aucune cote de moniteur, donc le plafond ne peut pas encore être
-//! le plus petit de la borne du moteur et du plus grand écran de la machine. Il reste
-//! la borne seule, ce qui est plus large et ne refuse donc jamais rien — l'écran n'y
-//! ajouterait que de l'économie de mémoire.
 //!
 //! **Et ce que cela rend n'est pas du champ de vision**, ce qui est la méprise à éviter
 //! en réglant : à aspect égal, le cadrage ne bouge pas d'un pixel, le champ vertical
@@ -69,15 +62,16 @@ pub const GRAIN: u32 = 2;
 ///
 /// **Reprise telle qu'elle est publiée, jamais recopiée.** Le moteur la donne en pixels
 /// de côté, et elle vaut pour la largeur comme pour la hauteur ; l'écrire en clair ici
-/// la figerait au jour où on l'écrit, et le réglage du jeu se mettrait à mentir si elle
-/// bougeait là-bas.
+/// la figerait au jour où on l'écrit, et le calcul se mettrait à mentir si elle bougeait
+/// là-bas.
 ///
-/// **Carrée, parce qu'une fenêtre n'a pas d'orientation garantie** : un plafond taillé
-/// sur un écran paysage ferait refuser la hausse sur une fenêtre haute et étroite, qui
-/// est une forme qu'on obtient en redimensionnant. Ce qu'il coûte est le tampon de
-/// sortie que l'étage d'accueil dimensionne dessus, soit 16,8 Mo alloués une fois et
-/// jamais réalloués, et la répartition par tuile du moteur. Couleur et profondeur n'en
-/// dépendent pas : le contrat les met sur la pile de chaque tuile.
+/// **Ce n'est plus le plafond du contexte, c'est la borne de ce calcul** — et les deux
+/// se sont séparés quand l'étage d'accueil a su prendre le sien des écrans. Celle-ci
+/// reste parce que `fit` ne doit rien rendre que le moteur refuserait, et elle est la
+/// seule cote dont ce module soit sûr sans rien connaître de la machine.
+///
+/// **Elle ne mord en pratique jamais**, le grain s'en chargeant avant : il faudrait une
+/// fenêtre de plus de 4096 pixels de côté. C'est une garde, pas un réglage.
 pub const CEILING: (u32, u32) = (MAX_RESOLUTION, MAX_RESOLUTION);
 
 /// Ce sous quoi elle ne descend pas, une fenêtre pouvant être réduite à rien.

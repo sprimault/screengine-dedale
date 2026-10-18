@@ -152,11 +152,16 @@ fn main() -> Result<(), Error> {
     // d'ouverture : toute hausse serait alors refusée, et l'image resterait figée
     // pendant que la fenêtre grandit. Le moteur dimensionne dessus une fois, puis
     // n'alloue plus rien — ce qui est ce qui rend le réglage libre ensuite.
+    //
+    // **Depuis les écrans plutôt qu'en clair**, et le jeu ne peut pas le calculer :
+    // ils ne sont lisibles qu'une fois la boucle lancée, donc après ce point. Ce
+    // que cela gagne est de la mémoire et rien d'autre — une fenêtre ne dépasse
+    // pas l'écran qui la porte, donc le plafond ne touche aucune image.
     let play = Play::new()
         .title(&title)
         .icon(ICON)?
         .resolution(resolution::BASE.0, resolution::BASE.1)
-        .max_resolution(resolution::CEILING.0, resolution::CEILING.1);
+        .max_resolution_from_screens();
 
     play.run_with_output(
         Session {
