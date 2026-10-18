@@ -27,8 +27,8 @@
 use std::sync::Arc;
 
 use screengine_play::{
-    Affine3, Angle, Camera, Color, Context, CoreError, Error, Sprite, SpriteOrientation, Texture,
-    Triangle, Vec3, VertexUv, World, load_png_masked,
+    Affine3, Angle, Camera, Color, Context, CoreError, Error, Sprite, SpriteOrientation, Surfaces,
+    Sweep, Texture, Triangle, Vec3, VertexUv, World, load_png_masked,
 };
 
 use crate::blot::blot;
@@ -356,6 +356,68 @@ const SPEED: f32 = 1.4;
 /// que la coupe laisse passer.
 const ARRIVED: f32 = export::CELL / 8.0;
 
+/// À quelle distance une créature voit le joueur, en unités de monde.
+///
+/// **Quatre cases, et la cote se lit contre le brouillard** : il ferme la vue à
+/// vingt-deux unités, et détecter plus loin qu'on ne voit serait injuste — une créature
+/// arriverait de l'invisible. À seize, il laisse encore passer les deux tiers de la
+/// lumière, donc ce qui vient a été vu avant d'arriver. C'est la même exigence que
+/// l'étape 13 écrit pour les arrivées : se voir avant de se subir.
+///
+/// **Et le dégagement du semis la borne par le haut** : aucune créature ne naît à moins
+/// de six cases du départ, soit vingt-quatre unités. Huit unités de marge, donc la
+/// partie ne commence pas par une attaque — c'est la cote à relire si l'une des deux
+/// bouge.
+///
+/// **Aucun angle ne s'y ajoute, et c'est tranché** : une créature détecte le joueur dans
+/// son dos. Deux cotes inconnues à la fois ne se départagent pas à l'écran, et un cône
+/// s'ajoute ensuite par un produit scalaire, le cap existant déjà. Ce qu'il faut guetter
+/// en jouant : une créature qu'on suit dans le dos indéfiniment, qui se lirait comme un
+/// défaut et non comme de la furtivité.
+const SIGHT: f32 = 16.0;
+
+// **Détecter plus loin que le brouillard ne laisse voir serait injuste** : une créature
+// arriverait de l'invisible. Relation entre constantes, donc vérifiée ici et non dans
+// une épreuve — et c'est le genre de couple qu'un réglage d'ambiance défait sans y
+// penser, le brouillard se jugeant à l'œil.
+const _: () = assert!(SIGHT < crate::scene::FOG_END);
+
+/// Combien de temps elle continue vers le dernier endroit où elle a vu le joueur, en
+/// secondes.
+///
+/// **Sans elle, se décrocher est gratuit** : un pas derrière un angle suffit à être
+/// oublié, et la détection n'a alors aucun poids. Ce qu'on veut est que se défaire d'une
+/// créature prenne un moment.
+///
+/// **Et elle n'est pas une poursuite hors de vue**, qui reste hors périmètre : la
+/// créature va vers un **point**, pas vers le joueur. Elle n'en sait rien de plus que
+/// l'endroit où il était, donc aucun chemin n'est à calculer et le joueur qui a tourné
+/// deux fois est perdu pour de bon.
+///
+/// **Trois secondes, et la cote se lit contre la vitesse** : à `2,8`, elle couvre huit
+/// unités, soit deux cases. De quoi franchir l'angle derrière lequel le joueur vient de
+/// disparaître, pas de quoi traverser un étage.
+const MEMORY: f32 = 3.0;
+
+/// De combien elle presse le pas en poursuivant.
+///
+/// **Le double, et le chiffre se lit contre la vitesse du joueur** : il marche à `3,2`,
+/// elle patrouille à `1,4`, soit quarante-quatre pour cent. En poursuite elle monte à
+/// `2,8` — **toujours moins que lui**, donc fuir en ligne droite reste gagnant, mais
+/// l'écart tombe de `1,8` à `0,4` et le moindre détour se paie. Une créature plus rapide
+/// que le joueur retirerait la seule réponse qu'il a, et une qui reste à `1,4` ne
+/// menace rien.
+///
+/// **Ce qui en fait une course et non une approche** : la planche de marche avance avec
+/// la distance parcourue, donc le cycle s'accélère de lui-même et la poursuite se voit
+/// sans qu'une seconde planche soit à produire.
+const CHASE: f32 = 2.0;
+
+// La poursuite reste sous la marche du joueur : sans cela, courir cesse d'être une
+// réponse et il ne reste qu'à tirer. Relation entre constantes de deux modules, donc
+// vérifiée ici — c'est le genre de couple qu'un réglage de confort défait sans y penser.
+const _: () = assert!(SPEED * CHASE < crate::game::WALK);
+
 /// De combien une créature serre à sa droite dans un passage, en unités de monde.
 ///
 /// **Deux créatures ne peuvent pas viser le même point**, et c'est tout l'objet : au
@@ -508,6 +570,18 @@ pub struct Monster {
     goal: (u32, u32, u32),
     /// Par quel côté de [`Monster::goal`] elle y entre.
     entered: Side,
+    /// Ce qu'elle poursuit : le dernier endroit où le joueur a été vu, et pour combien
+    /// de temps encore.
+    ///
+    /// **Un point et un décompte, pas une cible** : elle ne sait rien du joueur au-delà
+    /// de l'endroit où il était. C'est ce qui sépare cette mémoire d'une poursuite hors
+    /// de vue, qui demanderait un chemin vers quelqu'un qui bouge — et c'est resté hors
+    /// périmètre.
+    ///
+    /// **Rafraîchi tant qu'elle le voit**, puis épuisé par le temps. Il sert aussi à
+    /// savoir quand reprendre la patrouille : sans lui, une créature qui n'a jamais vu
+    /// personne rechoisirait sa sortie à chaque image et resterait au centre de sa case.
+    hunt: Option<(Vec3, f32)>,
     /// Le recul en cours, s'il y en a un.
     recoil: Option<Recoil>,
     /// Ce qu'elle peut encore encaisser, ou zéro si elle est tombée.
@@ -603,14 +677,22 @@ impl Monster {
             hindered: 0,
             goal: at,
             entered: Side::Down,
+            hunt: None,
             recoil: None,
             life,
         }
     }
 
     /// Le pas que son cap lui demande pour cette image, avant tout obstacle.
+    ///
+    /// **Il presse en poursuivant**, et c'est le seul endroit où la vitesse change :
+    /// le reste de la marche ne sait pas qu'une course a lieu.
     fn step(&self, dt: f32) -> Vec3 {
-        Vec3::new(self.facing.cos(), self.facing.sin(), 0.0) * (SPEED * dt)
+        let pace = match self.hunt {
+            Some(_) => SPEED * CHASE,
+            None => SPEED,
+        };
+        Vec3::new(self.facing.cos(), self.facing.sin(), 0.0) * (pace * dt)
     }
 
     /// Suit les passages de son étage, d'une case à la suivante.
@@ -638,7 +720,7 @@ impl Monster {
     /// qui n'approche plus de son but pendant un cinquième de seconde repart vers la
     /// case qu'elle vient de quitter. Rien du décor ne devrait le déclencher, et c'est
     /// une garde plutôt qu'une politique.
-    fn walk(&mut self, grid: &Grid, map: &World, dt: f32) {
+    fn walk(&mut self, grid: &Grid, map: &World, prey: Option<Vec3>, dt: f32) {
         // **Une créature tombée ne marche plus, mais elle tombe encore** : le corps
         // reçoit un pas nul, donc la pesanteur s'applique et un cadavre abattu au bord
         // d'un palier rejoint le sol. Sa phase avance avec l'horloge, puisqu'il ne
@@ -654,13 +736,45 @@ impl Monster {
             return;
         }
 
+        // Ce qu'elle était en train de faire, lu avant que la mémoire ne bouge : c'est
+        // la bascule de la poursuite vers la patrouille qui demande un geste, pas l'état
+        // lui-même.
+        let chased = self.hunt.is_some();
+
         // **Le cap se reprend du but à chaque image**, et c'est ce qui règle la marche
         // en crabe : il pointait vers une direction libre, donc une glissade le laissait
         // diverger du déplacement réel et la silhouette avançait de travers. Visant un
         // point, il revient de lui-même sur ce qui est parcouru — et l'argument qui
         // écartait cette correction, « on longerait les murs indéfiniment », tombe avec
         // l'errance qui le portait.
-        self.facing = self.bearing(grid);
+        // **Voir le joueur remplace le point de passage, et rien d'autre** : le cap
+        // pointe sur lui au lieu du centre de la case visée, le reste de la marche ne
+        // bouge pas.
+        //
+        // **Le perdre de vue n'éteint pas la poursuite tout de suite** : elle va vers
+        // l'endroit où il était, le temps que la mémoire dure. C'est ce qui fait qu'on
+        // ne se décroche pas en passant un angle, sans qu'aucun chemin soit à calculer
+        // — elle vise un point, pas quelqu'un.
+        self.hunt = match prey.filter(|eye| self.sees(map, *eye)) {
+            Some(eye) => Some((eye, MEMORY)),
+            None => self
+                .hunt
+                .map(|(mark, left)| (mark, left - dt))
+                .filter(|(_, left)| *left > 0.0),
+        };
+
+        self.facing = match self.hunt {
+            Some((mark, _)) => bearing_to(self.body.centre(), mark, self.facing),
+            None => {
+                // **La patrouille se reprend une fois, au pas où la mémoire s'épuise** :
+                // la course a mené la créature ailleurs, donc son ancien but n'est plus
+                // voisin et le cap vers lui traverserait des murs.
+                if chased {
+                    self.reroute_here(grid);
+                }
+                self.bearing(grid)
+            }
+        };
 
         let step = self.step(dt);
         // **Le pas demandé reste celui du cap, même annulé**, et c'est ce qui fait
@@ -727,6 +841,39 @@ impl Monster {
         self.hindered = 0;
     }
 
+    /// Vrai si elle voit le joueur d'ici : à portée, et sans décor entre les deux.
+    ///
+    /// **La distance d'abord, le rayon ensuite**, et l'ordre compte : un balayage coûte
+    /// une traversée de cellules, une comparaison de carrés ne coûte rien, et la plupart
+    /// des créatures d'un labyrinthe sont hors de portée à chaque image.
+    ///
+    /// **Le rayon part de l'œil de la créature et non de son centre** : au centre, il
+    /// rase le sol sur une pente et se fait arrêter par lui. La cote est celle de sa
+    /// demi-hauteur, qui est l'endroit d'où elle regarde.
+    ///
+    /// **Le critère est la fraction, jamais l'identifiant de surface** : celui-ci vaut
+    /// zéro pour trois cas dont deux arrêtent — un portail non apparié, qui est un mur
+    /// comme un autre, et un trajet tronqué. C'est la clause que le tir tient déjà, et
+    /// la vue n'a aucune raison de la lire autrement.
+    ///
+    /// **Tout ce qui n'est pas une vue franche vaut « ne voit pas »** : un trajet
+    /// tronqué par le budget du balayage, et un refus de cellule — qui arrive sur un
+    /// bord de portail, à l'image où le corps en change. Prendre l'un des deux pour une
+    /// vue dégagée ferait détecter à travers un mur une fois de temps en temps, ce qui
+    /// est le genre de défaut qu'on cherche des heures.
+    fn sees(&self, map: &World, eye: Vec3) -> bool {
+        let here = self.body.centre();
+        if !within_sight(here, eye) {
+            return false;
+        }
+
+        let from = Vec3::new(here.x, here.y, here.z + HALF.z);
+        match map.pick_checked(self.body.cell(), from, eye, Surfaces::Solid) {
+            Ok(Sweep::Reached(hit)) => hit.fraction >= 1.0 && !hit.incomplete,
+            _ => false,
+        }
+    }
+
     /// L'écart horizontal qui la sépare du centre de la case visée.
     ///
     /// **Le point se reprend de la grille plutôt que de se garder**, et c'est un choix :
@@ -755,17 +902,40 @@ impl Monster {
     }
 
     /// Le cap qui mène au centre de la case visée, en radians.
-    ///
-    /// **Rend le cap courant quand on y est déjà**, ce qui arrive au pas où le but vient
-    /// d'être atteint : un `atan2` de deux zéros rendrait zéro, donc la créature se
-    /// tournerait vers l'est pour une image avant de reprendre son chemin, et cela se
-    /// verrait.
     fn bearing(&self, grid: &Grid) -> f32 {
         let (dx, dy) = self.offset(grid);
-        match dx.abs() < f32::EPSILON && dy.abs() < f32::EPSILON {
-            true => self.facing,
-            false => dy.atan2(dx),
+        bearing_to(
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(dx, dy, 0.0),
+            self.facing,
+        )
+    }
+
+    /// Reprend la patrouille depuis la case où elle se trouve.
+    ///
+    /// **Une poursuite abandonne le circuit**, et c'est pourquoi ceci existe : la
+    /// créature a suivi le joueur en ligne droite, donc la case qu'elle visait avant
+    /// n'est plus voisine de la sienne et le cap vers elle traverserait des murs. Elle
+    /// repart donc de là où elle est.
+    ///
+    /// **Hors de la grille, elle garde son but** : la case calculée peut tomber dehors
+    /// si une poursuite l'a menée aux bords, et la grille le dirait en refusant. Garder
+    /// l'ancien but la ramène vers le labyrinthe, ce qui est la seule réponse utile.
+    fn reroute_here(&mut self, grid: &Grid) {
+        let here = self.body.centre();
+        let (x, y, z) = export::cell_at([here.x, here.y, here.z]);
+        let (width, height, levels) = grid.extent();
+        let inside = (0..width as i32).contains(&x)
+            && (0..height as i32).contains(&y)
+            && (0..levels as i32).contains(&z);
+
+        if inside {
+            self.goal = (x as u32, y as u32, z as u32);
+            // Le côté d'entrée n'a plus de sens après une course libre : la cage du bas
+            // est exclue du choix de toute façon, donc elle n'écarte aucune sortie.
+            self.entered = Side::Down;
         }
+        self.reroute(grid);
     }
 
     /// Ce qui lui reste à parcourir jusqu'au centre de la case visée.
@@ -987,6 +1157,36 @@ fn onward(
         .map(|(next, side)| (next, side.facing()))
 }
 
+/// Vrai si ces deux points sont à portée de vue l'un de l'autre.
+///
+/// **À part du rayon pour être éprouvée** : la portée est une fonction d'entrées vers
+/// des sorties, là où la vue dégagée demande un décor — et un décor d'épreuve finit
+/// toujours par mettre un mur là où l'on voulait mesurer une distance. Les deux clauses
+/// se gardent donc séparément.
+///
+/// **Les carrés se comparent sans racine**, ce qui est demandé étant un ordre.
+fn within_sight(here: Vec3, eye: Vec3) -> bool {
+    let gap = eye - here;
+    gap.dot(gap) <= SIGHT * SIGHT
+}
+
+/// Le cap qui mène d'un point à un autre, en radians.
+///
+/// **Rend le cap de repli quand les deux points se confondent**, ce qui arrive au pas où
+/// un but vient d'être atteint : un `atan2` de deux zéros rendrait zéro, donc la
+/// créature se tournerait vers l'est pour une image avant de reprendre son chemin, et
+/// cela se verrait.
+///
+/// **La cote verticale ne compte pas** : une créature marche à plat, et viser un œil
+/// plus haut que soi ne doit pas incliner le pas.
+fn bearing_to(from: Vec3, to: Vec3, fallback: f32) -> f32 {
+    let (dx, dy) = (to.x - from.x, to.y - from.y);
+    match dx.abs() < f32::EPSILON && dy.abs() < f32::EPSILON {
+        true => fallback,
+        false => dy.atan2(dx),
+    }
+}
+
 /// De combien un côté s'écarte d'un cap, en radians, entre zéro et un demi-tour.
 ///
 /// **Replié sur un demi-tour, parce que c'est un écart et non une rotation** : sans ce
@@ -1084,9 +1284,12 @@ pub fn population(
 ///
 /// **Ce qui reste du croisement est visuel** : elles serrent à droite, donc deux
 /// trajectoires opposées se frôlent au lieu de se superposer. Voir [`DRIFT`].
-pub fn stroll(monsters: &mut [Monster], grid: &Grid, map: &World, dt: f32) {
+/// **Elles viennent vers le joueur dès qu'elles le voient**, et reprennent leur circuit
+/// dès qu'elles le perdent. L'œil est passé en option parce que la mort le retire : une
+/// partie finie fige la traversée, et une créature n'a alors plus personne à suivre.
+pub fn stroll(monsters: &mut [Monster], grid: &Grid, map: &World, prey: Option<Vec3>, dt: f32) {
     for monster in monsters {
-        monster.walk(grid, map, dt);
+        monster.walk(grid, map, prey, dt);
     }
 }
 

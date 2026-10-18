@@ -46,7 +46,10 @@ mod tests;
 /// d'une volée suit la vitesse horizontale, puisqu'on franchit une marche par
 /// contact. Sur la pente d'un escalier, elle vaut `WALK` fois quatre tiers — donc
 /// ralentir la marche calme la montée, et l'accélérer la ravive.
-const WALK: f32 = 3.2;
+/// **Publiée pour que la poursuite se lise contre elle** : une créature qui court plus
+/// vite que le joueur retirerait la seule réponse qu'il a, donc les deux cotes doivent
+/// se comparer quelque part. C'est `monster` qui le fait, à la compilation.
+pub const WALK: f32 = 3.2;
 
 /// La vie du joueur au départ d'une course.
 ///
@@ -72,23 +75,6 @@ const BITE: u32 = 10;
 /// l'inertie du lacet de l'arme, et il vaut un facteur vingt-trois entre les deux
 /// cadences.
 const RESPITE: f32 = 1.0;
-
-/// L'étage qu'une cote verticale occupe, à partir de zéro.
-///
-/// **La division par la hauteur d'étage et sa partie entière**, ce qui tient parce que
-/// les sols sont aux multiples de cette hauteur : un œil à cinq unités est à l'étage
-/// un, un sol à zéro virgule trois à l'étage zéro, et la hauteur de l'œil au-dessus de
-/// son plancher ne change pas le rang.
-///
-/// **Une rampe fait exception, et c'est sans conséquence** : un corps à mi-pente rend
-/// l'étage du bas jusqu'à la moitié, celui du haut ensuite. Le relevé sert à savoir où
-/// chercher, et une créature sur une rampe est à portée des deux niveaux de toute façon.
-///
-/// **À part pour être éprouvée** : c'est une fonction d'entrées vers des sorties, là où
-/// le relevé qui l'emploie lit une population que le tirage construit.
-fn level_of(z: f32) -> i32 {
-    (z / export::LEVEL).floor() as i32
-}
 
 /// Ce que l'avance automatique fait de la commande d'avance, et ce qu'elle devient.
 ///
@@ -416,7 +402,13 @@ impl Game {
         // voisinage. Ce que la poursuite demanderait en plus est un chemin vers une
         // cible qui bouge, à refaire à chaque image, et c'est ce qui la laisse hors
         // périmètre.
-        monster::stroll(&mut self.monsters, grid, map, tick.dt());
+        monster::stroll(
+            &mut self.monsters,
+            grid,
+            map,
+            Some(self.camera.position),
+            tick.dt(),
+        );
 
         // **Une créature dont la chute est jouée quitte la partie**, et il n'en reste
         // rien : son ombre s'est éteinte au coup fatal, son sprite part avec elle. Le
@@ -658,7 +650,7 @@ impl Game {
     ///
     /// Il est en **étages**, signé, négatif vers le bas, et vaut zéro au même niveau.
     pub fn nearest(&self) -> (&'static str, f32, i32) {
-        let eye = level_of(self.camera.position.z);
+        let eye = export::level_of(self.camera.position.z);
         self.monsters
             .iter()
             .map(|monster| {
@@ -666,7 +658,7 @@ impl Game {
                 (
                     monster.name(),
                     gap.dot(gap).sqrt(),
-                    level_of(monster.at().z) - eye,
+                    export::level_of(monster.at().z) - eye,
                 )
             })
             .min_by(|(_, here, _), (_, there, _)| here.total_cmp(there))
