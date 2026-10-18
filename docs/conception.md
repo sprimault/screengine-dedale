@@ -44,7 +44,7 @@ une graine, et le même se rejoue.
 | Vue de dessus | le tracé de lignes du moteur, en mode visible à travers |
 | Ambiance sombre | lightmaps cuites tamisées, brouillard, tubes modulés |
 | **Son** | **le jeu** — le moteur n'a ni horloge ni sortie audio |
-| **Mesurer ce qu'une image coûte** | **le jeu** — le temps réel n'est publié ni par le moteur ni par son étage d'accueil, dont le pas est fixe |
+| Mesurer ce qu'une image coûte | l'étage d'accueil rend la soumission, le remplissage et l'écran de la dernière image ; **le jeu** y ajoute la part du pas de jeu, et la moyenne comme le pire |
 | **Navigation d'un monstre d'une cellule à l'autre** | **le jeu** — la carte donne les portails, pas un graphe |
 
 Les lignes en gras sont celles où l'on se trompe. Les autres sont déjà au moteur.

@@ -12,8 +12,12 @@
 //! **Et le temps se décompose, sinon il ne dit pas qui a payé.** Un rayon de
 //! détection par créature tombe dans le pas de jeu, un sprite de plus dans la
 //! soumission : un total qui monte sans nommer sa part se rediagnostique de zéro.
-//! La part du moteur, elle, se déduit de ce que les deux rappels laissent entre
-//! eux — la rastérisation n'est pas à portée d'ici.
+//!
+//! **Trois des quatre parts viennent de l'étage d'accueil**, qui les borne là où le
+//! jeu n'a pas de prise : le remplissage des tuiles, et l'écran jusqu'à la
+//! présentation — laquelle porte la mise à l'échelle, donc le coût d'une fenêtre
+//! agrandie d'un facteur de trop. La part du pas de jeu reste ici, parce que rien
+//! d'autre ne la voit.
 //!
 //! **Sur une durée et non sur un nombre d'images.** À nombre d'images fixe, le
 //! relevé ralentit à mesure que l'image coûte, c'est-à-dire au moment précis où on
@@ -28,6 +32,8 @@
 
 use std::fmt;
 use std::time::{Duration, Instant};
+
+use screengine_play::FrameTime;
 
 #[cfg(test)]
 mod tests;
@@ -67,18 +73,18 @@ struct Counts {
     game: Duration,
     /// Le cumul des soumissions.
     scene: Duration,
-    /// Le cumul des rastérisations.
+    /// Le cumul des remplissages de tuiles.
     engine: Duration,
-    /// Le cumul de l'interface.
+    /// Le cumul de l'écran : l'interface, la mise à l'échelle et la présentation.
     screen: Duration,
 }
 
 impl Counts {
     /// Verse une image, en quatre parts disjointes.
     ///
-    /// Disjointes et non emboîtées, pour que la somme soit le coût de l'image et
-    /// qu'aucune soustraction n'ait lieu ici : [`Pace`] les sépare à partir de ses
-    /// jalons, qui sont le seul endroit où l'emboîtement existe.
+    /// Disjointes à la source, et c'est ce qui rend la somme lisible : l'étage
+    /// d'accueil borne les trois dernières bout à bout sur la même image, et aucune
+    /// soustraction n'a lieu ici.
     fn image(&mut self, game: Duration, scene: Duration, engine: Duration, screen: Duration) {
         let spent = game + scene + engine + screen;
         self.frames += 1;
@@ -125,9 +131,9 @@ struct Tally {
     game: Duration,
     /// La part de la soumission.
     scene: Duration,
-    /// La part de la rastérisation.
+    /// La part du remplissage des tuiles.
     engine: Duration,
-    /// La part de l'interface.
+    /// La part de l'écran, présentation comprise.
     screen: Duration,
 }
 
@@ -163,25 +169,28 @@ impl fmt::Display for Tally {
 /// rien, survit au rechargement de la carte comme à une course perdue, et la boucle
 /// seule l'alimente.
 ///
-/// Quatre jalons par image, dans l'ordre où la boucle les atteint : [`Pace::opened`]
-/// en tête du rappel de rendu, [`Pace::submitted`] en queue, [`Pace::rasterized`] en
-/// tête du rappel de sortie, [`Pace::drawn`] en queue. Les sauter ne fait rien perdre
-/// d'autre que le relevé.
+/// Trois appels par image, dans l'ordre où la boucle les atteint : [`Pace::stepped`]
+/// à chaque pas de jeu, [`Pace::rendered`] en queue du rappel de rendu, et
+/// [`Pace::timed`] au pas suivant, quand l'étage d'accueil rend ce que l'image a
+/// coûté. Les sauter ne fait rien perdre d'autre que le relevé.
 pub struct Pace {
     /// Le début du relevé en cours.
     since: Instant,
-    /// L'ouverture de l'image en cours.
-    opened: Instant,
-    /// Ce que les pas de jeu ont coûté depuis la dernière image.
+    /// Ce que les pas de jeu ont coûté depuis la dernière image soumise.
     ///
     /// **Rattaché à l'image qui suit et non au relevé** : un réveil tardif joue
     /// plusieurs pas pour une seule image, et c'est le budget d'une image que la
     /// somme doit dire.
     stepping: Duration,
-    /// Depuis l'ouverture, ce que la soumission a pris.
-    submitted: Duration,
-    /// Depuis l'ouverture, ce que la soumission et la rastérisation ont pris.
-    rasterized: Duration,
+    /// Les pas de l'image soumise, en attente de ce qu'elle a coûté.
+    ///
+    /// **C'est aussi ce qui la compte une fois et une seule.** L'étage d'accueil rend
+    /// les durées de la dernière image rendue, et plusieurs pas se jouent pour une
+    /// seule image quand la machine prend du retard : ils lisent alors tous la même
+    /// valeur, et la verser à chaque fois gonflerait le compte d'images sans gonfler
+    /// le temps — donc une cadence inventée. Ici, une image ne se verse que si un
+    /// rendu l'a annoncée.
+    pending: Option<Duration>,
     /// Le cumul du relevé en cours.
     counts: Counts,
     /// Ce que le dernier relevé publié a dit.
@@ -191,13 +200,10 @@ pub struct Pace {
 impl Pace {
     /// Un instrument qui ouvre son premier relevé maintenant.
     pub fn new() -> Self {
-        let now = Instant::now();
         Self {
-            since: now,
-            opened: now,
+            since: Instant::now(),
             stepping: Duration::ZERO,
-            submitted: Duration::ZERO,
-            rasterized: Duration::ZERO,
+            pending: None,
             counts: Counts::default(),
             taken: None,
         }
@@ -205,46 +211,31 @@ impl Pace {
 
     /// Ajoute ce qu'un pas de jeu a coûté.
     ///
-    /// La seule des cinq méthodes à prendre une durée : le pas de jeu est le seul
-    /// morceau mesuré dans un autre rappel que celui de l'image, et il peut arriver
-    /// plusieurs fois avant elle.
+    /// La seule des trois méthodes à prendre une durée mesurée ici : le pas de jeu
+    /// est le seul morceau que l'étage d'accueil ne borne pas, et il peut arriver
+    /// plusieurs fois avant une image.
     pub fn stepped(&mut self, spent: Duration) {
         self.stepping += spent;
     }
 
-    /// Ouvre une image, en tête du rappel de rendu.
-    pub fn opened(&mut self) {
-        self.opened = Instant::now();
-    }
-
-    /// Note la fin de la soumission, en queue du rappel de rendu.
-    pub fn submitted(&mut self) {
-        self.submitted = self.opened.elapsed();
-    }
-
-    /// Note la fin de la rastérisation, en tête du rappel de sortie.
+    /// Annonce une image, en queue du rappel de rendu.
     ///
-    /// **C'est le jalon qui sépare le moteur de l'interface**, et il n'y a pas
-    /// d'autre endroit où le prendre : la boucle rastérise entre les deux rappels,
-    /// et le jeu ne voit ni l'un ni l'autre bout de ce travail.
-    pub fn rasterized(&mut self) {
-        self.rasterized = self.opened.elapsed();
+    /// Elle n'a encore coûté que ses pas de jeu ; le reste arrive au pas suivant,
+    /// par [`Pace::timed`].
+    pub fn rendered(&mut self) {
+        self.pending = Some(std::mem::take(&mut self.stepping));
     }
 
-    /// Clôt l'image, en queue du rappel de sortie, et publie le relevé s'il est échu.
+    /// Verse ce que l'image annoncée a coûté, et publie le relevé s'il est échu.
     ///
-    /// **La recopie vers la fenêtre reste dehors**, qui vient après ce rappel : la
-    /// mise à l'échelle est à l'hôte, et la compter ferait porter à l'image un coût
-    /// que le jeu ne peut pas réduire.
-    pub fn drawn(&mut self) {
-        let work = self.opened.elapsed();
-        self.counts.image(
-            self.stepping,
-            self.submitted,
-            self.rasterized.saturating_sub(self.submitted),
-            work.saturating_sub(self.rasterized),
-        );
-        self.stepping = Duration::ZERO;
+    /// Sans effet quand aucun rendu n'attend ses durées : la même valeur se relit à
+    /// chaque pas, et c'est l'annonce qui dit laquelle est neuve.
+    pub fn timed(&mut self, frame: FrameTime) {
+        let Some(game) = self.pending.take() else {
+            return;
+        };
+        self.counts
+            .image(game, frame.submit, frame.fill, frame.screen);
 
         let elapsed = self.since.elapsed();
         if elapsed >= SPAN {
