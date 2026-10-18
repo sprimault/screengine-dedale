@@ -41,8 +41,12 @@ mod tests;
 /// **Six, et la cote se lit contre la portée de détection** : moins que celle-ci et
 /// la partie commence par une attaque, ce qu'aucune épreuve ne dira. Une case vaut
 /// quatre unités de pas — trois de cellule et une de passage —, donc six cases font
-/// vingt-quatre unités, au-delà de toute portée qu'une créature puisse vouloir et
-/// bien au-delà de ce que le brouillard laissera voir.
+/// vingt-quatre unités, au-delà de toute portée qu'une créature puisse vouloir.
+///
+/// **Et au-delà du brouillard, de deux unités seulement** : `scene::FOG_END` ferme la
+/// vue à vingt-deux, donc une créature semée au plus près du départ y est déjà noyée.
+/// La marge est mince, et c'est la cote à reprendre si le brouillard recule — une
+/// créature visible du départ est ce que ce dégagement existe pour empêcher.
 ///
 /// **À rejuger quand la détection existera**, et dans ce sens-là : c'est la portée
 /// qui se règle contre le brouillard, et ce dégagement qui se règle contre elle.
