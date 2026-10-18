@@ -86,6 +86,30 @@ fn la_resolution_ne_depasse_jamais_le_plafond() {
     }
 }
 
+/// La résolution tient dans la fenêtre, ou dans le plancher qui l'assume.
+///
+/// **C'est elle qui rend sûr un plafond venu des écrans**, et c'est la raison de son
+/// existence : l'étage d'accueil règle désormais le plafond du contexte sur l'enveloppe
+/// des écrans, qui peut être bien plus basse que la borne du moteur. Rien ici ne la
+/// connaît — mais une fenêtre ne dépasse pas l'écran qui la porte, donc une résolution
+/// bornée par sa fenêtre est bornée par cette enveloppe, et `set_resolution` ne peut
+/// pas être refusé.
+///
+/// **Le plancher est la seule sortie, et elle est couverte** : sous lui, l'image est
+/// plus grande que la fenêtre par choix, et le plafond que l'étage d'accueil règle ne
+/// descend jamais sous la résolution d'ouverture, elle-même au-dessus du plancher.
+#[test]
+fn la_resolution_tient_dans_la_fenetre_ou_dans_le_plancher() {
+    for window in WINDOWS {
+        let (width, height) = fit(window);
+        assert!(
+            width <= window.0.max(FLOOR.0) && height <= window.1.max(FLOOR.1),
+            "fenêtre {window:?} : {width}×{height} déborde de la fenêtre sans être au \
+             plancher {FLOOR:?}"
+        );
+    }
+}
+
 /// Et jamais sous le plancher, ni à zéro.
 ///
 /// **Zéro est le cas qui paniquerait**, et il arrive : une fenêtre que le système n'a
