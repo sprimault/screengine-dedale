@@ -298,3 +298,50 @@ fn la_part_decroit_avec_la_vie() {
     }
     assert_eq!(before, 0.0);
 }
+
+/// L'avance automatique avance toute seule, touches au repos.
+///
+/// **C'est sa raison d'être**, et la seule chose qu'on lui demande : sans commande, le
+/// pas vaut l'avance pleine, comme si l'on tenait la touche.
+#[test]
+fn l_avance_automatique_avance_sans_touche() {
+    assert_eq!(cruise(true, 0.0), (1.0, true));
+    assert_eq!(cruise(false, 0.0), (0.0, false), "elle avance à l'arrêt");
+}
+
+/// Reculer l'éteint, et le recul porte dans le même pas.
+///
+/// **Les deux moitiés comptent**, et c'est ce qui fait mordre l'épreuve : un mode qui
+/// s'éteindrait sans laisser passer le recul demanderait deux appuis pour reculer, et
+/// un recul qui passerait sans éteindre ferait repartir en avant dès qu'on relâche.
+#[test]
+fn reculer_eteint_l_avance_automatique() {
+    assert_eq!(cruise(true, -1.0), (-1.0, false));
+    assert_eq!(cruise(true, -0.5), (-0.5, false));
+}
+
+/// Avancer à la main ne l'éteint pas, et ne change pas le pas.
+///
+/// **C'est le réflexe qu'on a en mode automatique** : on pousse en avant sans y penser,
+/// et s'arrêter pour cela serait l'inverse de ce qui a été demandé. Les deux commandes
+/// donnent la même avance pleine, donc rien ne se cumule non plus.
+#[test]
+fn avancer_ne_coupe_pas_l_avance_automatique() {
+    assert_eq!(cruise(true, 1.0), (1.0, true));
+}
+
+/// Hors du mode, la commande passe telle quelle.
+///
+/// **Sans cette épreuve, une avance toujours pleine passerait** : les trois ci-dessus
+/// regardent le mode actif, et aucune ne dirait qu'un mode éteint laisse marcher
+/// normalement.
+#[test]
+fn hors_du_mode_la_commande_passe_telle_quelle() {
+    for keys in [-1.0, -0.5, 0.0, 0.5, 1.0] {
+        assert_eq!(
+            cruise(false, keys),
+            (keys, false),
+            "la commande {keys} ne passe pas telle quelle"
+        );
+    }
+}

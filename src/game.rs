@@ -72,6 +72,30 @@ const BITE: u32 = 10;
 /// cadences.
 const RESPITE: f32 = 1.0;
 
+/// Ce que l'avance automatique fait de la commande d'avance, et ce qu'elle devient.
+///
+/// Rend l'avance à jouer et l'état du mode après ce pas.
+///
+/// **Reculer l'éteint, et c'est la clause qui compte** : sans elle, il faudrait
+/// retrouver le bouton pour s'arrêter, alors que le geste qu'on fait est de tirer en
+/// arrière. Une avance automatique qu'on ne peut pas annuler du clavier se subit.
+///
+/// **Avancer à la main ne l'éteint pas**, et c'est l'autre moitié du même choix : on
+/// appuie en avant par réflexe en mode automatique, et s'arrêter pour cela serait
+/// l'inverse de ce qu'on demandait. La commande est alors sans effet, les deux donnant
+/// la même avance pleine.
+///
+/// **À part du pas de la partie pour être éprouvée** : elle est une fonction d'entrées
+/// vers des sorties, là où le pas reçoit un `Tick` que la boucle du moteur seule
+/// fabrique.
+fn cruise(active: bool, keys: f32) -> (f32, bool) {
+    match (active, keys < 0.0) {
+        (_, true) => (keys, false),
+        (true, false) => (1.0, true),
+        (false, false) => (keys, false),
+    }
+}
+
 /// Ce qu'un couple de touches opposées demande : `+1`, `−1`, ou rien.
 ///
 /// **Tenues ensemble, elles s'annulent**, ce qui est la seule réponse qui ne
@@ -242,6 +266,16 @@ pub struct Game {
     /// **Il est de la traversée et non de la course**, donc jeté avec la carte : une
     /// morsure commencée n'a rien à reporter au labyrinthe suivant.
     respite: f32,
+    /// Si l'avance automatique est en marche.
+    ///
+    /// **Une bascule et non un maintien** : un mode qu'il faudrait tenir ne rendrait pas
+    /// le doigt qu'il sert à rendre, et « avance automatique » n'aurait alors plus de
+    /// sens. Le bouton du milieu et `Tab` la font basculer tous deux, le second pour les
+    /// souris qui n'ont pas le premier.
+    ///
+    /// **Jetée avec la carte**, comme le reste de la traversée : une course neuve ne
+    /// commence pas en marchant.
+    cruise: bool,
 }
 
 /// Ce qu'un pas fait du répit et de la course, au contact ou non.
@@ -289,6 +323,7 @@ impl Game {
             monsters: monster::population(&spots, &mut rng, grid, map)?,
             marks: Marks::new(),
             respite: 0.0,
+            cruise: false,
             camera,
             player,
         })
@@ -306,13 +341,18 @@ impl Game {
     pub fn step(&mut self, tick: &mut Tick<'_>, map: &World, run: &mut Run) -> Option<Outcome> {
         // La vue ne suit la souris que le curseur pris, et il ne l'est pas à
         // l'ouverture : une fenêtre qui s'en emparerait laisserait chercher
-        // comment le récupérer. Le clic gauche le prend, celui du milieu le rend
-        // — la convention des exemples du moteur, et Échap ferme sans détour.
+        // comment le récupérer. Le clic gauche le prend, et c'est `Échap` qui le
+        // rend — la boucle s'en charge, puisqu'elle seule décide aussi de fermer.
         if tick.input().button_pressed(MouseButton::Left) {
             tick.capture_cursor(true);
         }
-        if tick.input().button_pressed(MouseButton::Middle) {
-            tick.capture_cursor(false);
+
+        // **Le bouton du milieu bascule l'avance automatique**, là où il rendait le
+        // curseur : les trois boutons étaient pris, et rendre le curseur se demande
+        // d'instinct à `Échap` plutôt qu'à une molette. `Tab` fait la même bascule
+        // pour les souris sans bouton du milieu.
+        if tick.input().button_pressed(MouseButton::Middle) || tick.input().pressed(KeyCode::Tab) {
+            self.cruise = !self.cruise;
         }
 
         // **La mort gèle la traversée, et c'est tout ce que cette étape en fait** :
@@ -512,13 +552,19 @@ impl Game {
     ///
     /// Ce sont des **positions physiques** et non des lettres : les mêmes codes valent
     /// `W` `S` et `Q` `E` sur un clavier qwerty, et rien n'est à détecter.
-    fn wanted(&self, tick: &Tick<'_>) -> Vec3 {
+    ///
+    /// **Elle mute, depuis l'avance automatique** : reculer l'éteint, et c'est ici que
+    /// la commande de recul se lit.
+    fn wanted(&mut self, tick: &Tick<'_>) -> Vec3 {
         let input = tick.input();
-        let ahead = axis(input.down(KeyCode::KeyW), input.down(KeyCode::KeyS))
+        let keys = axis(input.down(KeyCode::KeyW), input.down(KeyCode::KeyS))
             + axis(input.down(KeyCode::ArrowUp), input.down(KeyCode::ArrowDown));
         let side = axis(input.down(KeyCode::KeyE), input.down(KeyCode::KeyQ));
 
-        walk(self.camera.yaw, ahead.clamp(-1.0, 1.0), side)
+        let (ahead, cruise) = cruise(self.cruise, keys.clamp(-1.0, 1.0));
+        self.cruise = cruise;
+
+        walk(self.camera.yaw, ahead, side)
     }
 
     /// Ce que l'image doit regarder.

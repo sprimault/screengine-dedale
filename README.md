@@ -70,13 +70,14 @@ The details, and why the toolchain writes where it writes:
 
 ## Controls
 
-Left click grabs the cursor, middle click releases it, `Esc` quits.
+Left click grabs the cursor, `Esc` releases it — and quits on a second press.
 
 | Key | Effect |
 |---|---|
 | `W` `S`, or up and down arrows | move forward, back |
 | `A` `D`, or left and right arrows | turn in place |
 | `Q` `E` | strafe |
+| middle click, or `Tab` | autorun, as a toggle — moving back stops it |
 | mouse | aim the view, once the cursor is grabbed — never required |
 | right click | shoot, at the centre of the reticle |
 | `R` | start a new game, after death |
