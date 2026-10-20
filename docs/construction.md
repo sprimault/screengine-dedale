@@ -40,7 +40,7 @@ illisible ou qu'un démon apparaît dans un mur.
 `Cargo.toml` épingle `screengine-play` par **version et par commit** :
 
 ```toml
-screengine-play = { version = "1.0", git = "…/screengine", rev = "…" }
+screengine-play = { version = "1.6", git = "…/screengine", rev = "…" }
 ```
 
 **Par git et non par chemin** : un chemin ne vaudrait que sur un poste où les deux
@@ -61,10 +61,12 @@ alors contre quelle version de l'API ce jeu est écrit.
 
 **Et ce que le moteur emprunte à son noyau s'écrit à plat** : `screengine_play::Vec3`
 et non `screengine_play::screengine::Vec3`, l'étage d'accueil réexportant tout ce
-qu'un hôte écrit. Deux noms y portent un préfixe parce qu'ils entraient en collision
-avec les siens — `CoreError` et `CoreOutput` —, et la distinction est réelle : `Error`
-est celle de l'étage, rendue par les constructions, `CoreError` celle du noyau, rendue
-par les soumissions.
+qu'un hôte écrit. Trois noms y portent un préfixe, et pas tous pour la même raison.
+`CoreError` et `CoreOutput` entraient en collision avec des types de l'étage, et la
+distinction est réelle : `Error` est celle de l'étage, rendue par les constructions,
+`CoreError` celle du noyau, rendue par les soumissions. `CoreResult` ne masquerait, lui,
+que le `Result` du prélude — l'alias du noyau ne prend qu'un paramètre là où l'étage
+écrit les deux.
 
 ### Aucune redirection locale
 
