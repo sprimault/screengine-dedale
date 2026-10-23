@@ -49,6 +49,21 @@ const EDGE: [u8; 4] = [0x00, 0x00, 0x00, 0xFF];
 /// la colonne du centre elle-même.
 const SPAN: u32 = 2 * (GAP + ARM + 1) + 1;
 
+/// Le pixel que le réticule marque, dans un tampon de cette taille.
+///
+/// **Un seul site pour le dessin et pour le tir**, et c'est tout l'objet de cette
+/// fonction : le rayon part de la direction que ce pixel désigne, le réticule se dessine
+/// autour de lui, et les deux ne peuvent plus se désaccorder. Écrit deux fois, le centre
+/// aurait été juste le jour où on l'écrit et faux au premier décalage de l'un des deux.
+///
+/// **Le quotient entier n'est pas le centre géométrique de l'image**, et c'est voulu : à
+/// largeur paire il n'existe pas de pixel central, donc on en choisit un — celui de
+/// droite. Ce qui compte est que ce soit le même des deux côtés, pas qu'il soit au milieu
+/// exact.
+pub fn pixel(width: u32, height: u32) -> (u32, u32) {
+    (width / 2, height / 2)
+}
+
 /// Dessine le réticule au centre du tampon de sortie.
 ///
 /// **Le centre se prend du tampon à chaque image, jamais d'une constante.** La
@@ -70,7 +85,7 @@ pub fn draw(output: &mut Output<'_>) {
     if width < SPAN || height < SPAN {
         return;
     }
-    let (cx, cy) = (width / 2, height / 2);
+    let (cx, cy) = pixel(width, height);
 
     // Chaque trait : son liseré d'abord, débordant d'un pixel de tous côtés, puis le
     // blanc par-dessus. L'ordre est ce qui détache le trait, et il n'est pas négociable.
