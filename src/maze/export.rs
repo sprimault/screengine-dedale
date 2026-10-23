@@ -22,6 +22,7 @@
 use screengine_play::{MAX_TEXEL_COORD, MAX_TEXTURE_SIZE, Vec3, lightmap_fault};
 
 use super::grid::{Grid, Shape, Side, Stair};
+use crate::rng::Rng;
 
 #[cfg(test)]
 mod tests;
@@ -173,11 +174,50 @@ const PRISM_PORTALS: u32 = 4;
 /// le laisserait noir.
 const DROP: f32 = 0.3;
 
-/// Le rayon d'une lampe de case.
+/// Le rayon le plus faible qu'une lampe de case puisse recevoir.
 ///
-/// De quoi couvrir sa cellule jusqu'aux coins et déborder sur ses voisines à un
-/// portail, qui sont tout ce qu'elle peut atteindre.
-const ROOM: f32 = 5.0;
+/// **Chaque case garde une lampe, et c'est l'ambiance qui l'impose** : retirer des lampes
+/// ne tamise pas, elle noircit. L'ensemble des occulteurs d'une cellule est elle-même et
+/// ses voisines à **un** portail, donc une cellule dont aucune voisine n'est éclairée est
+/// **entièrement** noire — sans dégradé pour l'annoncer. Essayé à une case sur trois puis
+/// sur deux : « c'est super noir », et il n'y avait pas de milieu à trouver.
+///
+/// **Ce qui tamise est la variation d'intensité, pas l'absence de source.** Le calcul du
+/// moteur part de zéro là où rien ne porte : il n'a pas de terme ambiant, et le contrat
+/// n'en expose aucun. Un décor dont chaque surface reçoit *quelque chose* se devine
+/// partout ; ce qui donne le relief est que ce quelque chose change d'une case à l'autre.
+///
+/// **Six, et c'est le coin de la case qui le décide, pas le sol.** La lampe pend à trente
+/// centimètres du plafond, donc elle est à 2,95 du sol sous elle — mais à **4,09** du coin
+/// de sa propre case. L'atténuation du moteur valant `(1 - d²/r²)²`, elle est **nulle au
+/// delà du rayon** : un rayon de trois et demi laissait donc les quatre coins à zéro, pas
+/// au sombre. Vu à l'écran, « on voit rien du tout », et c'était exact.
+///
+/// **Le calcul vaut mieux que l'essai, ici** : deux réglages tirés à vue ont échoué avant
+/// qu'il soit fait. Avec six, le coin reçoit trois dixièmes et le sol six — on devine la
+/// matière partout, ce qui est le bas du tamisé.
+const DIM: f32 = 6.0;
+
+/// Le plus fort.
+///
+/// **Dix** : le coin reçoit sept dixièmes et le sol huit. L'écart avec le faible est ce qui
+/// fait le modelé d'un couloir à l'autre, et il se juge en marchant.
+const BRIGHT: f32 = 10.0;
+
+/// Ce qui écarte le tirage des lampes de celui de la partie.
+///
+/// **Deux générateurs sur la même graine rendent la même suite**, et `game.rs` met en garde
+/// contre cette coïncidence : elle est sans conséquence ici — les deux tirages ne servent
+/// pas à la même chose — mais elle fait rouvrir la question à chaque relecture. Un écart
+/// constant suffit à la fermer.
+const LAMPS: u64 = 0x4C41_4D50_5345_4544;
+
+/// Combien de valeurs de rayon le tirage distingue.
+///
+/// **Huit paliers plutôt qu'un continu** : un rayon tiré au millième ne se verrait pas
+/// davantage, et des paliers se relisent — on sait en regardant une capture qu'une case est
+/// au deuxième cran et non à un chiffre quelconque.
+const STEPS_OF_LIGHT: u32 = 8;
 
 /// Celui d'une lampe de cage, qui a deux étages à remplir.
 const CAGE: f32 = 8.0;
@@ -466,11 +506,18 @@ fn flight_of(grid: &Grid, at: (u32, u32, u32)) -> Option<Stair> {
 fn lights(grid: &Grid) -> Vec<u8> {
     let (width, height, levels) = grid.extent();
     let mut out = Vec::new();
+    let mut rng = Rng::new(grid.seed() ^ LAMPS);
 
     for z in 0..levels {
         for y in 0..height {
             for x in 0..width {
                 let at = (x, y, z);
+                // **Le tirage vient avant tout `continue`, et c'est ce qui le rend
+                // stable** : consommé par chaque case sans exception, il ne dépend pas
+                // d'où les cages sont tombées. Tiré après, la suite changerait avec la
+                // topologie, et une graine ne rejouerait plus le même éclairage.
+                let step = rng.below(STEPS_OF_LIGHT) as f32 / (STEPS_OF_LIGHT - 1) as f32;
+
                 if under_flight(grid, at) {
                     continue;
                 }
@@ -480,10 +527,17 @@ fn lights(grid: &Grid) -> Vec<u8> {
                     (y as f32 + 0.5) * CELL,
                     floor_of(at.2) + if tall { LEVEL + CEILING } else { CEILING } - DROP,
                 ];
+                // **Une cage garde son rayon plein**, et `D9` l'impose : la lumière ne
+                // tourne pas deux coins, donc une cage mal éclairée serait sombre des deux
+                // étages qu'elle relie — et c'est par elle qu'on y monte. Le modelé se
+                // joue dans les cases, là où l'on marche.
                 light(
                     cell_id(grid, at),
                     spot,
-                    if tall { CAGE } else { ROOM },
+                    match tall {
+                        true => CAGE,
+                        false => DIM + (BRIGHT - DIM) * step,
+                    },
                     &mut out,
                 );
             }

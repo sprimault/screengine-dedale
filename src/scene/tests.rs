@@ -195,12 +195,22 @@ fn accord(scenery: &Scenery, poses: &[Camera]) {
         );
 
         let mut whole = context(budget);
-        // Le même brouillard que `submit`, sans quoi l'oracle ne compare plus deux
-        // traversées mais deux réglages d'image : l'écart serait alors maximal au
-        // loin, c'est-à-dire exactement là où la traversée élimine.
+        // **Les mêmes réglages d'image que `submit`, tous**, sans quoi l'oracle ne compare
+        // plus deux traversées mais deux réglages : avec le brouillard seul, l'écart serait
+        // maximal au loin — exactement là où la traversée élimine.
+        //
+        // **Et c'est une liste à tenir à jour**, ce qui a déjà coûté deux fois : chaque
+        // réglage ajouté à `submit` doit l'être ici le même jour, faute de quoi ces
+        // épreuves rougissent en annonçant une divergence de traversée qui n'existe pas.
         whole
             .set_fog(FOG, FOG_START, FOG_END)
             .expect("brouillard réglé");
+        whole
+            .set_overbright(OVERBRIGHT)
+            .expect("sur-éclairement réglé");
+        whole
+            .set_grade(GRADE.0, GRADE.1, GRADE.2)
+            .expect("courbe réglée");
         whole.set_camera(pose).expect("caméra posée");
         // **Les mêmes lightmaps que `submit`**, par la variante éclairée du décor entier :
         // comparer un décor cuit à un décor nu ferait diverger presque tous les pixels, et
@@ -267,23 +277,29 @@ fn tangages_incomplets(scenery: &Scenery) -> Vec<(f32, f32, Visibility)> {
     out
 }
 
-/// La cuisson assombrit le décor, et ne le laisse pas intact.
+/// La cuisson change l'image, et ne la laisse pas intacte.
 ///
 /// **Ce qu'elle garde est que le chemin éclairé est bien pris** : une lightmap absente, un
 /// atlas qui ne se construit pas, une soumission qui retombe sur le chemin nu — aucun de
-/// ces trois ne lève d'erreur, et le décor reste simplement clair. C'est arrivé : la
-/// cuisson livrée, l'écran ne montrait « pas d'éclairage », et seule la mesure a dit
-/// qu'elle agissait.
+/// ces trois ne lève d'erreur, et le décor reste simplement plat. C'est arrivé : la cuisson
+/// livrée, l'écran ne montrait « pas d'éclairage », et seule la mesure a dit qu'elle
+/// agissait.
 ///
-/// **Les chiffres de la pose de départ** : clarté moyenne 40 sur le chemin nu, 17 sur le
-/// chemin cuit, soit plus de la moitié en moins. Le seuil est pris large — un tiers — pour
-/// que l'épreuve survive au semis des lampes, qui changera ces valeurs.
+/// **Un écart et non un sens, et deux réglages ont appris pourquoi.** La première écriture
+/// exigeait un assombrissement — 40 de clarté nu contre 17 cuit — et le sur-éclairement l'a
+/// retournée : le décor cuit valait alors 46, donc plus clair. La seconde exigeait un
+/// écart-type qui monte, et la courbe de sortie l'a retournée aussi : la cuisson multiplie
+/// par au plus un, donc elle **comprime** la dynamique au lieu de l'étendre — 16,3 contre
+/// 26,2.
 ///
-/// **Ce qu'elle ne dit pas, et qu'aucune épreuve ne dira** : que l'éclairage se *voie*. Il
-/// est uniforme tant qu'une lampe occupe chaque case, donc il divise la luminosité sans
-/// créer de contraste — et un décor uniformément sombre ne se lit pas comme éclairé.
+/// **Ce qui est stable est qu'elle agit**, quel que soit le cran des réglages d'image. Une
+/// épreuve qui prescrit un sens prescrit un réglage, et c'est au réglage de bouger.
+///
+/// **Ce qu'elle ne dit pas, et qu'aucune épreuve ne dira** : que le résultat soit beau, ni
+/// qu'il soit assez clair pour qu'on devine les murs. Deux semis et deux calibrages ont été
+/// jugés « trop noirs » à l'écran en passant tous les deux cette épreuve.
 #[test]
-fn la_cuisson_assombrit_le_decor() {
+fn la_cuisson_change_l_image() {
     let scenery = Scenery::new(settings()).expect("labyrinthe et planches valides");
     let player = Player::spawn(&scenery.maze, &scenery.map);
     let camera = FreeCamera::new(player.eye()).camera();
@@ -293,6 +309,12 @@ fn la_cuisson_assombrit_le_decor() {
         context
             .set_fog(FOG, FOG_START, FOG_END)
             .expect("brouillard réglé");
+        context
+            .set_overbright(OVERBRIGHT)
+            .expect("sur-éclairement réglé");
+        context
+            .set_grade(GRADE.0, GRADE.1, GRADE.2)
+            .expect("courbe réglée");
         context.set_camera(camera).expect("caméra posée");
         context
             .submit_world_lit(
@@ -304,14 +326,18 @@ fn la_cuisson_assombrit_le_decor() {
             .expect("décor soumis");
 
         let pixels = frame(&mut context);
-        let sum: u64 = pixels.chunks(4).map(|p| u64::from(p[1])).sum();
-        sum / (pixels.len() / 4) as u64
+        let shades: Vec<f64> = pixels.chunks(4).map(|p| f64::from(p[1])).collect();
+        let mean = shades.iter().sum::<f64>() / shades.len() as f64;
+        let variance =
+            shades.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>() / shades.len() as f64;
+        variance.sqrt()
     };
 
     let (bare, baked) = (clarity(false), clarity(true));
     assert!(
-        baked * 3 < bare * 2,
-        "le décor cuit vaut {baked} de clarté contre {bare} nu : la cuisson n'agit pas"
+        (baked - bare).abs() > bare / 4.0,
+        "le décor cuit a {baked:.1} d'écart-type contre {bare:.1} nu : la cuisson ne change \
+         rien à l'image"
     );
 }
 
@@ -552,10 +578,16 @@ fn perte(scenery: &Scenery, tronques: &[(f32, f32, Visibility)]) -> Vec<(f32, f3
             .expect("scène soumise par la traversée");
 
         let mut whole = context(budget);
-        // Le même brouillard que `submit`, pour la raison dite plus haut.
+        // Les mêmes réglages d'image que `submit`, pour la raison dite plus haut.
         whole
             .set_fog(FOG, FOG_START, FOG_END)
             .expect("brouillard réglé");
+        whole
+            .set_overbright(OVERBRIGHT)
+            .expect("sur-éclairement réglé");
+        whole
+            .set_grade(GRADE.0, GRADE.1, GRADE.2)
+            .expect("courbe réglée");
         whole.set_camera(camera).expect("caméra posée");
         whole
             .submit_world_lit(
@@ -666,12 +698,16 @@ fn hors_cellule_l_image_entiere_vaut_le_fond() {
     );
 
     let pixels = frame(&mut context);
-    let stray = pixels
-        .chunks_exact(4)
-        .position(|pixel| pixel[..3] != BACKGROUND);
+    // **Le fond se mesure sur le premier pixel, il ne se recopie pas de `BACKGROUND`.** La
+    // courbe de sortie s'applique à toute l'image, fond compris, donc la teinte observée
+    // n'est plus celle du brouillard qu'on a réglée — et un oracle écrit sur la constante
+    // rougirait à chaque retouche de gamma, de gain ou de décalage. Ce qui s'éprouve ici est
+    // l'**uniformité** : hors cellule, tous les pixels portent la même chose.
+    let fond = &pixels[..3];
+    let stray = pixels.chunks_exact(4).position(|pixel| &pixel[..3] != fond);
 
     assert_eq!(
         stray, None,
-        "un pixel du fond ne porte pas la couleur du brouillard {FOG:?}"
+        "hors cellule, l'image n'est pas d'un seul ton : {fond:?} puis autre chose"
     );
 }
