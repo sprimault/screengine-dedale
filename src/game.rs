@@ -17,9 +17,10 @@
 //! La partie **lit** le monde, en revanche, et c'est normal : suivre sa cellule
 //! demande d'interroger la carte.
 
-use screengine_play::{Affine3, Error, FreeCamera, KeyCode, MouseButton, Tick, Vec3, World};
+use screengine_play::{Error, FreeCamera, KeyCode, MouseButton, Tick, Vec3, World};
 
 use crate::body;
+use crate::hud::reticle;
 use crate::mark::Marks;
 use crate::maze::export;
 use crate::maze::grid::Grid;
@@ -346,12 +347,19 @@ impl Game {
     /// est du **monde**, rechargeable à chaud avec lui, et un champ de plus ici la
     /// ferait survivre à un décor remplacé. Les créatures s'en servent comme du graphe
     /// que la carte du moteur ne porte pas.
+    ///
+    /// **La résolution vient de la boucle, et c'est le tir qui l'exige** : il part de la
+    /// direction que désigne le pixel du réticule, qui dépend des cotes de l'image. Celle
+    /// qu'on passe est l'image **à venir** — la boucle vient de la choisir sur la
+    /// fenêtre, et c'est elle que le réticule recevra. Un champ la garderait un pas de
+    /// retard derrière la fenêtre qu'on vient de redimensionner.
     pub fn step(
         &mut self,
         tick: &mut Tick<'_>,
         grid: &Grid,
         map: &World,
         run: &mut Run,
+        resolution: (u32, u32),
     ) -> Option<Outcome> {
         // La vue ne suit la souris que le curseur pris, et il ne l'est pas à
         // l'ouverture : une fenêtre qui s'en emparerait laisserait chercher
@@ -436,9 +444,14 @@ impl Game {
         // avant, il serait parti de l'orientation de l'image précédente, soit un
         // cran derrière ce que la souris vient de faire. Il part donc de la pose que
         // l'image à venir montrera.
+        // **Le rayon se prend avant de savoir si l'on tire**, et c'est ce qui garde le
+        // corps du tir d'un seul tenant : il part du pixel du réticule, donc d'un appel
+        // qui peut se refuser, et le refus n'a rien à faire au milieu du dessin d'une
+        // marque. Il coûte une projection par pas, là où le tir en coûtait une par coup.
+        let ahead = self.ahead(resolution)?;
+
         fired.then(|| {
             self.weapon.shoot();
-            let ahead = self.ahead();
             let (volumes, targets) = self.volumes();
             let outcome = shot::resolve(
                 map,
@@ -551,14 +564,20 @@ impl Game {
     /// regarde, et `walk` ne prend que le lacet parce qu'avancer en regardant le
     /// plafond doit avancer et non monter.
     ///
-    /// Le repère du projet : la caméra neutre regarde le `+X`. La même composition
-    /// vit dans la soumission de l'arme, qui a besoin en plus de sa droite et de son
-    /// haut ; à une troisième occurrence elle sera à extraire, et ce qui l'imposera
-    /// est qu'elles doivent s'accorder — l'arme est posée le long de la direction où
-    /// le rayon part.
-    fn ahead(&self) -> Vec3 {
-        Affine3::from_rotation_translation(self.camera.camera().orientation, Vec3::ZERO)
-            .transform_vector(Vec3::new(1.0, 0.0, 0.0))
+    /// **Elle vient du pixel que le réticule marque, et non de l'axe de la caméra.** Les
+    /// deux ne sont pas le même : à largeur paire il n'existe pas de pixel central, donc
+    /// le pixel visé est à un demi-pixel du centre géométrique de l'image. Partir de
+    /// l'axe demandait en outre de recomposer ici le repère du moteur — la caméra neutre
+    /// regarde le `+X` —, soit de recopier une convention qui ne nous appartient pas.
+    /// Désormais le rayon part de ce que le réticule désigne, par construction.
+    ///
+    /// **Rien ne tire sur une image sans pixel** : le seul refus que le moteur oppose à
+    /// cet appel est une cote nulle, et une résolution nulle n'a ni réticule ni rendu.
+    /// Le pixel, lui, est toujours dans l'image, étant un quotient par deux.
+    fn ahead(&self, resolution: (u32, u32)) -> Option<Vec3> {
+        let (width, height) = resolution;
+        let (x, y) = reticle::pixel(width, height);
+        self.camera.camera().pixel_ray(width, height, x, y).ok()
     }
 
     /// Le pas que les touches demandent, en direction seule.

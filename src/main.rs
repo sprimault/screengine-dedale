@@ -243,6 +243,7 @@ fn main() -> Result<(), Error> {
                 &session.scenery.maze,
                 &session.scenery.map,
                 &mut session.run,
+                session.wanted,
             );
             session.pace.stepped(started.elapsed());
 

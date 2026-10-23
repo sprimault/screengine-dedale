@@ -32,6 +32,26 @@ fn drawn(width: u32, height: u32) -> Canvas {
     canvas
 }
 
+/// Le pixel visé tombe toujours dans l'image, quelles qu'en soient les cotes.
+///
+/// **C'est ce qui rend le refus du moteur inatteignable**, et donc ce qui justifie que le
+/// tir se contente d'ignorer son erreur : `pixel_ray` rend un refus sur une abscisse ou
+/// une ordonnée hors de l'image, et un quotient par deux n'en produit jamais. Le seul
+/// refus qui reste est la cote nulle, qui n'a ni réticule ni rendu.
+///
+/// **Les bornes plutôt qu'un corpus de tailles courantes** : un et deux départagent la
+/// division entière, et le maximum dit qu'aucune somme intermédiaire ne déborde.
+#[test]
+fn le_pixel_vise_tombe_dans_l_image() {
+    for (width, height) in [(1, 1), (2, 2), (3, 7), (320, 180), (u32::MAX, u32::MAX)] {
+        let (x, y) = pixel(width, height);
+        assert!(
+            x < width && y < height,
+            "sur une image de {width}×{height}, le pixel visé est en ({x}, {y}), qui en sort"
+        );
+    }
+}
+
 /// Le centre reste vide, et les quatre bras l'entourent.
 ///
 /// **Le vide est la propriété qui compte** : ce qu'on vise fait quelques pixels, et un
@@ -72,6 +92,12 @@ fn le_centre_reste_vide_entre_quatre_bras() {
 /// premier changement de résolution, sans que rien ne le dise. Deux tampons de
 /// proportions différentes l'attrapent, là où un seul laisserait passer n'importe
 /// quelle constante qui tombe juste.
+///
+/// **Le centre attendu se recalcule ici, et il ne doit pas venir de [`pixel`]** : mesuré
+/// en décalant celui-ci d'un pixel, les épreuves qui en tiraient leur oracle sont restées
+/// vertes — le dessin et l'attendu bougeaient ensemble. Ce qui tient l'accord entre le
+/// réticule et le tir est le site unique dans le code ; ce qui tient le pixel lui-même
+/// est un oracle qui ne le partage pas.
 #[test]
 fn le_centre_vient_du_tampon() {
     for (width, height) in [(64, 48), (128, 72), (40, 200)] {
