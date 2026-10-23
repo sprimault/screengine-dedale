@@ -14,6 +14,37 @@ cela s'adresse à quelqu'un.
 
 ## [Non publié]
 
+### Ajouté
+- **Les créatures parcourent le labyrinthe** : elles patrouillent sur leur étage, et
+  viennent droit sur le joueur dès qu'elles le voient à découvert.
+- **Le brouillard ferme la vue**, de sorte qu'on juge enfin la distance d'un couloir.
+- **On avance tout seul** au bouton du milieu ou à `Tab`, ce qui rend le doigt qu'il
+  fallait tenir.
+
+### Modifié
+- **Les trois silhouettes n'encaissent plus pareil** : la plus massive demande plus de
+  coups que les autres.
+- **L'image et l'interface suivent la taille de la fenêtre**, au lieu de garder le grain
+  et les cotes de l'ouverture.
+- **Les créatures et les objets posés naissent partout dans le labyrinthe**, et loin du
+  départ.
+
+***
+
+### Added
+- **Creatures roam the maze**: they patrol their own floor, and come straight at the
+  player as soon as they see them in the open.
+- **Fog closes the view**, so that a corridor's depth can finally be judged.
+- **You walk on your own** with the middle button or `Tab`, giving back the finger you
+  had to hold down.
+
+### Changed
+- **The three silhouettes no longer take the same number of shots**: the bulkiest needs
+  more than the others.
+- **The picture and the interface follow the window's size**, instead of keeping the
+  grain and dimensions of the opening.
+- **Creatures and placed objects appear throughout the maze**, and far from the start.
+
 ## [0.5.1] — 2026-10-11 — Le rendu plus vif, et l'icône à la fenêtre
 
 ### Modifié
