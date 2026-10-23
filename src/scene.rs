@@ -28,18 +28,24 @@ mod tests;
 
 /// La planche des murs.
 ///
-/// **Provisoire, comme celle du sol.** Les deux servent à voir le décor, pas à
-/// l'habiller : un labyrinthe que des démons parcourent demande plus sombre que
-/// de la pierre propre. L'habillage se choisit à l'étape 8, avec le reste de
-/// l'ambiance, et `assets/textures/` porte déjà deux variantes moussues.
-const WALL: &[u8] = include_bytes!("../assets/textures/mur-42.png");
+/// **La variante moussue et non la pierre propre, et c'est le brouillard qui l'a
+/// décidé** : mesurées, les deux planches claires valaient 115 et 148 de clarté
+/// moyenne sur 255, là où les moussues valent 34 et 53. Une teinte presque noire
+/// doit éteindre beaucoup pour se voir sur un décor clair, donc elle salit le
+/// proche avant de creuser le lointain ; contre un décor sombre, la même courbe
+/// se lit sans forcer.
+///
+/// **Les deux planches claires restent dans `assets/`**, et ce n'est pas un oubli :
+/// l'étape 15 attache un jeu de textures au rang d'un labyrinthe dans la descente,
+/// et une pierre propre y aura sa place comme thème.
+const WALL: &[u8] = include_bytes!("../assets/textures/mur-mousse.png");
 
-/// Celle du sol, du plafond et des marches, provisoire pour la même raison.
+/// Celle du sol, du plafond et des marches, moussue pour la même raison.
 ///
 /// **Les marches la prennent faute d'une planche à elles** : un escalier est
 /// d'une seule matière, et c'est celle qu'on foule. Un matériau `stair` se
-/// justifiera à l'étape 8, quand il y aura une image à lui donner.
-const FLOOR: &[u8] = include_bytes!("../assets/textures/sol-pave.png");
+/// justifiera quand il y aura une image à lui donner.
+const FLOOR: &[u8] = include_bytes!("../assets/textures/sol-pave-mousse.png");
 
 /// La teinte du brouillard, vers laquelle tout s'éteint avec la distance.
 ///
@@ -50,6 +56,14 @@ const FLOOR: &[u8] = include_bytes!("../assets/textures/sol-pave.png");
 /// regardant si le lointain est fermé ou simplement vide.
 ///
 /// Elle se juge à l'écran, comme toute cote d'ambiance.
+///
+/// **Les trois cotes du brouillard attendent l'éclairage cuit, et ne se règlent pas
+/// avant.** Elles ont d'abord été prises contre des planches claires, puis revues contre
+/// les moussues — trois fois plus sombres —, et le décor reste pourtant clair : rien n'est
+/// cuit, donc aucune cote ici ne se juge contre ce que le jeu montrera. C'est la raison de
+/// l'ordre suivi : les planches d'abord, parce qu'une lightmap cuite sur des planches
+/// claires serait à recuire ; le brouillard en dernier, quand il a enfin le décor contre
+/// lequel il a été pensé.
 pub const FOG: Color = Color::new(0x0A, 0x0C, 0x14, 0xFF);
 
 /// Où le brouillard commence à mordre, en unités de monde depuis l'œil.
