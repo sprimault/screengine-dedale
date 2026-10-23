@@ -14,73 +14,49 @@ cela s'adresse à quelqu'un.
 
 ## [Non publié]
 
+## [0.6.0] — 2026-10-23 — Les ramassages
+
 ### Ajouté
-- **Des tubes fatigués tremblent au plafond** : ils tiennent, lâchent deux ou trois fois de
-  suite, se rétablissent — et aucun ne lâche au même moment que son voisin.
-- **Les munitions se comptent** : vingt-quatre au départ, une par coup, et l'arme ne tire
-  plus à vide. Le compte se lit dans un carré posé à côté de la jauge.
-- **Des boîtes de munitions et des fioles de soin sont posées dans le labyrinthe**, douze
-  et huit, dispersées sur les deux étages.
-- **On les ramasse en marchant dessus** : une boîte rend huit munitions, une fiole va dans
-  le sac. Un sac plein laisse l'objet au sol.
-- **Le sac se lit en bas de l'écran**, un casier par sorte à côté de la jauge. Une fiole se
-  boit à la touche `F`, que son casier rappelle, et rend un quart de la vie.
-- **Les créatures parcourent le labyrinthe** : elles patrouillent sur leur étage, et
-  viennent droit sur le joueur dès qu'elles le voient à découvert.
-- **Le brouillard ferme la vue**, de sorte qu'on juge enfin la distance d'un couloir.
+- **On ramasse des munitions et des fioles**, rangées dans un sac qui se lit en bas de
+  l'écran ; une fiole se boit à la touche `F`. L'arme ne tire plus à vide.
+- **Le labyrinthe a une ambiance** : un éclairage cuit en flaques de lumière, un décor
+  sombre, des tubes fatigués qui tremblent au plafond, un brouillard qui ferme la vue.
+- **Les créatures mènent leur vie** : elles patrouillent sur leur étage, et viennent droit
+  sur le joueur dès qu'elles le voient à découvert.
 - **On avance tout seul** au bouton du milieu ou à `Tab`, ce qui rend le doigt qu'il
   fallait tenir.
 
-### Corrigé
-- **Une créature s'arrête devant le joueur au lieu d'entrer dans lui.** Collée, elle mordait
-  en boucle sans qu'on puisse la viser : on ne la voyait plus.
-
 ### Modifié
-- **Le décor reçoit l'éclairage de ses lampes**, cuit au chargement, et chaque case est
-  éclairée différemment : des flaques de lumière, des couloirs qu'on devine à peine.
-- **Les murs et les sols sont trois fois plus sombres**, ce qui laisse enfin le brouillard
-  creuser le lointain au lieu de salir ce qu'on a sous les yeux.
-- **Les trois silhouettes n'encaissent plus pareil** : la plus massive demande plus de
-  coups que les autres.
 - **L'image et l'interface suivent la taille de la fenêtre**, au lieu de garder le grain
   et les cotes de l'ouverture.
-- **Les créatures et les objets posés naissent partout dans le labyrinthe**, et loin du
-  départ.
+- **Les trois silhouettes n'encaissent plus pareil** : la plus massive demande plus de
+  coups que les autres.
+
+### Corrigé
+- **Une créature s'arrête devant le joueur au lieu de le traverser**, où elle devenait
+  invisible et mordait en boucle.
 
 ***
 
 ### Added
-- **Worn-out tubes flicker overhead**: they hold, drop out two or three times in a row,
-  then recover — and no two give way at the same moment.
-- **Ammunition is counted**: twenty-four to start, one per shot, and the weapon no longer
-  fires when empty. The count reads in a square set beside the gauge.
-- **Ammunition boxes and healing vials are placed in the maze**, twelve and eight,
-  scattered across both floors.
-- **You pick them up by walking over them**: a box gives eight rounds, a vial goes into the
-  pouch. A full pouch leaves the item on the ground.
-- **The pouch reads at the bottom of the screen**, one slot per sort beside the gauge. A
-  vial is drunk with the `F` key, which its slot recalls, and restores a quarter of your
-  health.
-- **Creatures roam the maze**: they patrol their own floor, and come straight at the
+- **You pick up ammunition and vials**, kept in a pouch that reads at the bottom of the
+  screen; a vial is drunk with the `F` key. The weapon no longer fires when empty.
+- **The maze has a mood**: baked lighting in pools of light, dark scenery, worn-out tubes
+  flickering overhead, and fog that closes the view.
+- **Creatures lead their own lives**: they patrol their floor, and come straight at the
   player as soon as they see them in the open.
-- **Fog closes the view**, so that a corridor's depth can finally be judged.
-- **You walk on your own** with the middle button or `Tab`, giving back the finger you
-  had to hold down.
-
-### Fixed
-- **A creature now stops in front of the player instead of walking into them.** Stuck to
-  you, it bit over and over with no way to aim at it: you could no longer see it.
+- **You walk on your own** with the middle button or `Tab`, giving back the finger you had
+  to hold down.
 
 ### Changed
-- **The scenery takes the light of its lamps**, baked on load, and each cell is lit
-  differently: pools of light, and corridors you can barely make out.
-- **Walls and floors are three times darker**, which finally lets the fog carve out the
-  distance instead of muddying what is right in front of you.
+- **The picture and the interface follow the window's size**, instead of keeping the grain
+  and dimensions of the opening.
 - **The three silhouettes no longer take the same number of shots**: the bulkiest needs
   more than the others.
-- **The picture and the interface follow the window's size**, instead of keeping the
-  grain and dimensions of the opening.
-- **Creatures and placed objects appear throughout the maze**, and far from the start.
+
+### Fixed
+- **A creature stops in front of the player instead of walking through them**, where it
+  turned invisible and bit over and over.
 
 ## [0.5.1] — 2026-10-11 — Le rendu plus vif, et l'icône à la fenêtre
 
