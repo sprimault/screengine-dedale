@@ -124,7 +124,7 @@ fn base(canvas: &Canvas, area: &Area, colour: [u8; 4]) -> Option<Side> {
 /// zone ne situe plus rien. Une case ordinaire rend un carré du côté de la case,
 /// moins ses deux bords.
 fn here(grid: &Grid, cell: (u32, u32, u32)) -> Option<Area> {
-    let canvas = draw(|output| plot(output, grid, export::cover(grid, cell)));
+    let canvas = draw(|output| plot(output, grid, export::cover(grid, cell), &[]));
     let area = bounds(&canvas, HERE, 0, canvas.width() - 1)?;
     let side = CELL - 4;
     (area.width() == side && area.height() == side).then_some(area)
@@ -180,7 +180,7 @@ fn les_deux_bouts_d_une_rampe_s_opposent() {
     let colour = LINKS[rank % LINKS.len()];
 
     // Aucune case ne porte la marque « ici », qui recouvrirait un triangle.
-    let canvas = draw(|output| plot(output, &grid, u32::MAX));
+    let canvas = draw(|output| plot(output, &grid, u32::MAX, &[]));
     let whole = bounds(&canvas, colour, 0, canvas.width() - 1).expect("la volée est marquée");
 
     // Les deux cases d'une cage ont le même rang dans leurs étages, donc leurs

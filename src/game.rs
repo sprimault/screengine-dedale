@@ -25,6 +25,7 @@ use crate::mark::Marks;
 use crate::maze::export;
 use crate::maze::grid::Grid;
 use crate::monster::{self, Monster};
+use crate::pickup::{self, Pickups};
 use crate::player::{self, Player};
 use crate::probe::Aim;
 use crate::rng::Rng;
@@ -308,6 +309,12 @@ pub struct Game {
     /// n'a qu'à les faire marcher et à les soumettre. Une poursuite viendra plus tard
     /// sans que ce champ bouge.
     monsters: Vec<Monster>,
+    /// Les munitions et les fioles posées dans le labyrinthe.
+    ///
+    /// **De la traversée et non de la course**, à l'inverse du compte de munitions : une
+    /// carte rechargée rend tous ses objets, là où ce qui a été pris reste acquis. C'est
+    /// la même frontière que pour les créatures.
+    pickups: Pickups,
     /// Le temps avant qu'une morsure puisse à nouveau porter, en secondes.
     ///
     /// **Un seul décompte sert deux choses** : il espace les morsures, et il est
@@ -360,18 +367,28 @@ impl Game {
     pub fn new(grid: &Grid, map: &World) -> Result<Self, Error> {
         let player = Player::spawn(grid, map);
         let camera = FreeCamera::new(player.eye());
-        // **Un seul semis pour tout ce qui se pose**, demandé en une fois et découpé
-        // ici : deux tirages indépendants éliraient tôt ou tard la même case, et les
-        // ramassages viendront prendre la tranche qui suit celle des créatures.
+        // **Un semis par famille, et non une tranche d'un semis commun** — ce que ce
+        // commentaire annonçait avant que les ramassages existent. La raison est dans
+        // `spots` : il répartit ses cases **par étage**, donc ses rangs sortent groupés
+        // par niveau, et une tranche contiguë aurait posé les créatures en bas et les
+        // objets en haut. Ce n'est pas une intention, c'est un effet de bord du découpage.
+        //
+        // **Ce que deux tirages laissent passer est une case qui porte les deux**, et
+        // c'est sans conséquence : une créature traverse les ramassages (`D32`), elle
+        // patrouille donc s'en va, et un objet posé à vingt-cinq centimètres du sol ne
+        // recouvre pas une silhouette haute. Deux objets sur la même case, eux, restent
+        // impossibles — ils viennent du même tirage.
         //
         // **Et un seul générateur, qui est le seul endroit à connaître la graine** :
         // le semis tire ses cases, la population ses caps et ses résistances, et deux
         // générateurs posés sur la même graine rendraient deux fois la même suite.
         let mut rng = Rng::new(grid.seed());
         let spots = scatter::spots(grid, monster::POPULATION, &mut rng);
+        let posed = scatter::spots(grid, pickup::SPOTS, &mut rng);
         Ok(Self {
             weapon: Weapon::new(camera.yaw)?,
             monsters: monster::population(&spots, &mut rng, grid, map)?,
+            pickups: Pickups::scatter(&posed, grid, map)?,
             marks: Marks::new(),
             respite: 0.0,
             cruise: false,
@@ -693,6 +710,11 @@ impl Game {
     /// Les créatures, que le rendu soumet entre le décor et l'arme.
     pub fn monsters(&self) -> &[Monster] {
         &self.monsters
+    }
+
+    /// Les objets posés, que le rendu soumet avec les créatures.
+    pub fn pickups(&self) -> &Pickups {
+        &self.pickups
     }
 
     /// Les marques d'impact, que le rendu soumet juste après le décor.
