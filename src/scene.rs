@@ -48,6 +48,40 @@ const WALL: &[u8] = include_bytes!("../assets/textures/mur-mousse.png");
 /// justifiera quand il y aura une image à lui donner.
 const FLOOR: &[u8] = include_bytes!("../assets/textures/sol-pave-mousse.png");
 
+/// De combien le sur-éclairement multiplie ce qu'une lightmap et une texture donnent.
+///
+/// **Zéro, et c'est l'inverse de ce qu'on croit devoir faire sur un décor sombre.** Essayé
+/// à un pour remonter un décor jugé trop noir : c'est la faute que l'exemple d'éclairage du
+/// moteur nomme et explique — « à un, le sur-éclairement double une lightmap qui atteint
+/// déjà l'unité sous une trouée : le couloir se lave, la mousse vire au vert vif et les
+/// flaques d'ombre disparaissent ».
+///
+/// **Ce qui fait le registre est le contraste entre les flaques et le noir, jamais la
+/// quantité de lumière.** Ce qui manquait n'était donc pas de la lumière mais un **plancher
+/// de noir**, et il se pose par la courbe de sortie — voir [`GRADE`].
+const OVERBRIGHT: u32 = 0;
+
+/// La courbe de sortie : son gamma, ses trois gains, ses trois décalages.
+///
+/// **Les décalages relèvent le noir, et c'est la pièce qui manquait.** Le calcul de
+/// lightmaps du moteur part de zéro là où rien ne porte — il n'a pas de terme ambiant, et
+/// le contrat n'en expose aucun —, donc une surface hors de portée d'une lampe est
+/// **exactement** noire. Deux centièmes ajoutés à la sortie suffisent à ce qu'on devine
+/// encore les murs hors des flaques, sans laver quoi que ce soit.
+///
+/// **Le gamma assombrit au lieu d'éclaircir**, sous un : il creuse les demi-teintes et
+/// laisse les flaques, ce qui est le registre visé. Monter le gamma remonterait le décor
+/// entier, flaques comprises, et rendrait la scène plate — le défaut qu'on vient de fuir.
+///
+/// **Les gains refroidissent d'un souffle**, le bleu au-dessus du rouge : c'est ce que
+/// `ROADMAP.md` appelle des sources rares et froides, et ce qui distingue un souterrain
+/// d'une cave éclairée à la bougie.
+///
+/// **Reprise de l'exemple d'éclairage du moteur**, qui vise le même registre sur un décor
+/// aussi sombre. Les sept valeurs se jugent à l'écran, ensemble : elles composent une seule
+/// table par canal, et bouger le gamma seul déplace ce que les gains voulaient dire.
+const GRADE: (f32, [f32; 3], [f32; 3]) = (0.92, [0.92, 0.98, 1.06], [0.012, 0.014, 0.022]);
+
 /// La teinte du brouillard, vers laquelle tout s'éteint avec la distance.
 ///
 /// **Presque noire, et bleutée d'un rien** : le registre du jeu est celui d'un
@@ -196,6 +230,8 @@ pub fn submit(
     // fois obligerait à savoir laquelle est la première — ce que cette fonction, qui ne
     // garde rien, ne peut pas savoir. L'appel est une écriture de quatre champs.
     context.set_fog(FOG, FOG_START, FOG_END)?;
+    context.set_overbright(OVERBRIGHT)?;
+    context.set_grade(GRADE.0, GRADE.1, GRADE.2)?;
     context.set_camera(view.camera)?;
     context.submit_world_visible(
         Affine3::IDENTITY,

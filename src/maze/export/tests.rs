@@ -299,7 +299,8 @@ fn les_etages_ne_se_rejoignent_que_par_une_cage() {
     }
 }
 
-/// Chaque cellule de décor a sa lampe, et aucune lampe n'est dans le solide.
+/// Chaque lampe éclaire une cellule de décor, toute cage a la sienne, et aucune
+/// n'est dans le solide.
 ///
 /// **La localisation est ce qui compte ici.** Une lampe n'a pas de cellule — la
 /// sélection est géométrique —, donc le chargement ne dira jamais qu'elle est
@@ -309,8 +310,18 @@ fn les_etages_ne_se_rejoignent_que_par_une_cage() {
 ///
 /// Chaque lampe porte l'identifiant de la cellule qu'elle éclaire, ce qui rend la
 /// correspondance vérifiable sans rien supposer de l'ordre d'écriture.
+///
+/// **Chaque cellule garde sa lampe, et c'est ce que le tamisé exige** : le calcul du moteur
+/// part de zéro là où rien ne porte, donc une cellule sans source est **entièrement** noire
+/// — essayé à une case sur trois puis sur deux, et jugé « super noir » les deux fois. Ce
+/// qui fait l'ambiance est ailleurs.
+///
+/// **Ce qui s'éprouve est donc la variation des rayons** : un éclairage uniforme divise la
+/// luminosité sans créer de relief, et c'est exactement ce qu'une lampe identique partout
+/// donnait. Des rayons tous égaux feraient rougir cette épreuve, et c'est le seul moyen de
+/// voir ce défaut autrement qu'à l'écran.
 #[test]
-fn chaque_cellule_de_decor_a_sa_lampe() {
+fn chaque_lampe_eclaire_une_cellule_de_decor() {
     let grid = grid();
     let map = World::load(&world(&grid)).expect("carte engendrée valide");
 
@@ -319,6 +330,21 @@ fn chaque_cellule_de_decor_a_sa_lampe() {
         .filter(|at| cover(&grid, *at) == cell_id(&grid, *at))
         .collect();
     assert_eq!(map.light_count(), lit.len() as u32);
+
+    let radii: Vec<f32> = (0..map.light_count())
+        .map(|index| map.light(index).expect("une lampe annoncée existe").radius)
+        .collect();
+    let faintest = radii.iter().copied().fold(f32::MAX, f32::min);
+    let strongest = radii.iter().copied().fold(0.0, f32::max);
+    assert!(
+        strongest > faintest,
+        "les {} lampes ont toutes le rayon {faintest} : l'éclairage est uniforme",
+        radii.len()
+    );
+    assert!(
+        faintest >= DIM,
+        "une lampe de rayon {faintest} descend sous le palier le plus faible"
+    );
 
     // L'identifiant d'une lampe est celui de la cellule qu'elle éclaire, donc le
     // rang suffit à la désigner sans que l'ordre d'écriture ait à être tenu.
