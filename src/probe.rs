@@ -202,10 +202,12 @@ pub enum Part {
     Monsters,
     /// Les marques d'impact posées sur le décor.
     Marks,
+    /// Les objets posés dans le labyrinthe.
+    Pickups,
 }
 
 /// Combien de parties [`Part`] nomme, donc la taille du relevé qui les suit.
-const PARTS: usize = 3;
+const PARTS: usize = 4;
 
 impl Part {
     /// Comment la ligne du relevé la nomme.
@@ -214,6 +216,7 @@ impl Part {
             Self::Weapon => "l'arme",
             Self::Monsters => "les créatures",
             Self::Marks => "les marques",
+            Self::Pickups => "les ramassages",
         }
     }
 }

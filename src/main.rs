@@ -17,6 +17,7 @@ mod mark;
 mod maze;
 mod monster;
 mod pace;
+mod pickup;
 mod player;
 mod probe;
 mod resolution;
@@ -355,6 +356,14 @@ fn main() -> Result<(), Error> {
                 .probe
                 .refusal(probe::Part::Monsters, seen.is_err(), &session.game.aim());
 
+            // Les objets posés avec les créatures et non avant : ce sont des sprites, et
+            // leur ordre entre eux ne décide de rien — le z-buffer tranche, la
+            // transparence du moteur étant binaire.
+            let posed = pickup::submit(context, session.game.pickups());
+            session
+                .probe
+                .refusal(probe::Part::Pickups, posed.is_err(), &session.game.aim());
+
             let hand = weapon::submit(context, session.game.weapon(), &view.camera);
             session
                 .probe
@@ -405,7 +414,12 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
     // Le réticule après le plan, et il ne le croise pas : l'un est au coin, l'autre au
     // centre. L'ordre ne tient donc qu'à ce que le réticule soit le dernier mot de
     // l'image, comme ce qu'on regarde en tirant.
-    plot(output, &session.scenery.maze, aim.cell);
+    plot(
+        output,
+        &session.scenery.maze,
+        aim.cell,
+        session.game.pickups().items(),
+    );
     hud::gauge::draw(output, session.run.share());
     hud::ammo::draw(output, &session.glyphs, session.run.ammo());
     hud::score::draw(output, &session.glyphs, session.run.score());
@@ -481,7 +495,7 @@ fn epitaph(output: &mut Output<'_>, glyphs: &Glyphs) {
 /// **Il ne prend que la grille et la cellule où l'on est**, là où il vivait dans le
 /// rappel : un plan se juge sur ses pixels, et `Output::new` les donne sans fenêtre.
 /// Le repère inversé des rampes a tenu une version faute de ce découpage.
-fn plot(output: &mut Output<'_>, maze: &Grid, here: u32) {
+fn plot(output: &mut Output<'_>, maze: &Grid, here: u32, posed: &[pickup::Pickup]) {
     let (width, height, levels) = maze.extent();
     let unit = hud::scale(output.height());
     let (side, inset, gap) = (CELL * unit, INSET * unit, GAP * unit);
@@ -523,6 +537,27 @@ fn plot(output: &mut Output<'_>, maze: &Grid, here: u32) {
                 mark(output, maze, cell, here, left, top);
             }
         }
+    }
+
+    // **Les objets posés en dernier, et au coin de leur case** : le centre est pris par
+    // la position du joueur et par les anneaux d'entrée et de sortie, donc un point
+    // centré se serait recouvert avec eux. Au coin, les deux se lisent ensemble.
+    //
+    // **Sans cette passe, rien ne dit où ils sont** : dix objets sur cinq cent douze
+    // cases se cherchent une traversée entière sans qu'on sache s'ils manquent ou si on
+    // les a manqués. C'est précisément ce qui est arrivé, et c'est ce qu'un plan de
+    // contrôle existe pour trancher.
+    for item in posed {
+        let (x, y, level) = item.spot;
+        let origin = inset + (levels - 1 - level) * (width * side + gap);
+        let top = inset + (height - 1 - y) * side;
+        let left = origin + x * side;
+
+        let colour = match item.kind {
+            pickup::Kind::Box => BOXES,
+            pickup::Kind::Vial => VIALS,
+        };
+        block(output, left + unit, top + unit, 2 * unit, 2 * unit, colour);
     }
 }
 
@@ -662,6 +697,20 @@ const START: [u8; 4] = [0x40, 0xC0, 0x60, 0xFF];
 
 /// Celle de la case de sortie.
 const EXIT: [u8; 4] = [0xC8, 0x50, 0x40, 0xFF];
+
+/// Une boîte de munitions sur le plan.
+///
+/// **Jaune, parce que les trois teintes déjà posées prennent le vert, le rouge et le
+/// blanc** : l'entrée, la sortie et la position. Une quatrième famille a besoin d'une
+/// teinte qu'aucune des trois ne rappelle, sans quoi on lit une sortie là où il y a une
+/// boîte.
+const BOXES: [u8; 4] = [0xE0, 0xC0, 0x30, 0xFF];
+
+/// Une fiole de soin sur le plan.
+///
+/// Cyan : c'est la seule des six teintes du plan à ne rien partager avec les autres, et
+/// deux sortes de ramassage doivent se distinguer entre elles autant que du décor.
+const VIALS: [u8; 4] = [0x40, 0xC0, 0xD0, 0xFF];
 
 /// Les teintes des passages d'étage, prises à tour de rôle.
 ///
