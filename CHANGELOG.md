@@ -15,6 +15,8 @@ cela s'adresse à quelqu'un.
 ## [Non publié]
 
 ### Ajouté
+- **Des tubes fatigués tremblent au plafond** : ils tiennent, lâchent deux ou trois fois de
+  suite, se rétablissent — et aucun ne lâche au même moment que son voisin.
 - **Les munitions se comptent** : vingt-quatre au départ, une par coup, et l'arme ne tire
   plus à vide. Le compte se lit dans un carré posé à côté de la jauge.
 - **Des boîtes de munitions et des fioles de soin sont posées dans le labyrinthe**, douze
@@ -44,6 +46,8 @@ cela s'adresse à quelqu'un.
 ***
 
 ### Added
+- **Worn-out tubes flicker overhead**: they hold, drop out two or three times in a row,
+  then recover — and no two give way at the same moment.
 - **Ammunition is counted**: twenty-four to start, one per shot, and the weapon no longer
   fires when empty. The count reads in a square set beside the gauge.
 - **Ammunition boxes and healing vials are placed in the maze**, twelve and eight,

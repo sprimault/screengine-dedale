@@ -195,23 +195,15 @@ fn accord(scenery: &Scenery, poses: &[Camera]) {
         );
 
         let mut whole = context(budget);
-        // **Les mêmes réglages d'image que `submit`, tous**, sans quoi l'oracle ne compare
-        // plus deux traversées mais deux réglages : avec le brouillard seul, l'écart serait
-        // maximal au loin — exactement là où la traversée élimine.
-        //
-        // **Et c'est une liste à tenir à jour**, ce qui a déjà coûté deux fois : chaque
-        // réglage ajouté à `submit` doit l'être ici le même jour, faute de quoi ces
-        // épreuves rougissent en annonçant une divergence de traversée qui n'existe pas.
-        whole
-            .set_fog(FOG, FOG_START, FOG_END)
-            .expect("brouillard réglé");
-        whole
-            .set_overbright(OVERBRIGHT)
-            .expect("sur-éclairement réglé");
-        whole
-            .set_grade(GRADE.0, GRADE.1, GRADE.2)
-            .expect("courbe réglée");
-        whole.set_camera(pose).expect("caméra posée");
+        // **Les mêmes réglages d'image que `submit`, par le même site**, sans quoi l'oracle
+        // ne compare plus deux traversées mais deux réglages : l'écart serait maximal au
+        // loin, exactement là où la traversée élimine. Recopier la liste ici l'a fait
+        // diverger trois fois, et c'est pourquoi `settings` existe.
+        let view = View {
+            camera: pose,
+            cell: 0,
+        };
+        prepare(&mut whole, scenery, &view).expect("réglages d'image posés");
         // **Les mêmes lightmaps que `submit`**, par la variante éclairée du décor entier :
         // comparer un décor cuit à un décor nu ferait diverger presque tous les pixels, et
         // l'oracle mesurerait l'éclairage au lieu des deux chemins de traversée.
@@ -306,16 +298,8 @@ fn la_cuisson_change_l_image() {
 
     let clarity = |lit: bool| {
         let mut context = context(0);
-        context
-            .set_fog(FOG, FOG_START, FOG_END)
-            .expect("brouillard réglé");
-        context
-            .set_overbright(OVERBRIGHT)
-            .expect("sur-éclairement réglé");
-        context
-            .set_grade(GRADE.0, GRADE.1, GRADE.2)
-            .expect("courbe réglée");
-        context.set_camera(camera).expect("caméra posée");
+        let view = View { camera, cell: 0 };
+        prepare(&mut context, &scenery, &view).expect("réglages d'image posés");
         context
             .submit_world_lit(
                 Affine3::IDENTITY,
@@ -578,17 +562,10 @@ fn perte(scenery: &Scenery, tronques: &[(f32, f32, Visibility)]) -> Vec<(f32, f3
             .expect("scène soumise par la traversée");
 
         let mut whole = context(budget);
-        // Les mêmes réglages d'image que `submit`, pour la raison dite plus haut.
-        whole
-            .set_fog(FOG, FOG_START, FOG_END)
-            .expect("brouillard réglé");
-        whole
-            .set_overbright(OVERBRIGHT)
-            .expect("sur-éclairement réglé");
-        whole
-            .set_grade(GRADE.0, GRADE.1, GRADE.2)
-            .expect("courbe réglée");
-        whole.set_camera(camera).expect("caméra posée");
+        // Les mêmes réglages d'image que `submit`, par le même site et pour la raison dite
+        // plus haut.
+        let view = View { camera, cell: 0 };
+        prepare(&mut whole, scenery, &view).expect("réglages d'image posés");
         whole
             .submit_world_lit(
                 Affine3::IDENTITY,
