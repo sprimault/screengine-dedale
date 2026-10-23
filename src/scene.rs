@@ -23,6 +23,7 @@ use screengine_play::{
 
 use crate::maze::export;
 use crate::maze::grid::{Grid, Settings};
+use crate::tube::Tubes;
 
 #[cfg(test)]
 mod tests;
@@ -147,6 +148,8 @@ pub struct Scenery {
     pub map: World,
     /// Une texture par emplacement de matériau, dans l'ordre de la carte.
     materials: Vec<Arc<Texture>>,
+    /// Les tubes au plafond, et leur battement.
+    pub tubes: Tubes,
     /// Les lightmaps cuites, un atlas par cellule.
     ///
     /// **Du monde et non de la partie**, et c'est ce qui décide de leur place : elles sont
@@ -189,6 +192,7 @@ impl Scenery {
         }
 
         Ok(Self {
+            tubes: Tubes::hang(&maze),
             maze,
             map,
             materials,
@@ -220,6 +224,32 @@ pub struct View {
 /// L'erreur est celle du **noyau**, et son chemin reste long là où `Context` et
 /// `Visibility` sont à plat : la boucle a sa propre `Error`, et les deux ne
 /// peuvent pas porter le même nom dans la même surface.
+/// Pose sur le contexte tous les réglages que cette image demande.
+///
+/// **Extraite à la troisième fois qu'un réglage ajouté ici a cassé un oracle.** Les
+/// épreuves qui comparent la traversée au décor entier doivent régler leur second contexte
+/// à l'identique, sinon elles mesurent un écart de réglage et non de traversée. Recopiés,
+/// ces appels ont divergé trois fois de suite — au brouillard, au sur-éclairement puis aux
+/// tubes —, et chaque fois l'épreuve annonçait une divergence de traversée qui n'existait
+/// pas. Un site unique est le seul remède, et c'est la règle de trois.
+///
+/// **Tous sont refusés une fois la soumission commencée**, donc ils se posent ensemble et
+/// avant. Une lumière posée après n'éclairerait pas le lot déjà passé, et le reste rendrait
+/// `InvalidState`.
+///
+/// **Rien ici ne lit d'horloge** : le temps des tubes est un champ du monde, avancé par le
+/// pas de jeu. C'est ce qui permet au chemin hors fenêtre d'appeler cette fonction telle
+/// quelle.
+pub fn prepare(context: &mut Context, scenery: &Scenery, view: &View) -> Result<(), CoreError> {
+    context.set_fog(FOG, FOG_START, FOG_END)?;
+    context.set_overbright(OVERBRIGHT)?;
+    context.set_grade(GRADE.0, GRADE.1, GRADE.2)?;
+    // Les tubes prennent l'œil de la caméra : le moteur n'en accepte que huit par image, et
+    // ce sont les plus proches qui rendent quelque chose.
+    scenery.tubes.submit(context, view.camera.position)?;
+    context.set_camera(view.camera)
+}
+
 pub fn submit(
     context: &mut Context,
     scenery: &Scenery,
@@ -229,10 +259,7 @@ pub fn submit(
     // réglage d'image, refusé une fois la soumission commencée, et le poser une seule
     // fois obligerait à savoir laquelle est la première — ce que cette fonction, qui ne
     // garde rien, ne peut pas savoir. L'appel est une écriture de quatre champs.
-    context.set_fog(FOG, FOG_START, FOG_END)?;
-    context.set_overbright(OVERBRIGHT)?;
-    context.set_grade(GRADE.0, GRADE.1, GRADE.2)?;
-    context.set_camera(view.camera)?;
+    prepare(context, scenery, view)?;
     context.submit_world_visible(
         Affine3::IDENTITY,
         &scenery.map,

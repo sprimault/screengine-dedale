@@ -26,6 +26,7 @@ mod scatter;
 mod scene;
 mod sheet;
 mod shot;
+mod tube;
 mod weapon;
 
 #[cfg(test)]
@@ -200,6 +201,11 @@ fn main() -> Result<(), Error> {
             // Lue ici parce que la fenêtre n'arrive qu'au pas de jeu ; posée au rendu,
             // seul des trois rappels à recevoir le contexte.
             session.wanted = resolution::fit(tick.window());
+
+            // **Les tubes battent que le joueur bouge ou non**, donc leur temps avance au
+            // pas de jeu et non au rendu : une image sautée ne doit pas figer un
+            // clignotement, et c'est le pas qui porte le temps écoulé.
+            session.scenery.tubes.advance(tick.dt());
 
             // **`Échap` rend le curseur avant de fermer**, et c'est ce qui a libéré le
             // bouton du milieu pour l'avance automatique : rendre la souris se demande
