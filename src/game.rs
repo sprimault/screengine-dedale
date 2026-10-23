@@ -64,6 +64,18 @@ const LIFE: u32 = 100;
 /// Ce qu'une morsure coûte.
 const BITE: u32 = 10;
 
+/// Les munitions au départ d'une course.
+///
+/// **Vingt-quatre, et ce qui le décide est le décor qu'on traverse** : seize créatures
+/// y vivent, dont les plus massives demandent plusieurs coups, donc la dotation ne
+/// couvre pas le labyrinthe entier. C'est voulu — l'étape 14 fera d'un tir sur une
+/// paroi une dépense qui se juge, et elle ne se juge que si tirer coûte.
+///
+/// **Un réglage d'écran, et il ne se tranche pas avant les ramassages** : ce qu'une
+/// boîte rend décide avec lui du rythme, et les deux cotes se règlent ensemble ou pas
+/// du tout.
+const AMMO: u32 = 24;
+
 /// Le temps entre deux morsures, en secondes.
 ///
 /// **Dix secondes au contact d'une créature pour mourir**, avec les deux cotes
@@ -162,6 +174,13 @@ pub struct Run {
     /// chaque labyrinthe sans que cela surprenne, mais un score remis à zéro en
     /// franchissant une sortie retirerait tout sens à l'écran de fin.
     score: u32,
+    /// Ce qui reste à tirer.
+    ///
+    /// **De la course et non de la traversée**, comme le score et à l'inverse de la
+    /// pose d'un monstre : ce qu'on n'a pas tiré dans un labyrinthe se retrouve dans le
+    /// suivant. Ce que l'enchaînement de l'étape 7 en fera n'est pas tranché, et rien
+    /// ici ne le préjuge — le champ est au bon endroit dans les deux branches.
+    ammo: u32,
 }
 
 impl Default for Run {
@@ -176,6 +195,7 @@ impl Run {
         Self {
             life: LIFE,
             score: 0,
+            ammo: AMMO,
         }
     }
 
@@ -225,6 +245,32 @@ impl Run {
     /// fois les cotes réglées à l'écran.
     fn hurt(&mut self) {
         self.life = self.life.saturating_sub(BITE);
+    }
+
+    /// Ce qui reste à tirer, tel que l'écran l'écrit.
+    pub fn ammo(&self) -> u32 {
+        self.ammo
+    }
+
+    /// Dépense une munition, et dit si elle était là.
+    ///
+    /// **Le prédicat et la dépense dans le même appel, et c'est ce qui le rend sûr** :
+    /// deux étapes — demander puis retirer — se désaccordent dès qu'un chemin oublie la
+    /// seconde, et le symptôme serait un tir gratuit qu'aucune épreuve ne montre. Ici
+    /// l'appelant ne peut pas tirer sans avoir payé.
+    ///
+    /// **L'appelant doit donc court-circuiter**, et c'est la contrainte que cette forme
+    /// impose : appelée à chaque image plutôt qu'au clic, elle viderait la sacoche en
+    /// une seconde. Le site du tir la place après la lecture du bouton, derrière un
+    /// `&&`.
+    fn spend(&mut self) -> bool {
+        match self.ammo {
+            0 => false,
+            _ => {
+                self.ammo -= 1;
+                true
+            }
+        }
     }
 }
 
@@ -450,7 +496,16 @@ impl Game {
         // marque. Il coûte une projection par pas, là où le tir en coûtait une par coup.
         let ahead = self.ahead(resolution)?;
 
-        fired.then(|| {
+        // **Le court-circuit paie le coup, et l'ordre des deux termes est la règle** :
+        // `spend` ne s'évalue que si le bouton a été pressé, donc une sacoche ne se vide
+        // qu'au clic. Écrits dans l'autre sens, les deux termes retireraient une
+        // munition à chaque image — soit vingt-quatre en un cinquième de seconde.
+        //
+        // **Tirer à vide ne fait rien du tout**, pas même la pose de l'arme : le seul
+        // retour qui dise pourquoi est le compteur à zéro, et jouer la pose sans qu'un
+        // coup parte se lirait comme un tir qui ne porte pas. Le déclic viendra avec le
+        // son, qui est de l'étape 10.
+        (fired && run.spend()).then(|| {
             self.weapon.shoot();
             let (volumes, targets) = self.volumes();
             let outcome = shot::resolve(

@@ -28,7 +28,7 @@
 use screengine_play::Output;
 
 use super::glyph::{self, Glyphs};
-use super::{EDGE, PLATE, block, scale};
+use super::{EDGE, INSET, PLATE, block, scale};
 
 /// L'échelle des chiffres, à la hauteur d'ouverture.
 ///
@@ -39,11 +39,6 @@ use super::{EDGE, PLATE, block, scale};
 /// HUD où les deux échelles se composent : la planche de glyphes en a déjà une, qui
 /// dit la taille du texte, et celle du tampon dit la finesse de l'image.
 const SCALE: u32 = 2;
-
-/// La marge aux bords droit et bas, en pixels à la hauteur d'ouverture.
-///
-/// La même que celle de la jauge, pour que les deux reposent sur la même ligne.
-const INSET: u32 = 8;
 
 /// Le nombre de rangs du compteur, zéros de tête compris.
 ///

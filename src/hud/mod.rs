@@ -23,6 +23,7 @@
 //! que le rayon prendra, donc le grossir désigne moins précisément ce qu'on vise. Ses
 //! cotes restent en pixels, et `reticle.rs` dit pourquoi à son tour.
 
+pub mod ammo;
 pub mod gauge;
 pub mod glyph;
 pub mod reticle;
@@ -53,6 +54,16 @@ mod tests;
 pub fn scale(height: u32) -> u32 {
     ((height + resolution::BASE.1 / 2) / resolution::BASE.1).max(1)
 }
+
+/// La marge d'un élément d'interface au bord de l'écran, en pixels à la hauteur
+/// d'ouverture.
+///
+/// **Extraite à la quatrième occurrence**, le compteur de munitions l'ayant déclenchée :
+/// la jauge, le compteur de score et le plan de contrôle la portaient chacun, à la même
+/// valeur et avec le même sens, et deux d'entre eux disaient déjà dans leur rustdoc
+/// qu'ils reprenaient celle du voisin « pour que les deux reposent sur la même ligne ».
+/// Une cote recopiée quatre fois se règle trois fois.
+pub const INSET: u32 = 8;
 
 /// Le fond d'un élément d'interface, sous ce qu'il montre.
 ///

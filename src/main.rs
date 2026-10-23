@@ -35,6 +35,7 @@ mod tests;
 use std::time::Instant;
 
 use game::{Game, Run};
+use hud::INSET;
 use hud::block;
 use hud::glyph::{self, Glyphs};
 use maze::export;
@@ -377,9 +378,6 @@ fn main() -> Result<(), Error> {
 /// qui doit rester lisible quand l'image grandit.
 const CELL: u32 = 7;
 
-/// La marge du plan de contrôle au coin de l'écran, en pixels à la hauteur d'ouverture.
-const INSET: u32 = 8;
-
 /// L'écart entre deux étages voisins, en pixels à la hauteur d'ouverture.
 const GAP: u32 = 10;
 
@@ -409,6 +407,7 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
     // l'image, comme ce qu'on regarde en tirant.
     plot(output, &session.scenery.maze, aim.cell);
     hud::gauge::draw(output, session.run.share());
+    hud::ammo::draw(output, &session.glyphs, session.run.ammo());
     hud::score::draw(output, &session.glyphs, session.run.score());
     if session.run.over() {
         epitaph(output, &session.glyphs);
