@@ -345,3 +345,41 @@ fn hors_du_mode_la_commande_passe_telle_quelle() {
         );
     }
 }
+
+/// Une course commence à sa dotation, et chaque coup en retire une.
+///
+/// **Le compte se lit par la méthode que l'écran emploie**, et c'est voulu : une épreuve
+/// qui lirait le champ passerait alors qu'un accesseur rendrait autre chose, et c'est
+/// l'accesseur que le compteur appelle.
+#[test]
+fn chaque_coup_retire_une_munition() {
+    let mut run = Run::new();
+    assert_eq!(run.ammo(), AMMO, "la dotation n'est pas celle du réglage");
+
+    assert!(
+        run.spend(),
+        "le premier coup est refusé sur une sacoche pleine"
+    );
+    assert_eq!(run.ammo(), AMMO - 1, "le coup n'a pas coûté une munition");
+}
+
+/// Une sacoche vide refuse, et ne descend pas sous zéro.
+///
+/// **C'est la garde qui compte, et elle porte sur un entier non signé** : une
+/// soustraction sans le refus ne passerait pas sous zéro — elle déborderait par le
+/// haut, donc rendrait quatre milliards de munitions à l'instant où il n'en reste
+/// aucune. Le symptôme serait un tir qui redevient gratuit en se vidant.
+///
+/// **Et le refus ne retire rien**, ce que la seconde assertion mesure : un prédicat qui
+/// déciderait avant de payer laisserait le compte filer à chaque clic à vide.
+#[test]
+fn une_sacoche_vide_refuse_le_coup() {
+    let mut run = Run::new();
+    for shot in 0..AMMO {
+        assert!(run.spend(), "le coup {shot} est refusé avant la fin");
+    }
+    assert_eq!(run.ammo(), 0, "la dotation ne s'épuise pas exactement");
+
+    assert!(!run.spend(), "une sacoche vide a laissé partir un coup");
+    assert_eq!(run.ammo(), 0, "un refus a quand même retiré quelque chose");
+}

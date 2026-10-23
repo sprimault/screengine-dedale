@@ -15,6 +15,8 @@ cela s'adresse à quelqu'un.
 ## [Non publié]
 
 ### Ajouté
+- **Les munitions se comptent** : vingt-quatre au départ, une par coup, et l'arme ne tire
+  plus à vide. Le compte se lit dans un carré posé à côté de la jauge.
 - **Les créatures parcourent le labyrinthe** : elles patrouillent sur leur étage, et
   viennent droit sur le joueur dès qu'elles le voient à découvert.
 - **Le brouillard ferme la vue**, de sorte qu'on juge enfin la distance d'un couloir.
@@ -32,6 +34,8 @@ cela s'adresse à quelqu'un.
 ***
 
 ### Added
+- **Ammunition is counted**: twenty-four to start, one per shot, and the weapon no longer
+  fires when empty. The count reads in a square set beside the gauge.
 - **Creatures roam the maze**: they patrol their own floor, and come straight at the
   player as soon as they see them in the open.
 - **Fog closes the view**, so that a corridor's depth can finally be judged.

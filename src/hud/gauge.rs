@@ -17,13 +17,10 @@
 
 use screengine_play::Output;
 
-use super::{EDGE, PLATE, block, scale};
+use super::{EDGE, INSET, PLATE, block, scale};
 
 /// L'épaisseur de la jauge, en pixels à la hauteur d'ouverture.
 const THICK: u32 = 7;
-
-/// Sa marge aux bords gauche et bas, en pixels à la hauteur d'ouverture.
-const INSET: u32 = 8;
 
 /// Sa longueur, en pixels à la hauteur d'ouverture.
 ///
@@ -50,6 +47,17 @@ const _: () = assert!(INSET >= 1);
 
 #[cfg(test)]
 mod tests;
+
+/// L'abscisse juste après la jauge, son liseré compris.
+///
+/// **Ce que le compteur de munitions lit pour s'accoler**, et c'est la raison de sa
+/// place ici : la jauge est seule à connaître sa longueur, et la recopier à côté ferait
+/// deux cotes qui se désaccordent au premier réglage. Ce que le voisin ajoute est son
+/// propre écart.
+pub fn right(height: u32) -> u32 {
+    let unit = scale(height);
+    INSET * unit + SPAN * unit + unit
+}
 
 /// Dessine la jauge en bas à gauche, remplie de cette part.
 ///
