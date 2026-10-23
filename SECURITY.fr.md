@@ -45,5 +45,8 @@ porte le périmètre correspondant. Ne relève d'ici que ce que le jeu lui remet
 `docs/construction.md` le dit : un exécutable téléchargé déclenche donc un
 avertissement du système. C'est une limite connue et assumée, pas une faille.
 
-Modifier ses propres fichiers pour obtenir un jeu différent. Rien ici n'est à
-protéger contre son propriétaire.
+**Tricher sur sa propre machine.** Modifier l'exécutable, ou sa mémoire en cours
+de partie, pour se donner de la vie ou gonfler son score : il n'y a pas
+d'anti-triche, et ce n'en est pas un oubli. Une partie se joue seule, aucun score
+ne se publie, et le jeu n'a pas de multijoueur — tricher ne lèse que soi.
+Rien ici n'est donc à protéger contre son propriétaire.
