@@ -43,5 +43,8 @@ Only what the game hands it belongs here.
 `docs/construction.md` says so: a downloaded executable therefore triggers a
 system warning. That is a known and accepted limit, not a vulnerability.
 
-Modifying your own files to get a different game. Nothing here is to be protected
-from its owner.
+**Cheating on your own machine.** Modifying the executable, or its memory during
+a run, to grant yourself health or inflate your score: there is no anti-cheat,
+and that is not an oversight. A run is played alone, no score is published, and
+the game has no multiplayer — cheating wrongs no one but yourself. Nothing here
+is therefore to be protected from its owner.
