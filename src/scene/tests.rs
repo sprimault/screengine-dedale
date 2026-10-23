@@ -202,10 +202,16 @@ fn accord(scenery: &Scenery, poses: &[Camera]) {
             .set_fog(FOG, FOG_START, FOG_END)
             .expect("brouillard réglé");
         whole.set_camera(pose).expect("caméra posée");
+        // **Les mêmes lightmaps que `submit`**, par la variante éclairée du décor entier :
+        // comparer un décor cuit à un décor nu ferait diverger presque tous les pixels, et
+        // l'oracle mesurerait l'éclairage au lieu des deux chemins de traversée.
         whole
-            .submit_world(Affine3::IDENTITY, &scenery.map, |rank| {
-                scenery.materials.get(rank as usize)
-            })
+            .submit_world_lit(
+                Affine3::IDENTITY,
+                &scenery.map,
+                |rank| scenery.materials.get(rank as usize),
+                Some(&scenery.lightmaps),
+            )
             .expect("décor entier soumis");
 
         let (differing, total) = divergence(&frame(&mut walked), &frame(&mut whole));
@@ -261,6 +267,54 @@ fn tangages_incomplets(scenery: &Scenery) -> Vec<(f32, f32, Visibility)> {
     out
 }
 
+/// La cuisson assombrit le décor, et ne le laisse pas intact.
+///
+/// **Ce qu'elle garde est que le chemin éclairé est bien pris** : une lightmap absente, un
+/// atlas qui ne se construit pas, une soumission qui retombe sur le chemin nu — aucun de
+/// ces trois ne lève d'erreur, et le décor reste simplement clair. C'est arrivé : la
+/// cuisson livrée, l'écran ne montrait « pas d'éclairage », et seule la mesure a dit
+/// qu'elle agissait.
+///
+/// **Les chiffres de la pose de départ** : clarté moyenne 40 sur le chemin nu, 17 sur le
+/// chemin cuit, soit plus de la moitié en moins. Le seuil est pris large — un tiers — pour
+/// que l'épreuve survive au semis des lampes, qui changera ces valeurs.
+///
+/// **Ce qu'elle ne dit pas, et qu'aucune épreuve ne dira** : que l'éclairage se *voie*. Il
+/// est uniforme tant qu'une lampe occupe chaque case, donc il divise la luminosité sans
+/// créer de contraste — et un décor uniformément sombre ne se lit pas comme éclairé.
+#[test]
+fn la_cuisson_assombrit_le_decor() {
+    let scenery = Scenery::new(settings()).expect("labyrinthe et planches valides");
+    let player = Player::spawn(&scenery.maze, &scenery.map);
+    let camera = FreeCamera::new(player.eye()).camera();
+
+    let clarity = |lit: bool| {
+        let mut context = context(0);
+        context
+            .set_fog(FOG, FOG_START, FOG_END)
+            .expect("brouillard réglé");
+        context.set_camera(camera).expect("caméra posée");
+        context
+            .submit_world_lit(
+                Affine3::IDENTITY,
+                &scenery.map,
+                |rank| scenery.materials.get(rank as usize),
+                lit.then_some(&scenery.lightmaps),
+            )
+            .expect("décor soumis");
+
+        let pixels = frame(&mut context);
+        let sum: u64 = pixels.chunks(4).map(|p| u64::from(p[1])).sum();
+        sum / (pixels.len() / 4) as u64
+    };
+
+    let (bare, baked) = (clarity(false), clarity(true));
+    assert!(
+        baked * 3 < bare * 2,
+        "le décor cuit vaut {baked} de clarté contre {bare} nu : la cuisson n'agit pas"
+    );
+}
+
 /// La scène se construit hors de toute fenêtre.
 ///
 /// C'est la contrainte que `ROADMAP.md` annonce pour l'étape 8 : l'image animée
@@ -287,7 +341,12 @@ fn la_scene_se_rend_hors_fenetre() {
     // tombe sur une de ses surfaces. Un trou dirait qu'une face a disparu au
     // découpage, ou qu'un portail n'a pas été déplié — deux défauts qui ne
     // lèvent aucune erreur et ne se voient qu'à l'image.
-    let lit = pixels.chunks(4).filter(|p| p[..3] != [0, 0, 0]).count();
+    //
+    // **Contre le fond et non contre le noir, depuis que le décor est cuit** : une
+    // surface qu'aucune lampe n'atteint est noire, et l'oracle d'avant la comptait
+    // comme un trou — six pour cent de l'image. Ce qui distingue un trou d'une zone
+    // sombre est la teinte de fond, que le moteur peint là où rien ne couvre.
+    let lit = pixels.chunks(4).filter(|p| p[..3] != BACKGROUND).count();
     let total = WIDTH as usize * HEIGHT as usize;
     assert!(
         lit * 100 / total >= 95,
@@ -499,9 +558,12 @@ fn perte(scenery: &Scenery, tronques: &[(f32, f32, Visibility)]) -> Vec<(f32, f3
             .expect("brouillard réglé");
         whole.set_camera(camera).expect("caméra posée");
         whole
-            .submit_world(Affine3::IDENTITY, &scenery.map, |rank| {
-                scenery.materials.get(rank as usize)
-            })
+            .submit_world_lit(
+                Affine3::IDENTITY,
+                &scenery.map,
+                |rank| scenery.materials.get(rank as usize),
+                Some(&scenery.lightmaps),
+            )
             .expect("décor entier soumis");
 
         let (differing, _) = divergence(&frame(&mut walked), &frame(&mut whole));

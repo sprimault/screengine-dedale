@@ -17,7 +17,8 @@
 use std::sync::Arc;
 
 use screengine_play::{
-    Affine3, Camera, Color, Context, CoreError, Error, Texture, Visibility, World, load_png,
+    Affine3, Camera, Color, Context, CoreError, Error, Lightmaps, Texture, Visibility, World,
+    load_png,
 };
 
 use crate::maze::export;
@@ -112,6 +113,13 @@ pub struct Scenery {
     pub map: World,
     /// Une texture par emplacement de matériau, dans l'ordre de la carte.
     materials: Vec<Arc<Texture>>,
+    /// Les lightmaps cuites, un atlas par cellule.
+    ///
+    /// **Du monde et non de la partie**, et c'est ce qui décide de leur place : elles sont
+    /// un cache de la carte, donc elles se refont avec elle et survivent à une course
+    /// perdue. Les ranger dans la traversée les ferait recuire à chaque relance — une
+    /// seconde de calcul pour un décor qui n'a pas bougé.
+    lightmaps: Lightmaps,
 }
 
 impl Scenery {
@@ -131,10 +139,26 @@ impl Scenery {
             })
             .collect();
 
+        // **Toutes les cellules sont cuites ici, et non celles que la caméra voit** : une
+        // lightmap est un cache de la carte et non de la vue, donc la cuire en chemin
+        // ferait allouer un atlas au milieu d'une image — ce que le moteur refuse, et ce
+        // qui se verrait de toute façon comme un décor qui s'allume par morceaux.
+        //
+        // **Les lumières, elles, viennent de l'export** : une par cellule de case, une par
+        // cage. C'est la géométrie qui décide de ce qu'une lampe atteint, donc les écrire
+        // plus tard obligerait à réexporter la carte.
+        let mut lightmaps = Lightmaps::new(&map)?;
+        for index in 0..map.cell_count() {
+            if let Some(id) = map.cell_id(index) {
+                lightmaps.build(&map, id)?;
+            }
+        }
+
         Ok(Self {
             maze,
             map,
             materials,
+            lightmaps,
         })
     }
 }
@@ -177,12 +201,11 @@ pub fn submit(
         Affine3::IDENTITY,
         &scenery.map,
         view.cell,
-        // Aucune lightmap : la soumission retombe alors sur le chemin non
-        // éclairé, sans erreur. La carte porte pourtant ses lumières — c'est la
-        // géométrie qui décide de ce qu'une lampe atteint, donc les écrire tard
-        // obligerait à réexporter —, mais rien n'est cuit avant l'étape 8, et on
-        // ne règle pas un tamisage dans un couloir qu'on vient d'ouvrir.
-        None,
+        // **Les lightmaps cuites au chargement**, et c'est ce qui fait passer la
+        // soumission du chemin non éclairé au chemin éclairé. Sans elles, les
+        // lumières que l'export écrit n'atteignent rien : elles sont dans le
+        // fichier depuis l'étape 1, et c'est la cuisson qui les fait exister.
+        Some(&scenery.lightmaps),
         |rank| scenery.materials.get(rank as usize),
     )
 }

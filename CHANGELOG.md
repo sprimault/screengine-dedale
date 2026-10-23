@@ -30,6 +30,8 @@ cela s'adresse à quelqu'un.
   fallait tenir.
 
 ### Modifié
+- **Le décor reçoit l'éclairage de ses lampes**, cuit au chargement : l'image est deux fois
+  plus sombre, et les recoins qu'aucune lampe n'atteint sont noirs.
 - **Les murs et les sols sont trois fois plus sombres**, ce qui laisse enfin le brouillard
   creuser le lointain au lieu de salir ce qu'on a sous les yeux.
 - **Les trois silhouettes n'encaissent plus pareil** : la plus massive demande plus de
@@ -58,6 +60,8 @@ cela s'adresse à quelqu'un.
   had to hold down.
 
 ### Changed
+- **The scenery takes the light of its lamps**, baked on load: the picture is twice as
+  dark, and the corners no lamp reaches are black.
 - **Walls and floors are three times darker**, which finally lets the fog carve out the
   distance instead of muddying what is right in front of you.
 - **The three silhouettes no longer take the same number of shots**: the bulkiest needs
