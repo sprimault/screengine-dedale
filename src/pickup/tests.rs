@@ -21,6 +21,7 @@
 use screengine_play::FreeCamera;
 
 use super::*;
+use crate::player;
 use crate::test_support::{context, frame, maze};
 
 /// Les deux lots de sprites sont acceptés par le moteur.
@@ -63,6 +64,61 @@ fn les_deux_lots_sont_acceptes() {
     // L'image se termine quand même : un contexte laissé en cours de soumission ferait
     // échouer l'épreuve suivante qui en demande un, le relevé de tuiles étant global.
     let _ = frame(&mut frame_context);
+}
+
+/// Un volume posé sur un objet le touche, et le retire.
+///
+/// **Le contact se mesure sur la pose que le balayage a rendue**, pas sur le centre de la
+/// case : un objet posé sur une marche n'est pas à la hauteur de son voisin, et un test
+/// écrit sur la case le prendrait à travers un plancher.
+///
+/// **Et le volume du joueur, pas celui de l'objet** : les deux gabarits diffèrent, donc un
+/// recouvrement écrit sur une seule demi-étendue serait faux des deux côtés. C'est la même
+/// clause que pour la morsure d'une créature.
+#[test]
+fn un_volume_pose_dessus_touche_et_retire() {
+    let (grid, map) = maze(0x1);
+    let start = grid.start();
+    let spots = [start, (start.0, start.1 + 1, start.2)];
+    let mut pickups = Pickups::scatter(&spots, &grid, &map).expect("les vignettes se décodent");
+
+    let at = pickups.items()[0].at;
+    let (rank, kind) = pickups
+        .touching(at, player::HALF)
+        .expect("un volume posé sur l'objet ne le touche pas");
+    assert_eq!(rank, 0, "le rang touché n'est pas celui de l'objet");
+    assert_eq!(kind, Kind::Box, "la sorte touchée n'est pas celle du rang");
+
+    pickups.remove(rank);
+    assert_eq!(pickups.items().len(), 1, "l'objet retiré est encore là");
+    assert!(
+        pickups.touching(at, player::HALF).is_none(),
+        "l'objet retiré touche encore"
+    );
+}
+
+/// Un volume à l'écart ne touche rien.
+///
+/// **Sans elle, un test qui répondrait toujours vrai passerait** : l'épreuve ci-dessus ne
+/// dit que le cas qui touche, et c'est le couple des deux qui mesure le recouvrement.
+///
+/// **L'écart est pris sur les deux gabarits**, donc il ne peut pas être trop faible : la
+/// somme des demi-étendues est exactement la limite du contact, et une unité au-delà la
+/// dépasse quel que soit le réglage des deux.
+#[test]
+fn un_volume_a_l_ecart_ne_touche_rien() {
+    let (grid, map) = maze(0x1);
+    let start = grid.start();
+    let pickups = Pickups::scatter(&[start], &grid, &map).expect("les vignettes se décodent");
+
+    let at = pickups.items()[0].at;
+    let clear = HALF.x + player::HALF.x + 1.0;
+    let aside = Vec3::new(at.x + clear, at.y, at.z);
+
+    assert!(
+        pickups.touching(aside, player::HALF).is_none(),
+        "un volume à {clear} unités de l'objet le touche"
+    );
 }
 
 /// La sorte qu'un rang reçoit, comme la pose la choisit.

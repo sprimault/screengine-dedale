@@ -29,7 +29,7 @@ use screengine_play::{
     World, load_png_masked,
 };
 
-use crate::body::Body;
+use crate::body::{self, Body};
 use crate::maze::grid::Grid;
 
 #[cfg(test)]
@@ -106,7 +106,7 @@ const _: () = assert!(SPOTS % PATTERN.len() == 0);
 ///
 /// **Ce qu'il donne n'est pas ici**, et c'est volontaire : ce module le pose et le
 /// montre, le ramassage est de `E6.3`. La sorte suffit à choisir sa vignette.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
     /// Une boîte de munitions.
     Box,
@@ -175,6 +175,32 @@ impl Pickups {
     /// Ce qui est posé, pour le plan de contrôle.
     pub fn items(&self) -> &[Pickup] {
         &self.items
+    }
+
+    /// Le premier objet que ce volume recouvre, s'il y en a un.
+    ///
+    /// **Un seul par image, et c'est suffisant** : deux objets posés assez près pour être
+    /// recouverts ensemble viennent de deux cases voisines, donc l'image suivante prend le
+    /// second. Les rendre tous obligerait à allouer une liste à chaque pas pour un cas qui
+    /// ne se produit presque jamais.
+    ///
+    /// **Le rang plutôt que l'objet**, et c'est ce qui laisse la décision dehors : ce qui
+    /// décide si un objet est pris est l'état de la course — un sac plein le refuse —, et
+    /// la course ne se range pas ici. L'appelant retire ensuite par [`Pickups::remove`].
+    pub fn touching(&self, centre: Vec3, half: Vec3) -> Option<(usize, Kind)> {
+        self.items
+            .iter()
+            .position(|item| body::overlaps(centre, half, item.at, HALF))
+            .map(|rank| (rank, self.items[rank].kind))
+    }
+
+    /// Retire l'objet de ce rang.
+    ///
+    /// **Un retrait par rang et non par identité** : les objets n'ont pas d'identifiant, et
+    /// leur ordre ne sert qu'à les désigner le temps d'un pas. Le rang vient de
+    /// [`Pickups::touching`] et ne survit pas à l'image.
+    pub fn remove(&mut self, rank: usize) {
+        self.items.remove(rank);
     }
 }
 

@@ -18,7 +18,11 @@ cela s'adresse à quelqu'un.
 - **Les munitions se comptent** : vingt-quatre au départ, une par coup, et l'arme ne tire
   plus à vide. Le compte se lit dans un carré posé à côté de la jauge.
 - **Des boîtes de munitions et des fioles de soin sont posées dans le labyrinthe**, douze
-  et huit, dispersées sur les deux étages. Elles ne se ramassent pas encore.
+  et huit, dispersées sur les deux étages.
+- **On les ramasse en marchant dessus** : une boîte rend huit munitions, une fiole va dans
+  le sac. Un sac plein laisse l'objet au sol.
+- **Le sac se lit en bas de l'écran**, un casier par sorte à côté de la jauge. Une fiole se
+  boit à la touche `F`, que son casier rappelle, et rend un quart de la vie.
 - **Les créatures parcourent le labyrinthe** : elles patrouillent sur leur étage, et
   viennent droit sur le joueur dès qu'elles le voient à découvert.
 - **Le brouillard ferme la vue**, de sorte qu'on juge enfin la distance d'un couloir.
@@ -39,7 +43,12 @@ cela s'adresse à quelqu'un.
 - **Ammunition is counted**: twenty-four to start, one per shot, and the weapon no longer
   fires when empty. The count reads in a square set beside the gauge.
 - **Ammunition boxes and healing vials are placed in the maze**, twelve and eight,
-  scattered across both floors. They cannot be picked up yet.
+  scattered across both floors.
+- **You pick them up by walking over them**: a box gives eight rounds, a vial goes into the
+  pouch. A full pouch leaves the item on the ground.
+- **The pouch reads at the bottom of the screen**, one slot per sort beside the gauge. A
+  vial is drunk with the `F` key, which its slot recalls, and restores a quarter of your
+  health.
 - **Creatures roam the maze**: they patrol their own floor, and come straight at the
   player as soon as they see them in the open.
 - **Fog closes the view**, so that a corridor's depth can finally be judged.

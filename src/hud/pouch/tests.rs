@@ -23,11 +23,15 @@
 use super::*;
 use crate::test_support::Canvas;
 
-/// Un tampon noir, et le compteur dessiné dedans à ce compte.
+/// Un tampon noir, et le sac dessiné dedans à ces comptes.
+///
+/// **Un compte de fioles non nul par défaut** : les épreuves mesurent des étendues de
+/// teinte sur toute l'image, donc un second casier présent est ce que le jeu montre
+/// vraiment — et c'est lui qui attraperait un chevauchement des deux.
 fn drawn(width: u32, height: u32, ammo: u32) -> Canvas {
     let glyphs = Glyphs::new();
     let mut canvas = Canvas::new(width, height);
-    draw(&mut canvas.output(), &glyphs, ammo);
+    draw(&mut canvas.output(), &glyphs, ammo, 3);
     canvas
 }
 
@@ -101,25 +105,34 @@ fn le_carre_se_pose_apres_la_jauge() {
     }
 }
 
-/// La plaque est aussi haute que large.
+/// Les deux casiers sont carrés, de même côté, et côte à côte.
 ///
-/// **C'est la forme qui a été demandée, et elle ne va pas de soi** : le contenu est plus
-/// large que haut — trois rangs de chiffres contre une cartouche et une ligne —, donc une
-/// plaque taillée sur son contenu serait un bandeau. Le côté vient de la largeur, et la
-/// hauteur s'y aligne.
+/// **Trois propriétés d'un coup, parce qu'elles se mesurent sur la même étendue** : la
+/// hauteur des plaques donne le côté, et leur largeur totale dit s'il y en a bien deux
+/// séparés de l'écart réglé. Un casier qui aurait grandi, ou qui se serait superposé à son
+/// voisin, se lit dans le même chiffre.
+///
+/// **Le carré ne va pas de soi** : le contenu est plus large que haut — trois rangs de
+/// chiffres contre un pictogramme et une ligne —, donc une plaque taillée sur son contenu
+/// serait un bandeau.
 #[test]
-fn la_plaque_est_carree() {
+fn les_deux_casiers_sont_carres_et_cote_a_cote() {
     for (width, height) in [(320, 180), (1280, 720)] {
         let canvas = drawn(width, height, 24);
+        let unit = scale(height);
         let (low, high) = span(&canvas, PLATE).expect("pas de plaque");
         let (top, bottom) = rows(&canvas, PLATE).expect("pas de plaque");
 
+        let tall = bottom - top + 1;
+        let (_, _, side) = corner(width, height, &Glyphs::new(), 0).expect("le casier tient");
         assert_eq!(
-            high - low,
-            bottom - top,
-            "sur {width}×{height}, la plaque fait {} de large pour {} de haut",
+            tall, side,
+            "sur {width}×{height}, un casier fait {tall} de haut pour un côté de {side}"
+        );
+        assert_eq!(
             high - low + 1,
-            bottom - top + 1
+            2 * side + APART * unit,
+            "sur {width}×{height}, les deux casiers ne sont pas côte à côte à l'écart réglé"
         );
     }
 }
@@ -164,24 +177,31 @@ fn l_ogive_est_plus_etroite_que_le_corps() {
     );
 }
 
-/// Le carré garde son côté sous trois rangs, et s'étend au-delà.
+/// Le côté d'un casier ne dépend pas de son compte.
 ///
-/// **Les deux moitiés de la même clause** : un côté qui ne bouge pas est ce qui tient le
-/// carré en place quand le compte descend, et l'extension est le bon échec quand un
-/// compte dépasse ce qu'on avait prévu — mieux qu'un chiffre tronqué, qui se lirait comme
-/// un autre nombre.
+/// **C'est ce qui tient la rangée immobile**, et c'est la raison pour laquelle le côté se
+/// prend sur le gabarit et non sur le texte : un casier qui s'élargirait en passant la
+/// dizaine déplacerait tous ses voisins de droite, donc la rangée entière bougerait au
+/// premier ramassage.
+///
+/// **Du vide au plafond du compteur** : les plafonds de la course sont quatre-vingt-dix-neuf
+/// munitions et neuf fioles, donc deux rangs au plus — le gabarit de trois n'est jamais
+/// atteint, et c'est lui qui fixe le côté.
 #[test]
-fn le_carre_tient_trois_rangs_puis_s_etend() {
-    let side = |ammo| {
+fn le_cote_ne_depend_pas_du_compte() {
+    let width = |ammo| {
         let (low, high) = span(&drawn(320, 180, ammo), PLATE).expect("pas de plaque");
         high - low
     };
 
-    assert_eq!(side(0), side(999), "le carré bouge sous trois rangs");
-    assert!(
-        side(1000) > side(999),
-        "un compte à quatre rangs tronque au lieu d'étendre le carré"
-    );
+    let reference = width(0);
+    for ammo in [1, 9, 24, 99] {
+        assert_eq!(
+            width(ammo),
+            reference,
+            "à {ammo} munitions, la rangée n'a pas la même largeur qu'à vide"
+        );
+    }
 }
 
 /// Un tampon trop petit ne reçoit rien, plutôt que de déborder.
