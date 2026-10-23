@@ -1,4 +1,5 @@
-# Les binaires d'une version, attachés à sa release.
+# La release d'une version : ses notes lues dans le journal, ses binaires
+# construits et attachés.
 #
 # **Séparé de `ci.yml`, et les trois raisons sont indépendantes** : le déclencheur
 # est un tag et non une pull request ; les droits sont ceux d'écriture sur le
@@ -17,14 +18,14 @@
 name: Release
 
 on:
-  # Le chemin normal, et c'est pour lui que l'entrée existe : une release de ce
-  # dépôt part en **brouillon**, donc son tag n'est pas encore posé au moment où
-  # on veut garnir la page. L'entrée nomme la release à garnir, brouillon
-  # compris, ce qu'un déclencheur de tag ne peut pas faire.
+  # Le chemin normal, et c'est pour lui que l'entrée existe : la release de ce
+  # dépôt naît **ici**, en brouillon, donc son tag n'est pas encore posé au
+  # moment où on garnit la page. L'entrée nomme la version à publier, ce qu'un
+  # déclencheur de tag ne peut pas faire tant que le tag n'existe pas.
   workflow_dispatch:
     inputs:
       tag:
-        description: "Le tag de la release à garnir, brouillon compris — v0.5.0"
+        description: "Le tag de la version à publier, release absente comprise — v0.5.0"
         required: true
         type: string
   # Le garde-fou : un tag posé autrement garnit quand même sa release. Il
@@ -97,14 +98,98 @@ jobs:
           echo "les quatre fichiers sont posés, rien à refaire"
           echo "a_garnir=false" >> "$GITHUB_OUTPUT"
 
-  binaire:
-    name: Binaire — ${{ matrix.cible }}
+  # **Le corps d'une release vient du journal, jamais d'une saisie.** La section
+  # de `CHANGELOG.md` et la page de la version disent la même chose à la même
+  # personne : les écrire deux fois fait deux textes qui dérivent, et la dérive
+  # est muette — un séparateur bilingue recopié `---` au lieu de `***` ne casse
+  # rien et ne se voit qu'en comparant les deux.
+  #
+  # **Le job crée le brouillon au lieu de le trouver**, et c'est là que tient la
+  # correction : la création à la main était le seul endroit où le corps
+  # s'écrivait, donc le seul qui pouvait s'écarter du journal.
+  #
+  # **Il laisse une release publiée intacte.** Le garde-fou du tag repasse ici
+  # après la publication, et réécrire une page déjà notifiée ne la corrige chez
+  # personne.
+  notes:
+    name: Notes de version
     needs: examen
     if: needs.examen.outputs.a_garnir == 'true'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Lire les notes dans le journal
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          version="${TAG#v}"
+
+          # `index` et non une expression régulière : les crochets du titre de
+          # section formeraient une classe de caractères, et « [0.6.0] » ne
+          # désignerait plus qu'un seul caractère.
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { dedans = 1; next }
+            dedans && index($0, "## ") == 1 { exit }
+            dedans { print }
+          ' CHANGELOG.md > notes.md
+
+          # Une section faite de lignes vides passerait un contrôle de taille :
+          # c'est du texte qui est exigé, pas des octets.
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "CHANGELOG.md n'a pas de section pour la version $version" >&2
+            exit 1
+          fi
+
+          # Le titre est la troisième partie du titre de section, après la
+          # version et la date, et le numéro le précède sur la release — les six
+          # versions publiées l'écrivent ainsi. Un titre introuvable laisse le
+          # numéro seul plutôt que d'arrêter la publication.
+          titre=$(grep -m1 -F "## [$version]" CHANGELOG.md \
+            | sed -n 's/^## \[[^]]*\][^—]*—[^—]*— *//p')
+          echo "TITRE=${version}${titre:+ — $titre}" >> "$GITHUB_ENV"
+          cat notes.md
+
+      - name: Créer ou garnir le brouillon
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          # Trois états et non deux : absente, brouillon, publiée. Le repli sur
+          # un mot plutôt que sur du vide tient le cas où `gh` échoue pour une
+          # autre raison — un vide se lirait comme un `isDraft` faux, donc comme
+          # la seule situation où il ne faut rien réécrire.
+          etat=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null || echo absente)
+
+          case "$etat" in
+            absente)
+              # Sur le commit et non sur la branche : le tag se pose à la
+              # publication, donc `master` peut avoir avancé entre la lecture du
+              # journal et la relecture des notes. Le tag porterait alors un
+              # journal que personne n'a lu.
+              gh release create "$TAG" --draft --target "$GITHUB_SHA" \
+                --title "$TITRE" --notes-file notes.md
+              ;;
+            true)
+              gh release edit "$TAG" --title "$TITRE" --notes-file notes.md
+              ;;
+            *)
+              echo "release publiée : son corps reste celui qui a été relu"
+              ;;
+          esac
+
+  binaire:
+    name: Binaire — ${{ matrix.cible }}
+    needs: [examen, notes]
+    if: needs.examen.outputs.a_garnir == 'true'
     runs-on: ${{ matrix.os }}
-    # Le seul endroit du dépôt qui écrive, et il est au niveau du job : un droit
-    # posé sur le fichier entier s'appliquerait à tout ce qu'on y ajouterait
-    # ensuite.
+    # Au niveau du job et non du fichier : un droit posé sur le fichier entier
+    # s'appliquerait à tout ce qu'on y ajouterait ensuite.
     permissions:
       contents: write
     strategy:
