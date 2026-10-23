@@ -24,11 +24,14 @@ font, recorded in [`THIRD-PARTY-NOTICES`](THIRD-PARTY-NOTICES).
 
 ## Status
 
-**Step 5: health, score, interface.** A generated maze walked in first person, floors
-linked by shafts — stepped, or ramped. The map stops you: you hug walls, you climb
-steps and ramps, and gravity brings you back down. Three demons roam it, each with its
-own figure. You shoot: walls keep the mark, demons take the hits and go down. They cost
-you health on contact, and each one downed scores. Not a game yet: no pickups, no exit.
+**Step 6: the pickups.** A generated maze walked in first person, floors linked by shafts
+— stepped, or ramped. The map stops you: you hug walls, you climb steps and ramps, and
+gravity brings you back down. Three demons roam it, each with its own figure; they patrol
+their floor and come straight at you as soon as they see you. You shoot: walls keep the
+mark, demons take the hits and go down. They cost you health on contact, and each one
+downed scores. You pick up ammunition and vials, kept in a pouch. The scenery is dimmed —
+baked lighting in pools, worn-out tubes overhead, fog that closes the view. Not a game
+yet: there is no exit.
 
 **It downloads**: every version carries a self-contained executable for Windows and for
 Linux — nothing to install alongside, it is all in there — with an installer and an
@@ -80,6 +83,7 @@ Left click grabs the cursor, `Esc` releases it — and quits on a second press.
 | middle click, or `Tab` | autorun, as a toggle — moving back stops it |
 | mouse | aim the view, once the cursor is grabbed — never required |
 | right click | shoot, at the centre of the reticle |
+| `F` | drink a vial from the pouch |
 | `R` | start a new game, after death |
 
 **You walk, you hug walls and you fall**: walls, floor and ceiling hold, an angled step
@@ -97,3 +101,7 @@ a line in the middle of the screen says which key starts again.
 
 **And downing a demon scores**: each figure has its own value, the count reads at the
 bottom right, and death does not clear it.
+
+**You pick up by walking over**: a box gives rounds, a vial goes into the pouch — two
+slots beside the gauge, showing what you carry. A full pouch leaves the item on the
+ground rather than wasting it.

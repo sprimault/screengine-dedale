@@ -25,12 +25,15 @@ police en CC0, dont [`THIRD-PARTY-NOTICES`](THIRD-PARTY-NOTICES) rend compte.
 
 ## État
 
-**Étape 5 : la vie, le score, l'interface.** Un labyrinthe engendré qu'on parcourt à
-la première personne, des étages reliés par des cages — à marches, ou en rampe. Le
-décor arrête : on longe les murs, on gravit les marches et les rampes, et la pesanteur
-ramène au sol. Trois démons le parcourent, chacun sa silhouette. On tire : les murs
-gardent la marque, les démons encaissent et tombent. On perd de la vie à leur contact,
-et chacun abattu vaut des points. Pas encore un jeu : ni ramassages, ni sortie.
+**Étape 6 : les ramassages.** Un labyrinthe engendré qu'on parcourt à la première
+personne, des étages reliés par des cages — à marches, ou en rampe. Le décor arrête : on
+longe les murs, on gravit les marches et les rampes, et la pesanteur ramène au sol. Trois
+démons le parcourent, chacun sa silhouette ; ils patrouillent sur leur étage et viennent
+droit sur vous dès qu'ils vous voient. On tire : les murs gardent la marque, les démons
+encaissent et tombent. On perd de la vie à leur contact, et chacun abattu vaut des points.
+On ramasse des munitions et des fioles, rangées dans un sac. Le décor est tamisé —
+éclairage cuit en flaques, tubes fatigués au plafond, brouillard qui ferme la vue. Pas
+encore un jeu : il n'y a pas de sortie.
 
 **Il se télécharge** : chaque version porte un exécutable autonome pour Windows et pour
 Linux — rien à installer à côté, tout est dedans —, avec un programme d'installation et
@@ -83,6 +86,7 @@ Clic gauche prend le curseur, `Échap` le rend — et quitte au second appui.
 | clic du milieu, ou `Tab` | avance automatique, par bascule — reculer l'arrête |
 | souris | orienter la vue, le curseur pris — jamais nécessaire |
 | clic droit | tirer, au centre du réticule |
+| `F` | boire une fiole du sac |
 | `R` | relancer une partie, après la mort |
 
 **On marche, on longe et on tombe** : les murs, le sol et le plafond retiennent, un pas
@@ -100,3 +104,7 @@ fige et un texte au milieu de l'écran dit quelle touche relance.
 
 **Et un démon abattu compte** : chaque silhouette a sa valeur, le score se lit en bas
 à droite, et la mort ne l'efface pas.
+
+**On ramasse en marchant dessus** : une boîte rend des munitions, une fiole va dans le
+sac — deux casiers à côté de la jauge, qui disent ce qu'on porte. Un sac plein laisse
+l'objet au sol plutôt que de le gâcher.
