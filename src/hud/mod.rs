@@ -12,13 +12,16 @@
 //! coordonnées de monde par le moteur, donc elle aura son propre module. Les ranger
 //! ensemble ferait oublier la frontière qui les sépare.
 //!
-//! **Toutes les cotes d'ici sont en pixels, et c'est ce qui donne à l'interface une
-//! taille constante à l'écran.** La résolution interne suit la fenêtre, mais à facteur
-//! d'agrandissement constant : un pixel interne vaut donc toujours le même nombre de
-//! pixels d'écran, et une cote figée garde sa taille physique quand on agrandit la
-//! fenêtre. C'est l'inverse d'une cote prise en part du tampon, qui grandirait avec
-//! l'image — l'effet de loupe qu'une interface ne doit pas avoir. Seul l'**ancrage** se
-//! reprend du tampon à chaque image, la résolution changeant en cours de partie.
+//! **Les cotes d'ici sont celles de la hauteur d'ouverture, que [`scale`] multiplie.**
+//! La résolution interne suit la fenêtre, donc une cote figée en pixels maigrit
+//! d'autant que l'image grandit — sept pixels sur une image trois fois plus haute se
+//! lisent trois fois plus fins. L'interface grandit avec l'image, comme tout ce qui
+//! vivait dans le tampon basse résolution des jeux de cette famille. L'**ancrage** se
+//! reprend du tampon par la même occasion, la résolution changeant en cours de partie.
+//!
+//! **Le réticule est la seule exception, et elle est de fonction** : il marque le pixel
+//! que le rayon prendra, donc le grossir désigne moins précisément ce qu'on vise. Ses
+//! cotes restent en pixels, et `reticle.rs` dit pourquoi à son tour.
 
 pub mod gauge;
 pub mod glyph;
@@ -26,6 +29,30 @@ pub mod reticle;
 pub mod score;
 
 use screengine_play::Output;
+
+use crate::resolution;
+
+#[cfg(test)]
+mod tests;
+
+/// Le facteur par lequel les cotes de l'interface suivent la hauteur du tampon.
+///
+/// **Entier, et c'est la planche de glyphes qui l'impose** : un texte se dessine en
+/// multipliant ses cases par un entier, donc un facteur fractionnaire n'aurait aucune
+/// traduction pour le compteur. Le reste de l'interface suit le même pas pour que
+/// l'ensemble reste d'un seul tenant.
+///
+/// **Arrondi au plus proche plutôt que tronqué** : à la troncature, une image de 540
+/// de haut — le cas d'une fenêtre entre deux crans — garderait les cotes de 360 et
+/// paraîtrait un tiers trop fine. Le pas reste visible quand le facteur change, et il
+/// n'y a pas de remède : c'est le prix d'un entier.
+///
+/// **La hauteur et non la largeur**, parce que c'est elle qui porte l'aspect : une
+/// fenêtre ultra-large ne grandit pas ce qu'on lit, elle en écarte seulement les
+/// coins.
+pub fn scale(height: u32) -> u32 {
+    ((height + resolution::BASE.1 / 2) / resolution::BASE.1).max(1)
+}
 
 /// Le fond d'un élément d'interface, sous ce qu'il montre.
 ///

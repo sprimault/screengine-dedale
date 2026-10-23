@@ -31,22 +31,28 @@ fn drawn(width: u32, height: u32, share: f32) -> Canvas {
 /// au premier changement de résolution, sans que rien ne le dise. Ce qui est vérifié
 /// est le pixel le plus bas et le plus à gauche du remplissage, sur une jauge pleine.
 ///
-/// **Tous assez larges pour la porter**, la jauge ayant une longueur en pixels et non
-/// une part de la largeur : sous `INSET + SPAN`, elle se refuse entière, et l'épreuve
-/// mesurerait alors un refus au lieu d'un ancrage.
+/// **Et trois facteurs d'interface sur les quatre tampons**, ce qui est l'autre moitié
+/// de la propriété : la marge est une cote à la hauteur d'ouverture, donc une cote
+/// oubliée dans le produit décolle la jauge de son coin dès que l'image passe un cran.
+/// Un corpus à facteur un seul laisserait passer exactement cela.
+///
+/// **Tous assez larges pour la porter** : sous `(INSET + SPAN) * unit`, elle se refuse
+/// entière, et l'épreuve mesurerait alors un refus au lieu d'un ancrage.
 #[test]
 fn le_coin_de_la_jauge_vient_du_tampon() {
-    for (width, height) in [(320, 180), (200, 48), (1280, 720)] {
+    for (width, height) in [(320, 180), (200, 48), (1280, 720), (1920, 1080)] {
+        let unit = scale(height);
         let canvas = drawn(width, height, 1.0);
-        let bottom = height - INSET - 1;
+        let inset = INSET * unit;
+        let bottom = height - inset - 1;
 
         assert_eq!(
-            canvas.pixel(INSET, bottom),
+            canvas.pixel(inset, bottom),
             FILL,
             "sur un tampon de {width}×{height}, la jauge n'occupe pas son coin bas gauche"
         );
         assert_eq!(
-            canvas.pixel(INSET, bottom + 1),
+            canvas.pixel(inset, bottom + 1),
             EDGE,
             "sur un tampon de {width}×{height}, la jauge n'est pas bordée en dessous"
         );

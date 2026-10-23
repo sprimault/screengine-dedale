@@ -17,6 +17,12 @@
 //! un réticule blanc seul disparaît sur une brique claire, un réticule noir seul
 //! disparaît dans un couloir sombre. Deux passes coûtent quelques dizaines de pixels et
 //! se lisent partout.
+//!
+//! **Ses cotes ne suivent pas le facteur de l'interface, et c'est le seul élément dans
+//! ce cas.** Jauge, compteur, épitaphe et plan grandissent avec l'image, parce qu'ils se
+//! lisent ; le réticule, lui, désigne — un vide de trois pixels marque un point, un vide
+//! de neuf marque une zone, et la précision qu'on lui demande est celle du pixel que le
+//! rayon prendra. Grossir le rendrait donc moins bon à ce qu'il fait.
 
 use screengine_play::Output;
 
