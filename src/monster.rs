@@ -35,6 +35,7 @@ use crate::blot::blot;
 use crate::body::Body;
 use crate::maze::export;
 use crate::maze::grid::{Grid, Side};
+use crate::player;
 use crate::rng::Rng;
 use crate::sheet::{self, FRAME, Motion};
 
@@ -683,6 +684,24 @@ impl Monster {
         }
     }
 
+    /// Vrai si son volume touche celui d'un joueur dont l'œil est là.
+    ///
+    /// **L'écart horizontal seul**, et c'est ce qui le rend juste : l'œil est au-dessus du
+    /// centre du corps, donc une distance en trois dimensions compterait la hauteur d'œil
+    /// comme un éloignement et la créature entrerait quand même. En plan, l'œil est à la
+    /// verticale du centre — le corps porte la pose et la caméra se recale sur lui.
+    ///
+    /// **La somme des deux demi-étendues**, prise aux deux gabarits et non recopiée : ils
+    /// diffèrent — trente-cinq centièmes pour une créature, trente pour le joueur —, donc
+    /// un seuil écrit sur un seul serait faux des deux côtés. C'est la même clause que pour
+    /// la morsure, qui teste le même recouvrement.
+    fn touching(&self, eye: Vec3) -> bool {
+        let span = eye - self.body.centre();
+        let close = HALF.x + player::HALF.x;
+
+        span.x * span.x + span.y * span.y < close * close
+    }
+
     /// Le pas que son cap lui demande pour cette image, avant tout obstacle.
     ///
     /// **Il presse en poursuivant**, et c'est le seul endroit où la vitesse change :
@@ -776,7 +795,23 @@ impl Monster {
             }
         };
 
-        let step = self.step(dt);
+        // **Une créature au contact n'avance plus, et c'est ce qui la garde visible.** Le
+        // joueur n'a pas de portail, donc le balayage ne l'arrête pas (`D32`) : sans ce
+        // seuil, une créature qui poursuit entre dans lui et continue de pousser. Elle mord
+        // alors en boucle **et ne peut plus être abattue** — son sprite est centré sur une
+        // pose confondue avec celle du joueur, donc il passe derrière le plan proche.
+        //
+        // **Le cap, lui, reste pointé sur le joueur** : elle le regarde et mord, elle ne
+        // recule pas. Annuler le cap la ferait se détourner au moment du contact, ce qui se
+        // lirait comme une créature qui renonce.
+        //
+        // **Rien à voir avec l'évitement retiré en `H35b`**, qui bloquait deux créatures
+        // l'une contre l'autre, chacune annulant le pas de l'autre : le joueur ne pousse
+        // pas, donc aucun blocage symétrique n'est possible ici.
+        let step = match self.hunt.zip(prey) {
+            Some((_, eye)) if self.touching(eye) => Vec3::new(0.0, 0.0, 0.0),
+            _ => self.step(dt),
+        };
         // **Le pas demandé reste celui du cap, même annulé**, et c'est ce qui fait
         // tomber le critère du bon côté : comparé à zéro, un pas nul paraîtrait
         // franchi en entier, la patience se remettrait à zéro, et deux créatures se

@@ -156,6 +156,82 @@ fn footprint(sheet: &Texture, view: u32, frame: u32) -> u32 {
 /// la combinaison des deux qui se juge : des cases choisies dans l'épreuve ne diraient
 /// rien de ce que le semis pose vraiment, et c'est là que les poses impossibles
 /// apparaissent — au pied d'une cage, contre une paroi, à cheval sur un seuil.
+/// Le contact se mesure en plan, et la hauteur d'œil n'en fait pas partie.
+///
+/// **C'est le piège de la cote**, et il se voit sur un seul chiffre : l'œil est à un mètre
+/// cinquante du sol, la somme des demi-étendues vaut soixante-cinq centièmes. Un écart pris
+/// en trois dimensions compterait donc la hauteur comme un éloignement, le contact ne
+/// serait jamais vrai, et la créature entrerait dans le joueur comme avant le correctif.
+///
+/// **Les deux bornes, et la seconde est celle qui paie** : à la verticale exacte le contact
+/// est vrai, et une unité au-delà de la somme il est faux — quel que soit le réglage des
+/// deux gabarits, puisque la borne se calcule sur eux.
+#[test]
+fn le_contact_se_mesure_en_plan() {
+    let (grid, map) = maze(0x1);
+    let monsters = sown(&grid, &map);
+    let creature = &monsters[0];
+    let at = creature.at();
+
+    let overhead = Vec3::new(at.x, at.y, at.z + 1.5);
+    assert!(
+        creature.touching(overhead),
+        "un œil à la verticale de la créature ne la touche pas"
+    );
+
+    let clear = HALF.x + player::HALF.x + 1.0;
+    let aside = Vec3::new(at.x + clear, at.y, at.z + 1.5);
+    assert!(
+        !creature.touching(aside),
+        "un œil à {clear} unités en plan touche encore"
+    );
+}
+
+/// Une créature au contact ne gagne plus de terrain, et reste donc visible.
+///
+/// **C'est le défaut qu'elle garde** : le joueur n'a pas de portail, donc le balayage ne
+/// l'arrête pas. Sans seuil, une créature qui poursuit entre dans lui, mord en boucle, et
+/// **ne peut plus être abattue** — son sprite, centré sur une pose confondue avec celle du
+/// joueur, passe derrière le plan proche.
+///
+/// **Trente pas et non un seul** : un pas unique serait absorbé par la marge du balayage, et
+/// l'épreuve passerait sur un correctif absent. Trente à soixantièmes de seconde font une
+/// demi-seconde de poussée, soit plus d'une unité au pas de course.
+///
+/// **En plan, parce que la pesanteur travaille encore** : une créature au contact reçoit un
+/// pas horizontal nul, pas l'immobilité — un cadavre au bord d'un palier doit toujours
+/// rejoindre le sol, et c'est la même mécanique.
+#[test]
+fn une_creature_au_contact_ne_gagne_plus_de_terrain() {
+    const DT: f32 = 1.0 / 60.0;
+
+    let (grid, map) = maze(0x1);
+    let mut monsters = sown(&grid, &map);
+    let creature = &mut monsters[0];
+
+    // **L'œil est au contact mais pas à l'aplomb**, et la nuance est tout l'intérêt de
+    // l'épreuve : exactement au-dessus, la direction vers la cible est nulle et la créature
+    // ne pousse pas — elle passait alors même sans seuil. À quatre dixièmes, sous la somme
+    // des demi-étendues, elle veut avancer et c'est le seuil seul qui l'en empêche.
+    let start = creature.at();
+    let eye = Vec3::new(start.x + 0.4, start.y, start.z + 1.5);
+    assert!(
+        creature.touching(eye),
+        "la pose choisie n'est pas un contact"
+    );
+
+    for _ in 0..30 {
+        creature.walk(&grid, &map, Some(eye), DT);
+    }
+
+    let end = creature.at();
+    let drift = (end.x - start.x).hypot(end.y - start.y);
+    assert!(
+        drift < HALF.x,
+        "la créature a gagné {drift} sur le joueur en une demi-seconde de contact"
+    );
+}
+
 fn sown(grid: &Grid, map: &World) -> Vec<Monster> {
     // Le même geste que la construction d'une partie, et dans le même ordre : un seul
     // générateur, le semis puis la population. Les reproduire ici garde les épreuves

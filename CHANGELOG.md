@@ -31,6 +31,10 @@ cela s'adresse à quelqu'un.
 - **On avance tout seul** au bouton du milieu ou à `Tab`, ce qui rend le doigt qu'il
   fallait tenir.
 
+### Corrigé
+- **Une créature s'arrête devant le joueur au lieu d'entrer dans lui.** Collée, elle mordait
+  en boucle sans qu'on puisse la viser : on ne la voyait plus.
+
 ### Modifié
 - **Le décor reçoit l'éclairage de ses lampes**, cuit au chargement, et chaque case est
   éclairée différemment : des flaques de lumière, des couloirs qu'on devine à peine.
@@ -62,6 +66,10 @@ cela s'adresse à quelqu'un.
 - **Fog closes the view**, so that a corridor's depth can finally be judged.
 - **You walk on your own** with the middle button or `Tab`, giving back the finger you
   had to hold down.
+
+### Fixed
+- **A creature now stops in front of the player instead of walking into them.** Stuck to
+  you, it bit over and over with no way to aim at it: you could no longer see it.
 
 ### Changed
 - **The scenery takes the light of its lamps**, baked on load, and each cell is lit
