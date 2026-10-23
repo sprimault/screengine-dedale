@@ -369,13 +369,17 @@ fn main() -> Result<(), Error> {
     )
 }
 
-/// Le côté d'une case dans le plan de contrôle, en pixels.
+/// Le côté d'une case dans le plan de contrôle, en pixels à la hauteur d'ouverture.
+///
+/// **Les trois cotes du plan suivent le facteur de l'interface**, comme le reste de ce
+/// qui se dessine à l'écran : c'est le plan qu'on lit en réglant une cote, donc celui
+/// qui doit rester lisible quand l'image grandit.
 const CELL: u32 = 7;
 
-/// La marge du plan de contrôle au coin de l'écran, en pixels.
+/// La marge du plan de contrôle au coin de l'écran, en pixels à la hauteur d'ouverture.
 const INSET: u32 = 8;
 
-/// L'écart entre deux étages voisins, en pixels.
+/// L'écart entre deux étages voisins, en pixels à la hauteur d'ouverture.
 const GAP: u32 = 10;
 
 /// Le rappel de sortie : le relevé de l'image finie, puis l'interface par-dessus.
@@ -411,13 +415,13 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
     hud::reticle::draw(output);
 }
 
-/// Les deux lignes de la mort, et l'échelle de chacune.
+/// Les deux lignes de la mort, et l'échelle de chacune à la hauteur d'ouverture.
 ///
 /// Deux tailles plutôt qu'une : l'état se lit d'un coup d'œil, la touche se lit
 /// quand on la cherche. Réglées à l'écran, comme toute cote d'interface.
 const EPITAPH: [(&str, u32); 2] = [("MORT", 4), ("R RELANCE", 2)];
 
-/// L'écart entre les deux lignes, en pixels.
+/// L'écart entre les deux lignes, en pixels à la hauteur d'ouverture.
 const LINE_GAP: u32 = 8;
 
 /// Ce qui s'écrit quand la course est finie, au milieu de l'écran.
@@ -436,19 +440,25 @@ const LINE_GAP: u32 = 8;
 /// Le décalage de l'ombre vaut l'échelle, pour qu'une ligne deux fois plus grande
 /// porte une ombre deux fois plus épaisse ; les deux teintes viennent du module du
 /// texte, qui les partage avec le compteur.
+///
+/// **L'échelle est celle du libellé multipliée par celle de l'interface**, comme pour
+/// le compteur : l'une dit la taille du texte, l'autre la finesse de l'image.
 fn epitaph(output: &mut Output<'_>, glyphs: &Glyphs) {
+    let unit = hud::scale(output.height());
+    let gap = LINE_GAP * unit;
     let height: u32 = EPITAPH
         .iter()
-        .map(|&(_, scale)| glyphs.height(scale))
+        .map(|&(_, scale)| glyphs.height(scale * unit))
         .sum::<u32>()
-        + LINE_GAP;
+        + gap;
     let mut top = output.height().saturating_sub(height) / 2;
     for (text, scale) in EPITAPH {
-        let left = output.width().saturating_sub(glyphs.width(text, scale)) / 2;
-        let shadow = (left + scale, top + scale);
-        glyphs.draw(output, shadow, text, scale, glyph::SHADOW);
-        glyphs.draw(output, (left, top), text, scale, glyph::INK);
-        top += glyphs.height(scale) + LINE_GAP;
+        let size = scale * unit;
+        let left = output.width().saturating_sub(glyphs.width(text, size)) / 2;
+        let shadow = (left + size, top + size);
+        glyphs.draw(output, shadow, text, size, glyph::SHADOW);
+        glyphs.draw(output, (left, top), text, size, glyph::INK);
+        top += glyphs.height(size) + gap;
     }
 }
 
@@ -473,38 +483,41 @@ fn epitaph(output: &mut Output<'_>, glyphs: &Glyphs) {
 /// Le repère inversé des rampes a tenu une version faute de ce découpage.
 fn plot(output: &mut Output<'_>, maze: &Grid, here: u32) {
     let (width, height, levels) = maze.extent();
+    let unit = hud::scale(output.height());
+    let (side, inset, gap) = (CELL * unit, INSET * unit, GAP * unit);
+
     // Un fond opaque sous le plan : posé à même le décor, il se confond avec
     // lui dès qu'un mur clair passe derrière.
-    let span = levels * (width * CELL + GAP) - GAP;
+    let span = levels * (width * side + gap) - gap;
     block(
         output,
-        INSET / 2,
-        INSET / 2,
-        span + INSET,
-        height * CELL + INSET,
+        inset / 2,
+        inset / 2,
+        span + inset,
+        height * side + inset,
         BACKDROP,
     );
 
     for level in 0..levels {
-        let origin = INSET + (levels - 1 - level) * (width * CELL + GAP);
+        let origin = inset + (levels - 1 - level) * (width * side + gap);
         for y in 0..height {
             for x in 0..width {
                 let cell = (x, y, level);
                 // Le nord en haut de l'écran, donc la ligne s'inverse.
-                let top = INSET + (height - 1 - y) * CELL;
-                let left = origin + x * CELL;
+                let top = inset + (height - 1 - y) * side;
+                let left = origin + x * side;
 
                 if maze.has_wall(cell, Side::North) {
-                    block(output, left, top, CELL + 1, 1, WALL);
+                    block(output, left, top, side + unit, unit, WALL);
                 }
                 if maze.has_wall(cell, Side::South) {
-                    block(output, left, top + CELL, CELL + 1, 1, WALL);
+                    block(output, left, top + side, side + unit, unit, WALL);
                 }
                 if maze.has_wall(cell, Side::West) {
-                    block(output, left, top, 1, CELL + 1, WALL);
+                    block(output, left, top, unit, side + unit, WALL);
                 }
                 if maze.has_wall(cell, Side::East) {
-                    block(output, left + CELL, top, 1, CELL + 1, WALL);
+                    block(output, left + side, top, unit, side + unit, WALL);
                 }
 
                 mark(output, maze, cell, here, left, top);
@@ -528,17 +541,18 @@ fn mark(
     left: u32,
     top: u32,
 ) {
-    let inner = CELL - 2;
+    let unit = hud::scale(output.height());
+    let inner = (CELL - 2) * unit;
 
     // **Départ et sortie en anneau, volées en plein**, et c'est la forme qui
     // porte la différence : à cinq pixels de côté, le vert du départ et la teinte
     // d'une volée verte ne se distinguent pas, et on cherche un escalier là où
     // commence la partie.
     if cell == maze.start() {
-        ring(output, left + 1, top + 1, inner, START);
+        ring(output, left + unit, top + unit, inner, START);
     }
     if cell == maze.exit() {
-        ring(output, left + 1, top + 1, inner, EXIT);
+        ring(output, left + unit, top + unit, inner, EXIT);
     }
     // **La cellule qui couvre la case, et non l'identifiant de la case.** Une cage
     // tient deux cases superposées et sort au rang de son pied : celle du haut
@@ -549,7 +563,15 @@ fn mark(
     // est dans une cellule qui les occupe toutes les deux — et commode : la cage
     // se repère du même coup sur les deux plans.
     if export::cover(maze, cell) == here {
-        block(output, left + 2, top + 2, inner - 2, inner - 2, HERE);
+        let pad = 2 * unit;
+        block(
+            output,
+            left + pad,
+            top + pad,
+            inner - pad,
+            inner - pad,
+            HERE,
+        );
         return;
     }
     if cell == maze.start() || cell == maze.exit() {
@@ -583,13 +605,13 @@ fn mark(
                 } else {
                     stair.climb.facing()
                 };
-                wedge(output, left + 1, top + 1, inner, towards, colour);
+                wedge(output, left + unit, top + unit, inner, towards, colour);
             }
-            Shape::Steps if foot => block(output, left + 1, top + 1, inner, half, colour),
+            Shape::Steps if foot => block(output, left + unit, top + unit, inner, half, colour),
             Shape::Steps => block(
                 output,
-                left + 1,
-                top + 1 + inner - half,
+                left + unit,
+                top + unit + inner - half,
                 inner,
                 half,
                 colour,
@@ -611,13 +633,17 @@ fn mark(
 /// à cinq pixels, une pointe franche se lit mieux qu'un triangle qui remplirait le
 /// carré en perdant son sommet dans les bords.
 fn wedge(output: &mut Output<'_>, x: u32, y: u32, side: u32, towards: Side, color: [u8; 4]) {
-    for rank in 0..side.div_ceil(2) {
+    // Le rang avance d'une unité d'interface et non d'un pixel : à facteur deux, une
+    // pente dessinée pixel par pixel sur un côté deux fois plus long rendrait un
+    // escalier au lieu d'une diagonale franche.
+    let unit = hud::scale(output.height());
+    for rank in (0..side.div_ceil(2)).step_by(unit as usize) {
         let span = side - 2 * rank;
         match towards {
-            Side::East => block(output, x + rank, y + rank, 1, span, color),
-            Side::West => block(output, x + side - 1 - rank, y + rank, 1, span, color),
-            Side::North => block(output, x + rank, y + side - 1 - rank, span, 1, color),
-            _ => block(output, x + rank, y + rank, span, 1, color),
+            Side::East => block(output, x + rank, y + rank, unit, span, color),
+            Side::West => block(output, x + side - unit - rank, y + rank, unit, span, color),
+            Side::North => block(output, x + rank, y + side - unit - rank, span, unit, color),
+            _ => block(output, x + rank, y + rank, span, unit, color),
         }
     }
 }
@@ -657,10 +683,11 @@ const LINKS: [[u8; 4]; 12] = [
     [0xF0, 0xF0, 0xF0, 0xFF],
 ];
 
-/// Un anneau carré d'un pixel d'épaisseur.
+/// Un anneau carré, épais d'une unité d'interface.
 fn ring(output: &mut Output<'_>, x: u32, y: u32, side: u32, color: [u8; 4]) {
-    block(output, x, y, side, 1, color);
-    block(output, x, y + side - 1, side, 1, color);
-    block(output, x, y, 1, side, color);
-    block(output, x + side - 1, y, 1, side, color);
+    let unit = hud::scale(output.height());
+    block(output, x, y, side, unit, color);
+    block(output, x, y + side - unit, side, unit, color);
+    block(output, x, y, unit, side, color);
+    block(output, x + side - unit, y, unit, side, color);
 }

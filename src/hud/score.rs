@@ -28,15 +28,19 @@
 use screengine_play::Output;
 
 use super::glyph::{self, Glyphs};
-use super::{EDGE, PLATE, block};
+use super::{EDGE, PLATE, block, scale};
 
-/// L'échelle des chiffres.
+/// L'échelle des chiffres, à la hauteur d'ouverture.
 ///
 /// Deux, soit seize pixels de haut : la jauge fait sept d'épaisseur et le compteur
 /// doit se lire d'un coup d'œil sans dominer la vue. La cote se juge à l'écran.
+///
+/// **Elle se multiplie par le facteur de l'interface**, et c'est le seul endroit du
+/// HUD où les deux échelles se composent : la planche de glyphes en a déjà une, qui
+/// dit la taille du texte, et celle du tampon dit la finesse de l'image.
 const SCALE: u32 = 2;
 
-/// La marge aux bords droit et bas, en pixels.
+/// La marge aux bords droit et bas, en pixels à la hauteur d'ouverture.
 ///
 /// La même que celle de la jauge, pour que les deux reposent sur la même ligne.
 const INSET: u32 = 8;
@@ -50,7 +54,8 @@ const INSET: u32 = 8;
 /// se tronquer, ce qui est le bon échec.
 const DIGITS: usize = 5;
 
-/// Ce que la plaque laisse d'air autour des chiffres, en pixels.
+/// Ce que la plaque laisse d'air autour des chiffres, en pixels à la hauteur
+/// d'ouverture.
 ///
 /// **Deux, soit un pixel de glyphe à l'échelle** : sans air, l'encre touche le liseré
 /// et le chiffre se lit comme s'il était coupé. La police dessine déjà son espacement
@@ -75,22 +80,33 @@ fn digits(score: u32) -> String {
 /// **Un tampon trop court ne reçoit rien** : les deux coins se calculent par
 /// soustraction, donc sur un entier non signé un tampon plus petit que la plaque ne
 /// passe pas sous zéro — il déborde par le haut, et le compteur partirait à l'autre
-/// bout de la ligne. Le pixel de plus qu'exige le refus est celui du liseré, qui se
+/// bout de la ligne. Le facteur de plus qu'exige le refus est celui du liseré, qui se
 /// dessine en dehors. C'est le même refus que celui de la jauge, pour la même raison.
 pub fn draw(output: &mut Output<'_>, glyphs: &Glyphs, score: u32) {
+    let unit = scale(output.height());
+    let (size, inset, pad) = (SCALE * unit, INSET * unit, PAD * unit);
+
     let text = digits(score);
     let plate = (
-        glyphs.width(&text, SCALE) + 2 * PAD,
-        glyphs.height(SCALE) + 2 * PAD,
+        glyphs.width(&text, size) + 2 * pad,
+        glyphs.height(size) + 2 * pad,
     );
-    if output.width() < INSET + plate.0 + 1 || output.height() < INSET + plate.1 + 1 {
+    if output.width() < inset + plate.0 + unit || output.height() < inset + plate.1 + unit {
         return;
     }
 
-    let left = output.width() - INSET - plate.0;
-    let top = output.height() - INSET - plate.1;
+    let left = output.width() - inset - plate.0;
+    let top = output.height() - inset - plate.1;
 
-    block(output, left - 1, top - 1, plate.0 + 2, plate.1 + 2, EDGE);
+    let edge = 2 * unit;
+    block(
+        output,
+        left - unit,
+        top - unit,
+        plate.0 + edge,
+        plate.1 + edge,
+        EDGE,
+    );
     block(output, left, top, plate.0, plate.1, PLATE);
-    glyphs.draw(output, (left + PAD, top + PAD), &text, SCALE, glyph::INK);
+    glyphs.draw(output, (left + pad, top + pad), &text, size, glyph::INK);
 }
