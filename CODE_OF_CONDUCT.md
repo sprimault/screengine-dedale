@@ -58,9 +58,10 @@ an individual is officially representing the community in public spaces.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported through a private security advisory on the GitHub repository, and never
-a public issue. Say that the report concerns conduct and not a vulnerability. It
-is the only private channel the repository offers. All complaints will be
+reported through a private security advisory on the GitHub repository, the same
+channel `SECURITY.md` uses, and never a public issue. Say that the report
+concerns conduct and not a vulnerability. It is the only private channel the
+repository offers, and that is why it carries both. All complaints will be
 reviewed and investigated promptly and fairly.
 
 All community leaders are obligated to respect the privacy and security of the

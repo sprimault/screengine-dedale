@@ -62,10 +62,11 @@ dans un espace public.
 ## Signalement
 
 Les comportements abusifs, harcelants ou autrement inacceptables se signalent
-par un avis de sécurité privé sur le dépôt GitHub, jamais par une issue
-publique. Précisez que le signalement porte sur la conduite et non sur une
-faille. C'est le seul canal privé que le dépôt offre. Toute plainte sera
-examinée et instruite rapidement et équitablement.
+par un avis de sécurité privé sur le dépôt GitHub — le canal même qu'emploie
+`SECURITY.fr.md` —, jamais par une issue publique. Précisez que le signalement
+porte sur la conduite et non sur une faille. C'est le seul canal privé que le
+dépôt offre, et c'est pourquoi il porte les deux. Toute plainte sera examinée et
+instruite rapidement et équitablement.
 
 Les responsables de la communauté ont l'obligation de respecter la vie privée et
 la sécurité de la personne qui signale un incident.
