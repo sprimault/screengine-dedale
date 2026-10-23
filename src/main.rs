@@ -44,7 +44,7 @@ use maze::grid::{Grid, Settings, Shape, Side};
 use pace::Pace;
 use probe::Probe;
 use scene::Scenery;
-use screengine_play::{Error, KeyCode, Output, Play};
+use screengine_play::{Error, KeyCode, MouseButton, Output, Play};
 
 /// Les réglages du labyrinthe.
 ///
@@ -215,6 +215,14 @@ fn main() -> Result<(), Error> {
                 } else {
                     tick.exit();
                 }
+            }
+
+            // **La prise du curseur est ici parce que son rendu y est** : `Échap` le relâche
+            // juste au-dessus, et deux sites pour la même bascule finissent par ne plus
+            // s'accorder. La partie, elle, n'a rien à décider d'un curseur — elle lit un
+            // regard et des commandes.
+            if tick.input().button_pressed(MouseButton::Left) {
+                tick.capture_cursor(true);
             }
 
             // **La relance est une course neuve sur la même carte** : le monde ne
@@ -421,7 +429,12 @@ fn overview(session: &mut Session, output: &mut Output<'_>) {
         session.game.pickups().items(),
     );
     hud::gauge::draw(output, session.run.share());
-    hud::ammo::draw(output, &session.glyphs, session.run.ammo());
+    hud::pouch::draw(
+        output,
+        &session.glyphs,
+        session.run.ammo(),
+        session.run.vials(),
+    );
     hud::score::draw(output, &session.glyphs, session.run.score());
     if session.run.over() {
         epitaph(output, &session.glyphs);

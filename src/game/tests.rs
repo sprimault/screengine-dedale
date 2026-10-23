@@ -363,6 +363,97 @@ fn chaque_coup_retire_une_munition() {
     assert_eq!(run.ammo(), AMMO - 1, "le coup n'a pas coûté une munition");
 }
 
+/// Une boîte donne ses munitions, et le plafond en prend ce qui rentre.
+///
+/// **La saturation plutôt que le rejet, et c'est une règle de jeu** : une boîte ramassée à
+/// quatre-vingt-quinze munitions en donne quatre et se consomme. La rejeter entière
+/// obligerait à revenir pour quatre munitions, et laisserait au sol une boîte qu'on croirait
+/// pleine.
+///
+/// **Le refus n'arrive qu'au plafond atteint**, pas avant : c'est ce qui sépare « il reste
+/// de la place » de « il en reste assez pour tout ».
+#[test]
+fn une_boite_donne_ses_munitions_et_sature() {
+    let mut run = Run::new();
+    assert!(
+        run.collect(pickup::Kind::Box),
+        "une boîte est refusée à vide"
+    );
+    assert_eq!(
+        run.ammo(),
+        AMMO + BOX_AMMO,
+        "la boîte n'a pas donné sa part"
+    );
+
+    while run.collect(pickup::Kind::Box) {}
+    assert_eq!(
+        run.ammo(),
+        AMMO_CAP,
+        "le plafond n'est pas exactement atteint"
+    );
+    assert!(
+        !run.collect(pickup::Kind::Box),
+        "une boîte est prise alors que le sac est plein"
+    );
+}
+
+/// Une fiole se range sans soigner, et le sac plein la laisse au sol.
+///
+/// **C'est tout ce que `D28` a perdu, et ce qu'il garde** : le ramassage ne soigne plus,
+/// donc une fiole prise à pleine vie n'est plus gâchée — mais un sac plein refuse encore,
+/// parce qu'un objet qui disparaît sans rien donner reste la seule forme de ramassage qui
+/// trompe. Ce qui a changé est la raison du refus, pas le refus.
+#[test]
+fn une_fiole_se_range_sans_soigner() {
+    let mut run = Run::new();
+    let full = run.share();
+
+    assert!(
+        run.collect(pickup::Kind::Vial),
+        "une fiole est refusée à vide"
+    );
+    assert_eq!(run.vials(), 1, "la fiole n'est pas au sac");
+    assert_eq!(run.share(), full, "une fiole rangée a soigné");
+
+    while run.collect(pickup::Kind::Vial) {}
+    assert_eq!(
+        run.vials(),
+        VIAL_CAP,
+        "le plafond n'est pas exactement atteint"
+    );
+}
+
+/// Boire retire une fiole et rend de la vie, en saturant au plein.
+///
+/// **À pleine vie, la fiole se boit quand même** : c'est une décision prise, et refuser ce
+/// qu'on vient de demander est ce qu'un joueur lit comme une commande qui ne répond pas.
+/// Le refus de `D28` portait sur un ramassage involontaire, pas sur un geste.
+///
+/// **Et une vie entamée mesure le soin**, sans quoi l'épreuve passerait sur un soin nul :
+/// à cinquante de vie, une fiole en rend vingt-cinq.
+#[test]
+fn boire_rend_de_la_vie_et_sature() {
+    let mut run = Run::new();
+    for _ in 0..5 {
+        run.hurt();
+    }
+    run.collect(pickup::Kind::Vial);
+
+    assert!(
+        run.drink(),
+        "le sac portait une fiole et elle n'a pas servi"
+    );
+    assert_eq!(run.vials(), 0, "la fiole bue est restée au sac");
+    assert_eq!(run.share(), 0.75, "le soin ne rend pas sa part de vie");
+
+    let mut full = Run::new();
+    full.collect(pickup::Kind::Vial);
+    assert!(full.drink(), "une fiole est refusée à pleine vie");
+    assert_eq!(full.share(), 1.0, "le soin a dépassé la vie pleine");
+
+    assert!(!full.drink(), "un sac vide a laissé boire");
+}
+
 /// Une sacoche vide refuse, et ne descend pas sous zéro.
 ///
 /// **C'est la garde qui compte, et elle porte sur un entier non signé** : une

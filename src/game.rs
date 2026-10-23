@@ -77,6 +77,38 @@ const BITE: u32 = 10;
 /// du tout.
 const AMMO: u32 = 24;
 
+/// Ce qu'une boîte ramassée rend en munitions.
+///
+/// **Huit, soit le tiers de la dotation** : une boîte doit se sentir sans refaire le plein,
+/// sinon la rareté que l'étape 14 demande disparaît au premier ramassage. Douze boîtes dans
+/// un labyrinthe en portent donc quatre-vingt-seize, quand abattre les seize créatures en
+/// demande une trentaine.
+///
+/// **Un réglage d'écran, et c'est le vrai levier de la rareté** — pas le nombre de boîtes
+/// posées : des boîtes qu'on trouve mais qui donnent peu laissent la dépense d'un tir se
+/// juger, là où des boîtes introuvables cachent le mécanisme.
+const BOX_AMMO: u32 = 8;
+
+/// Le plafond de munitions que le sac tient.
+///
+/// **Quatre-vingt-dix-neuf, et le compteur le suppose** : son casier se dimensionne sur
+/// trois rangs, donc un plafond à quatre chiffres l'élargirait à chaque fois qu'on
+/// l'atteint. C'est aussi ce que l'étape 14 pourra relever en trésor.
+const AMMO_CAP: u32 = 99;
+
+/// Ce qu'une fiole rend de vie.
+///
+/// **Vingt-cinq sur cent, soit deux morsures et demie** : assez pour qu'on la boive avec
+/// soulagement, pas assez pour qu'une seule efface une mauvaise rencontre.
+const VIAL_LIFE: u32 = 25;
+
+/// Le plafond de fioles que le sac tient.
+///
+/// **Neuf, et c'est une contrainte de décision autant que de place** : un sac qui en tient
+/// vingt fait qu'on ne compte plus, et ce lot existe pour qu'on compte. Le casier reste à
+/// un rang, donc il ne change jamais de taille.
+const VIAL_CAP: u32 = 9;
+
 /// Le temps entre deux morsures, en secondes.
 ///
 /// **Dix secondes au contact d'une créature pour mourir**, avec les deux cotes
@@ -182,6 +214,12 @@ pub struct Run {
     /// suivant. Ce que l'enchaînement de l'étape 7 en fera n'est pas tranché, et rien
     /// ici ne le préjuge — le champ est au bon endroit dans les deux branches.
     ammo: u32,
+    /// Les fioles en sac, non bues.
+    ///
+    /// **Le sac et non le soin immédiat**, et c'est ce qui a rouvert `D28` : une fiole
+    /// ramassée à pleine vie n'est plus gâchée, elle attend. Ce que la course garde est
+    /// donc un stock et non un effet, et la décision de boire revient au joueur.
+    vials: u32,
 }
 
 impl Default for Run {
@@ -197,6 +235,7 @@ impl Run {
             life: LIFE,
             score: 0,
             ammo: AMMO,
+            vials: 0,
         }
     }
 
@@ -251,6 +290,53 @@ impl Run {
     /// Ce qui reste à tirer, tel que l'écran l'écrit.
     pub fn ammo(&self) -> u32 {
         self.ammo
+    }
+
+    /// Les fioles en sac, telles que l'écran les écrit.
+    pub fn vials(&self) -> u32 {
+        self.vials
+    }
+
+    /// Range un objet ramassé, et dit s'il y avait la place.
+    ///
+    /// **Le sac plein refuse, et l'objet reste au sol** — c'est ce que `D28` tranchait déjà
+    /// pour la vie pleine, et la raison survit au changement : un objet qui disparaît sans
+    /// rien donner est la seule forme de ramassage qui trompe. Ce qui change est le
+    /// **moment** du refus, qui ne dépend plus de la vie mais de la place.
+    ///
+    /// **Le plafond sature plutôt qu'il ne rejette la totalité** : une boîte ramassée à
+    /// quatre-vingt-quinze munitions en donne quatre et se consomme. Rejeter le tout
+    /// obligerait à revenir pour quatre munitions, et laisserait une boîte au sol qu'on
+    /// croirait pleine.
+    fn collect(&mut self, kind: pickup::Kind) -> bool {
+        match kind {
+            pickup::Kind::Box if self.ammo < AMMO_CAP => {
+                self.ammo = (self.ammo + BOX_AMMO).min(AMMO_CAP);
+                true
+            }
+            pickup::Kind::Vial if self.vials < VIAL_CAP => {
+                self.vials += 1;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Boit une fiole si le sac en porte une, et dit si elle a servi.
+    ///
+    /// **Le soin sature à la vie pleine sans refuser la fiole**, à l'inverse du sac : une
+    /// fiole bue à quatre-vingt-dix de vie en rend dix, et c'est le joueur qui a choisi de
+    /// la boire là. Ce que `D28` évitait — gâcher une fiole sans le vouloir — n'arrive plus
+    /// par le ramassage, donc il n'y a plus rien à protéger contre une décision prise.
+    fn drink(&mut self) -> bool {
+        match self.vials {
+            0 => false,
+            _ => {
+                self.vials -= 1;
+                self.life = (self.life + VIAL_LIFE).min(LIFE);
+                true
+            }
+        }
     }
 
     /// Dépense une munition, et dit si elle était là.
@@ -424,13 +510,9 @@ impl Game {
         run: &mut Run,
         resolution: (u32, u32),
     ) -> Option<Outcome> {
-        // La vue ne suit la souris que le curseur pris, et il ne l'est pas à
-        // l'ouverture : une fenêtre qui s'en emparerait laisserait chercher
-        // comment le récupérer. Le clic gauche le prend, et c'est `Échap` qui le
-        // rend — la boucle s'en charge, puisqu'elle seule décide aussi de fermer.
-        if tick.input().button_pressed(MouseButton::Left) {
-            tick.capture_cursor(true);
-        }
+        // **La prise du curseur est partie dans la boucle**, qui la rendait déjà sur
+        // `Échap` : deux sites pour la même bascule finissent par ne plus s'accorder, et
+        // une partie n'a rien à décider d'un curseur — elle lit un regard et des commandes.
 
         // **Le bouton du milieu bascule l'avance automatique**, là où il rendait le
         // curseur : les trois boutons étaient pris, et rendre le curseur se demande
@@ -454,6 +536,18 @@ impl Game {
 
         let fired = tick.input().button_pressed(MouseButton::Right);
 
+        // **`F` boit une fiole, et c'est le seul geste** : un casier cliquable demanderait
+        // de rendre le curseur, donc de couper le regard — la capture est ce qui laisse la
+        // vue tourner sans fin, le curseur n'ayant alors aucun bord à atteindre. Essayé et
+        // retiré : passer par `Échap` pour boire est trop dur en jouant. Le casier porte
+        // son rappel de touche à la place.
+        //
+        // **La même position physique sur les deux dispositions** : azerty ne déplace que
+        // `A`, `Z` et `M`, donc rien à détecter.
+        if tick.input().pressed(KeyCode::KeyF) {
+            run.drink();
+        }
+
         self.camera.look(tick);
         let moved = self.wanted(tick) * (WALK * tick.dt());
 
@@ -466,6 +560,19 @@ impl Game {
         // **Le balancement suit cette distance et non les touches** : contre un
         // mur elle vaut zéro, donc l'arme s'arrête d'elle-même.
         self.weapon.advance(travel, self.camera.yaw, tick.dt());
+
+        // **Le ramassage vient après le pas et non avant** : on prend ce qu'on a atteint,
+        // pas ce qu'on visait — et un objet posé au pied d'un mur ne se prendrait jamais
+        // si le test portait sur le déplacement demandé plutôt que sur celui que le décor
+        // a laissé passer.
+        //
+        // **Le sac plein laisse l'objet au sol**, et c'est `Run::collect` qui le dit :
+        // retirer un objet qui n'a rien donné est la seule forme de ramassage qui trompe.
+        if let Some((rank, kind)) = self.pickups.touching(self.player.centre(), player::HALF) {
+            if run.collect(kind) {
+                self.pickups.remove(rank);
+            }
+        }
 
         // Les créatures patrouillent pour leur compte : chacune suit les passages de
         // son étage, sans poursuivre personne. **La grille leur sert de graphe**, et

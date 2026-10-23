@@ -23,9 +23,9 @@
 //! que le rayon prendra, donc le grossir désigne moins précisément ce qu'on vise. Ses
 //! cotes restent en pixels, et `reticle.rs` dit pourquoi à son tour.
 
-pub mod ammo;
 pub mod gauge;
 pub mod glyph;
+pub mod pouch;
 pub mod reticle;
 pub mod score;
 
