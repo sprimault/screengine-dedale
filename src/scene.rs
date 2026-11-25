@@ -145,7 +145,11 @@ pub struct Scenery {
     /// Le labyrinthe engendré, que le plan de contrôle relit.
     pub maze: Grid,
     /// La carte que le moteur en a tirée.
-    pub map: World,
+    ///
+    /// **Partagée avec le porteur de lightmaps**, qui garde la sienne et ne la reçoit
+    /// plus à chaque appel : c'est lui qui impose le partage, et c'est ce qui supprime
+    /// l'appariement de deux cartes.
+    pub map: Arc<World>,
     /// Une texture par emplacement de matériau, dans l'ordre de la carte.
     materials: Vec<Arc<Texture>>,
     /// Les tubes au plafond, et leur battement.
@@ -163,7 +167,7 @@ impl Scenery {
     /// Engendre un labyrinthe, l'écrit en carte, et charge de quoi l'habiller.
     pub fn new(settings: Settings) -> Result<Self, Error> {
         let maze = Grid::generate(settings);
-        let map = World::load(&export::world(&maze))?;
+        let map = Arc::new(World::load(&export::world(&maze))?);
 
         let wall = Arc::new(load_png(WALL).expect("planche de mur du dépôt valide"));
         let floor = Arc::new(load_png(FLOOR).expect("planche de sol du dépôt valide"));
@@ -184,10 +188,10 @@ impl Scenery {
         // **Les lumières, elles, viennent de l'export** : une par cellule de case, une par
         // cage. C'est la géométrie qui décide de ce qu'une lampe atteint, donc les écrire
         // plus tard obligerait à réexporter la carte.
-        let mut lightmaps = Lightmaps::new(&map)?;
+        let mut lightmaps = Lightmaps::new(Arc::clone(&map))?;
         for index in 0..map.cell_count() {
             if let Some(id) = map.cell_id(index) {
-                lightmaps.build(&map, id)?;
+                lightmaps.build(id)?;
             }
         }
 
