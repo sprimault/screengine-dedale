@@ -530,12 +530,12 @@ impl Grid {
     fn shapes(&mut self, rng: &mut Rng, count: u32) {
         let total = self.stairs.len();
         let mut left = (count as usize).min(total);
-        for slot in 0..total {
+        for (slot, stair) in self.stairs.iter_mut().enumerate() {
             if left == 0 {
                 break;
             }
             if rng.below((total - slot) as u32) < left as u32 {
-                self.stairs[slot].shape = Shape::Ramp;
+                stair.shape = Shape::Ramp;
                 left -= 1;
             }
         }
